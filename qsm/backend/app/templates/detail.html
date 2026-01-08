@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page">
+  <section class="detail-hero" style="{% if item.backdrop_url %}background-image: linear-gradient(180deg, rgba(0,0,0,0.6), #141414), url('{{ item.backdrop_url }}');{% else %}background-color:#141414;{% endif %}">
+    <div class="detail-shell">
+      <div class="detail-poster">
+        {% if item.poster_url %}
+          <img src="{{ item.poster_url }}" alt="{{ item.title }}">
+        {% else %}
+          <div class="poster-skeleton"></div>
+        {% endif %}
+      </div>
+      <div class="detail-meta">
+        <h1 class="detail-title">{{ item.title }}</h1>
+        <div class="detail-subtitle">
+          {% if item.year %}<span>{{ item.year }}</span>{% endif %}
+          {% if item.vote %}<span class="dot">•</span><span>评分 {{ "%.1f"|format(item.vote) }}</span>{% endif %}
+          {% if item.runtime %}<span class="dot">•</span><span>{{ item.runtime }} 分钟</span>{% endif %}
+        </div>
+        {% if item.genres %}
+          <div class="detail-tags">
+            {% for g in item.genres %}
+              <span class="tag">{{ g }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+        {% if item.tagline %}
+          <p class="detail-tagline">"{{ item.tagline }}"</p>
+        {% endif %}
+        {% if item.overview %}
+          <p class="detail-overview">{{ item.overview }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="section detail-section" id="quark-resources-section">
+    <div class="section-header">
+      <span class="section-icon">📦</span>
+      <h2 class="section-title">夸克网盘资源</h2>
+    </div>
+    <div class="section-body">
+      <div id="quark-resources-container">
+        <div class="empty" id="quark-empty" style="display: none;">加载中...</div>
+        <div id="quark-resources-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section detail-section">
+    <div class="section-header">
+      <span class="section-icon">👥</span>
+      <h2 class="section-title">演员阵容</h2>
+    </div>
+    <div class="section-body">
+      {% if item.cast %}
+        <div class="cast-grid">
+          {% for c in item.cast %}
+            <a class="cast-link" href="/person/{{ c.id }}">
+              <div class="cast-card">
+                <div class="cast-avatar">
+                  {% if c.profile_url %}
+                    <img src="{{ c.profile_url }}" alt="{{ c.name }}">
+                  {% else %}
+                    <div class="poster-skeleton"></div>
+                  {% endif %}
+                </div>
+                <div class="cast-name">{{ c.name }}</div>
+                {% if c.character %}<div class="cast-role">{{ c.character }}</div>{% endif %}
+              </div>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty">暂无演员信息。</div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="section detail-section">
+    <div class="section-header">
+      <span class="section-icon">📺</span>
+      <h2 class="section-title">相关推荐</h2>
+    </div>
+    <div class="section-body">
+      {% if recommendations %}
+        <div class="posters-grid">
+          {% for poster in recommendations %}
+            {% include "partials/poster_card.html" %}
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty">暂无相关推荐。</div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="section detail-section">
+    <div class="section-header">
+      <span class="section-icon">🎬</span>
+      <h2 class="section-title">视频预览</h2>
+    </div>
+    <div class="section-body">
+      {% if item.videos %}
+        <div class="video-grid">
+          {% for v in item.videos[:2] %}
+            <div class="video-card" data-video-key="{{ v.key }}">
+              <div class="video-thumbnail" onclick="playVideo(this, '{{ v.key }}')">
+                <img src="https://img.youtube.com/vi/{{ v.key }}/mqdefault.jpg" alt="{{ v.name }}" loading="lazy">
+                <div class="video-play-button">
+                  <svg viewBox="0 0 68 48" width="68" height="48">
+                    <path d="M66.52,7.74c-0.78-2.93-2.49-5.41-5.42-6.19C55.79,.13,34,0,34,0S12.21,.13,6.9,1.55 C3.97,2.33,2.27,4.81,1.48,7.74C0.06,13.05,0,24,0,24s0.06,10.95,1.48,16.26c0.78,2.93,2.49,5.41,5.42,6.19 C12.21,47.87,34,48,34,48s21.79-0.13,27.1-1.55c2.93-0.78,4.64-3.26,5.42-6.19C67.94,34.95,68,24,68,24S67.94,13.05,66.52,7.74z" fill="#f00"></path>
+                    <path d="M 45,24 27,14 27,34" fill="#fff"></path>
+                  </svg>
+                </div>
+              </div>
+              <div class="video-content">
+                <div class="video-title">{{ v.name }}</div>
+                {% if v.type %}<div class="video-meta">{{ v.type }}{% if v.official %} · 官方{% endif %}</div>{% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty">暂无视频资源。</div>
+      {% endif %}
+    </div>
+  </section>
+</div>
+
+<script>
+const mediaType = '{{ item.media_type }}';
+const itemId = {{ item.id }};
+const itemTitle = '{{ item.title | replace("'", "\\'") }}';
+const itemYear = {{ item.year or 0 }};
+
+function playVideo(thumbnail, videoKey) {
+  const card = thumbnail.closest('.video-card');
+  const thumbnailDiv = card.querySelector('.video-thumbnail');
+  
+  const iframe = document.createElement('iframe');
+  iframe.src = `https://www.youtube.com/embed/${videoKey}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
+  iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
+  iframe.setAttribute('allowfullscreen', '');
+  iframe.setAttribute('frameborder', '0');
+  
+  thumbnailDiv.innerHTML = '';
+  thumbnailDiv.appendChild(iframe);
+  thumbnailDiv.classList.add('video-playing');
+}
+
+async function searchQuarkResources() {
+  const container = document.getElementById('quark-resources-container');
+  const empty = document.getElementById('quark-empty');
+  const list = document.getElementById('quark-resources-list');
+
+  empty.style.display = 'none';
+  list.style.display = 'none';
+  list.innerHTML = '';
+
+  try {
+    let response = await fetch(`/api/quark/search/tmdb/${itemId}?media_type=${mediaType}&max_results=100`);
+    let data = await response.json();
+
+    if (!data.success && (data.message === '媒体不存在' || data.message === 'Media does not exist')) {
+      response = await fetch(`/api/quark/search/title?title=${encodeURIComponent(itemTitle)}&year=${itemYear || ''}&max_results=100`);
+      data = await response.json();
+    }
+
+    if (data.success && data.resources && data.resources.length > 0) {
+      empty.style.display = 'none';
+      list.style.display = 'block';
+      
+      let html = '<div class="quark-resources-scroll">';
+      
+      data.resources.forEach((resource, index) => {
+        const isBest = resource.is_best ? '<span class="badge-best" style="background: linear-gradient(135deg, #e50914, #b20710); color: white; padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; margin-left: 6px; box-shadow: 0 2px 8px rgba(229, 9, 20, 0.3);">最佳</span>' : '';
+        const qualityBadge = resource.quality_level ? `<span class="badge-quality" style="background: linear-gradient(135deg, #333, #1a1a1a); color: #fff; padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; margin-left: 6px; border: 1px solid rgba(255,255,255,0.1);">${resource.resolution || resource.quality_level}</span>` : '';
+        
+        const tags = resource.tags || [];
+        const tagsHtml = tags.length > 0 ? `
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 0.5rem;">
+            ${tags.map(tag => `<span style="background: rgba(255,255,255,0.08); color: #e0e0e0; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 500; border: 1px solid rgba(255,255,255,0.1); transition: all 0.2s ease;">${tag.toUpperCase()}</span>`).join('')}
+          </div>
+        ` : '';
+        
+        html += `
+          <div class="quark-resource-card-horizontal" style="background: linear-gradient(145deg, #1a1a1a, #0f0f0f); padding: 1rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; min-width: 280px; max-width: 320px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); transition: all 0.3s ease;">
+            <div style="display: flex; align-items: start; justify-content: space-between; margin-bottom: 0.75rem;">
+              <h4 style="margin: 0; font-size: 13px; color: #fff; flex: 1; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500;">${index + 1}. ${resource.name}</h4>
+              <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+                ${isBest}
+                ${qualityBadge}
+              </div>
+            </div>
+            ${tagsHtml}
+            <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 12px; color: #888; margin-bottom: 0.75rem; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+              <span style="color: #666;">资源评分:</span>
+              <span style="color: #e50914; font-weight: 700; font-size: 16px;">${(resource.overall_score * 10).toFixed(1)}</span>
+            </div>
+            <a href="${resource.link}" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #e50914, #b20710); color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-size: 12px; font-weight: 600; width: 100%; text-align: center; box-sizing: border-box; box-shadow: 0 4px 12px rgba(229, 9, 20, 0.3); transition: all 0.3s ease;">打开链接</a>
+          </div>
+        `;
+      });
+      
+      html += '</div>';
+      list.innerHTML = html;
+    } else {
+      empty.style.display = 'block';
+      empty.textContent = data.message || '未找到相关资源';
+      list.style.display = 'none';
+    }
+  } catch (error) {
+    console.error('搜索失败:', error);
+    empty.style.display = 'block';
+    empty.textContent = '搜索失败，请稍后重试';
+    list.style.display = 'none';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  searchQuarkResources();
+});
+</script>
+{% endblock %}
