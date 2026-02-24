@@ -5,6 +5,7 @@ import time
 import random
 import logging
 import re
+import warnings
 from http.cookies import SimpleCookie
 from yarl import URL
 import aiohttp
@@ -31,14 +32,25 @@ class QuarkTransferClient:
             cookie: 夸克网盘Cookie
         """
         self.cookie = cookie
-        self.session = aiohttp.ClientSession()
+        self._session: Optional[aiohttp.ClientSession] = None
         self.user_agent = (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
             "(KHTML, like Gecko) quark-cloud-drive/3.14.2 Chrome/112.0.5615.165 "
             "Electron/24.1.3.8 Safari/537.36 Channel/pckk_other_ch"
         )
         self.mparam = self._match_mparam_from_cookie(cookie)
-        self._load_cookies(cookie)
+        self._cookies_loaded = False
+
+    @property
+    def session(self) -> aiohttp.ClientSession:
+        """延迟创建 session"""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+            self._cookies_loaded = False
+        if not self._cookies_loaded:
+            self._load_cookies(self.cookie)
+            self._cookies_loaded = True
+        return self._session
 
     def _match_mparam_from_cookie(self, cookie: str) -> Dict[str, str]:
         if not cookie:
@@ -60,21 +72,33 @@ class QuarkTransferClient:
         jar = SimpleCookie()
         jar.load(cookie_str)
         cookies = {key: morsel.value for key, morsel in jar.items()}
-        if cookies:
+        if cookies and self._session:
             for base_url in ("https://pan.quark.cn", "https://drive-pc.quark.cn", "https://drive-m.quark.cn"):
-                self.session.cookie_jar.update_cookies(cookies, response_url=URL(base_url))
+                self._session.cookie_jar.update_cookies(cookies, response_url=URL(base_url))
         
-    async def __aenter__(self):
-        """
-        异步上下文管理器进入
-        """
+    async def close(self) -> None:
+        """关闭客户端会话"""
+        if self._session and not self._session.closed:
+            await self._session.close()
+            self._session = None
+
+    async def __aenter__(self) -> "QuarkTransferClient":
+        """异步上下文管理器进入"""
         return self
     
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """
-        异步上下文管理器退出
-        """
-        await self.session.close()
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """异步上下文管理器退出"""
+        await self.close()
+
+    def __del__(self):
+        """析构时警告未关闭的 session"""
+        if self._session and not self._session.closed:
+            warnings.warn(
+                f"{self.__class__.__name__} session not closed. "
+                "Use 'async with' or call 'await close()' explicitly.",
+                ResourceWarning,
+                stacklevel=2
+            )
 
     def _build_headers(self, json_body: bool = False, include_cookie: bool = True) -> Dict[str, str]:
         headers = {
@@ -365,3 +389,289 @@ class QuarkTransferClient:
             logger.error(f"创建目录异常: {str(e)}")
         
         return None
+
+    async def mkdir(self, dir_path: str) -> Optional[Dict[str, Any]]:
+        """
+        通过路径创建目录
+        
+        Args:
+            dir_path: 目录路径 (如 "/收藏TV/Movies")
+            
+        Returns:
+            创建响应，包含新目录的 fid
+        """
+        url = f"{self.BASE_URL}/1/clouddrive/file"
+        params = {"pr": "ucpro", "fr": "pc", "uc_param_str": ""}
+        data = {
+            "pdir_fid": "0",
+            "file_name": "",
+            "dir_path": dir_path,
+            "dir_init_lock": False,
+        }
+        headers = self._build_headers(json_body=True, include_cookie=not self.mparam)
+        
+        try:
+            async with self.session.post(url, headers=headers, params=params, json=data, allow_redirects=False) as response:
+                if response.status == 200 and response.content_type and "json" in response.content_type:
+                    result = await response.json()
+                    if result.get("code") == 0:
+                        return result
+        except Exception as e:
+            logger.error(f"创建目录异常: {str(e)}")
+        
+        return None
+
+    async def rename(self, fid: str, new_name: str) -> bool:
+        """
+        重命名文件
+        
+        Args:
+            fid: 文件 ID
+            new_name: 新文件名
+            
+        Returns:
+            是否成功
+        """
+        url = f"{self.BASE_URL}/1/clouddrive/file/rename"
+        params = {"pr": "ucpro", "fr": "pc", "uc_param_str": ""}
+        data = {"fid": fid, "file_name": new_name}
+        headers = self._build_headers(json_body=True, include_cookie=not self.mparam)
+        
+        try:
+            async with self.session.post(url, headers=headers, params=params, json=data, allow_redirects=False) as response:
+                if response.status == 200 and response.content_type and "json" in response.content_type:
+                    result = await response.json()
+                    return result.get("code") == 0
+        except Exception as e:
+            logger.error(f"重命名异常: {str(e)}")
+        
+        return False
+
+    async def ls_dir(self, pdir_fid: str) -> Dict[str, Any]:
+        """
+        列出目录内容
+        
+        Args:
+            pdir_fid: 目录 ID
+            
+        Returns:
+            包含文件列表的响应
+        """
+        all_files = []
+        page = 1
+        
+        while True:
+            url = f"{self.BASE_URL}/1/clouddrive/file/sort"
+            params = {
+                "pr": "ucpro",
+                "fr": "pc",
+                "uc_param_str": "",
+                "pdir_fid": pdir_fid,
+                "_page": page,
+                "_size": "50",
+                "_fetch_total": "1",
+                "_fetch_sub_dirs": "0",
+                "_sort": "file_type:asc,updated_at:desc",
+            }
+            headers = self._build_headers(include_cookie=not self.mparam)
+            
+            try:
+                async with self.session.get(url, headers=headers, params=params, allow_redirects=False) as response:
+                    if response.status != 200 or not (response.content_type and "json" in response.content_type):
+                        break
+                    
+                    result = await response.json()
+                    if result.get("code") != 0:
+                        break
+                    
+                    file_list = result.get("data", {}).get("list", [])
+                    if not file_list:
+                        break
+                    
+                    all_files.extend(file_list)
+                    total = result.get("metadata", {}).get("_total", 0)
+                    if len(all_files) >= total:
+                        break
+                    page += 1
+            except Exception as e:
+                logger.error(f"列出目录异常: {str(e)}")
+                break
+        
+        return {"code": 0, "data": {"list": all_files}}
+
+    def extract_url(self, url: str) -> Tuple[Optional[str], str]:
+        """
+        解析分享链接
+        
+        Args:
+            url: 夸克分享链接
+            
+        Returns:
+            (pwd_id, passcode)
+        """
+        match_id = re.search(r"/s/(\w+)", url)
+        pwd_id = match_id.group(1) if match_id else None
+        match_pwd = re.search(r"pwd=(\w+)", url)
+        passcode = match_pwd.group(1) if match_pwd else ""
+        return pwd_id, passcode
+
+    async def validate_share_link(self, share_url: str) -> Tuple[bool, Optional[str], Optional[str]]:
+        """
+        验证分享链接是否有效
+        
+        Args:
+            share_url: 夸克分享链接
+            
+        Returns:
+            (is_valid, pwd_id, stoken)
+        """
+        pwd_id, passcode = self.extract_url(share_url)
+        if not pwd_id:
+            return False, None, None
+        
+        stoken = await self.get_stoken(pwd_id)
+        if stoken:
+            return True, pwd_id, stoken
+        
+        return False, pwd_id, None
+
+    async def get_fid_by_path(self, path: str) -> Optional[str]:
+        """
+        根据路径获取目录 ID
+        
+        Args:
+            path: 目录路径
+            
+        Returns:
+            目录 ID 或 None
+        """
+        result = await self.mkdir(path)
+        if result and result.get("code") == 0 and result.get("data"):
+            return result["data"].get("fid")
+        return None
+
+    async def transfer_share(
+        self, 
+        share_url: str, 
+        target_dir: str = "/收藏TV"
+    ) -> Tuple[bool, str, List[Dict]]:
+        """
+        转存分享链接中的文件
+        
+        Args:
+            share_url: 分享链接
+            target_dir: 目标目录
+            
+        Returns:
+            (success, message, transferred_files)
+        """
+        is_valid, pwd_id, stoken = await self.validate_share_link(share_url)
+        if not is_valid:
+            return False, "分享链接无效或已失效", []
+        
+        files, _ = await self.get_share_files(pwd_id, stoken)
+        if not files:
+            return False, "分享链接中没有文件", []
+        
+        target_fid = await self.get_fid_by_path(target_dir)
+        if not target_fid:
+            return False, f"创建目标目录 {target_dir} 失败", []
+        
+        fid_list = [f.fid for f in files]
+        fid_token_list = [f.share_fid_token for f in files]
+        
+        result = await self.save_files(fid_list, fid_token_list, target_fid, pwd_id, stoken)
+        
+        if not result:
+            return False, "转存失败", []
+        
+        transferred_files = [
+            {"fid": f.fid, "name": f.title, "size": f.size, "dir": f.file_type == 2}
+            for f in files
+        ]
+        
+        return True, "转存成功", transferred_files
+
+    async def get_detail(self, pwd_id: str, stoken: str, pdir_fid: str = "0") -> Dict[str, Any]:
+        """
+        获取分享文件列表（兼容旧接口）
+        
+        Args:
+            pwd_id: 分享ID
+            stoken: 分享token
+            pdir_fid: 父目录ID
+            
+        Returns:
+            包含文件列表的响应
+        """
+        all_files = []
+        page = 1
+        have_next = True
+        
+        while have_next:
+            files, have_next = await self.get_share_files(pwd_id, stoken, page=page, pdir_fid=pdir_fid)
+            all_files.extend(files)
+            page += 1
+        
+        return {
+            "code": 0,
+            "data": {
+                "list": [
+                    {
+                        "fid": f.fid,
+                        "file_name": f.title,
+                        "size": f.size,
+                        "dir": f.file_type == 2,
+                        "pdir_fid": f.pdir_fid,
+                        "share_fid_token": f.share_fid_token
+                    }
+                    for f in all_files
+                ]
+            }
+        }
+
+    async def save_file(
+        self,
+        fid_list: List[str],
+        fid_token_list: List[str],
+        to_pdir_fid: str,
+        pwd_id: str,
+        stoken: str
+    ) -> Dict[str, Any]:
+        """
+        转存文件到指定目录（兼容旧接口）
+        
+        Args:
+            fid_list: 文件ID列表
+            fid_token_list: 文件token列表
+            to_pdir_fid: 目标目录ID
+            pwd_id: 分享ID
+            stoken: 分享token
+            
+        Returns:
+            转存响应
+        """
+        result = await self.save_files(fid_list, fid_token_list, to_pdir_fid, pwd_id, stoken)
+        if result:
+            return {"status": 200, "code": 0, "data": result}
+        return {"status": 500, "code": 1, "message": "转存失败"}
+
+    async def query_task(self, task_id: str, max_retries: int = 20) -> Dict[str, Any]:
+        """
+        查询任务状态（兼容旧接口）
+        
+        Args:
+            task_id: 任务ID
+            max_retries: 最大重试次数
+            
+        Returns:
+            任务状态响应
+        """
+        for retry_index in range(max_retries):
+            status = await self.get_task_status(task_id, retry_index)
+            if status and status.status == 2:
+                return {"status": 200, "data": {"status": 2}}
+            import asyncio
+            await asyncio.sleep(0.5)
+        
+        return {"status": 500, "message": "任务超时"}

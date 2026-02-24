@@ -1,9 +1,12 @@
 from typing import Any, Dict, Optional
 import json
+import logging
 import time
 from abc import ABC, abstractmethod
 
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class CacheBackend(ABC):
@@ -25,7 +28,7 @@ class CacheBackend(ABC):
 
 
 class MemoryCache(CacheBackend):
-    def __init__(self):
+    def __init__(self) -> None:
         self._cache: Dict[str, tuple] = {}
 
     async def get(self, key: str) -> Optional[Any]:
@@ -50,7 +53,7 @@ class MemoryCache(CacheBackend):
 
 
 class RedisCache(CacheBackend):
-    def __init__(self, redis_url: str):
+    def __init__(self, redis_url: str) -> None:
         try:
             import redis.asyncio as redis
             self._redis = redis.from_url(redis_url, decode_responses=True)
@@ -63,30 +66,45 @@ class RedisCache(CacheBackend):
             if value:
                 return json.loads(value)
             return None
-        except Exception:
+        except (ConnectionError, TimeoutError) as e:
+            logger.warning(f"Redis connection error in get: {e}")
+            return None
+        except json.JSONDecodeError as e:
+            logger.warning(f"Redis JSON decode error: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Redis unexpected error in get: {e}")
             return None
 
     async def set(self, key: str, value: Any, ttl: int) -> None:
         try:
             await self._redis.setex(key, ttl, json.dumps(value))
-        except Exception:
-            pass
+        except (ConnectionError, TimeoutError) as e:
+            logger.warning(f"Redis connection error in set: {e}")
+        except (TypeError, ValueError) as e:
+            logger.warning(f"Redis serialization error: {e}")
+        except Exception as e:
+            logger.error(f"Redis unexpected error in set: {e}")
 
     async def delete(self, key: str) -> None:
         try:
             await self._redis.delete(key)
-        except Exception:
-            pass
+        except (ConnectionError, TimeoutError) as e:
+            logger.warning(f"Redis connection error in delete: {e}")
+        except Exception as e:
+            logger.error(f"Redis unexpected error in delete: {e}")
 
     async def clear(self) -> None:
         try:
             await self._redis.flushdb()
-        except Exception:
-            pass
+        except (ConnectionError, TimeoutError) as e:
+            logger.warning(f"Redis connection error in clear: {e}")
+        except Exception as e:
+            logger.error(f"Redis unexpected error in clear: {e}")
 
 
 class CacheManager:
-    def __init__(self):
+    def __init__(self) -> None:
         settings = get_settings()
         self.enabled = settings.cache_enabled
         self.ttl = settings.cache_ttl
@@ -96,7 +114,8 @@ class CacheManager:
             if settings.cache_type == "redis":
                 try:
                     self._backend = RedisCache(settings.redis_url)
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"Failed to initialize Redis cache, falling back to memory: {e}")
                     self._backend = MemoryCache()
             else:
                 self._backend = MemoryCache()

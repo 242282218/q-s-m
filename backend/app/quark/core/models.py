@@ -25,6 +25,19 @@ class MediaInfo:
 
 
 @dataclass
+class MatchDetails:
+    """
+    匹配详情
+    """
+    exact_title_match: bool = False
+    title_match: bool = False
+    partial_title_match: bool = False
+    year_match: bool = False
+    episode_match: bool = False
+    season_match: bool = False
+
+
+@dataclass
 class MatchResult:
     """
     匹配结果

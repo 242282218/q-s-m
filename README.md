@@ -1,6 +1,6 @@
 # AI-Powered Cloud Media Center (QSM)
 
-基于夸克网盘的智能云端媒体中心，集成了海报墙管理、自动转存、智能重命名、WebDAV 服务和在线播放功能。
+基于夸克网盘的智能云端媒体中心，集成了海报墙管理、自动转存和智能重命名功能。
 
 ## 🚀 功能特性
 
@@ -20,17 +20,6 @@
   - 电影: `Title (Year).ext`
   - 剧集: `Title (Year)/Season S/Title - SxxExx.ext`
 - **中文支持**: 完美处理中文文件名和特殊字符。
-
-### 4. 🌐 WebDAV 服务
-- **虚拟文件系统**: 将夸克网盘映射为标准 WebDAV 服务。
-- **零空间占用**: 不占用本地存储，直接流式传输。
-- **通用兼容**: 支持 Windows 资源管理器、PotPlayer、Infuse、nPlayer 等。
-- **挂载点**: `http://localhost:7809/webdav`
-
-### 5. ▶️ 无缝播放体验
-- **一键播放**: 在海报墙直接点击播放按钮。
-- **本地唤起**: 自动唤起本地 mpv 播放器（支持流式播放）。
-- **流程自动化**: 收藏 -> 转存 -> 重命名 -> 生成直链 -> 播放，全流程一键搞定。
 
 ## 🛠️ 安装与部署
 
@@ -60,7 +49,6 @@ TMDB_IMAGE_BASE_URL=https://image.tmdb.org/t/p/original
 
 # 夸克网盘配置
 QUARK_COOKIE=your_quark_cookie_string
-QUARK_WEBDAV_URL=http://localhost:7809/webdav
 
 # 数据库配置
 DATABASE_URL=sqlite:///./qsm.db
@@ -69,20 +57,7 @@ DATABASE_URL=sqlite:///./qsm.db
 **运行服务**
 ```bash
 cd backend
-fastapi>=0.110.0
-uvicorn[standard]>=0.25.0
-httpx>=0.27.0
-jinja2>=3.1.0
-python-dotenv>=1.0.0
-pydantic>=2.5.0
-pydantic-settings>=2.1.0
-aiohttp>=3.9.0
-redis>=5.0.0
-webdavclient3>=3.14.6
-tenacity>=8.2.0
-wsgidav>=4.3.0
-starlette>=0.37.0
-sqlalchemy>=2.0.0
+uvicorn app.main:app --host 0.0.0.0 --port 7809
 ```
 
 #### 2.2 Docker 部署 (推荐)
@@ -174,8 +149,7 @@ docker system prune -a --volumes  # 清理所有未使用的资源
 1. **浏览与收藏**: 访问首页，搜索电影/剧集，点击海报进入详情页。
 2. **添加资源**: 在详情页点击"收藏"，输入夸克分享链接（支持自动识别）。
 3. **我的收藏**: 点击顶部"我的收藏"查看已添加的资源。
-4. **立即播放**: 在收藏列表点击 ▶ 按钮，系统会自动处理转存并唤起播放器。
-5. **WebDAV 挂载**: 使用 PotPlayer 或 Windows 映射驱动器连接 `http://localhost:7809/webdav`。
+4. **转存资源**: 在收藏列表点击转存按钮，将资源保存到网盘。
 
 ## 🏗️ 项目结构
 ```
@@ -187,7 +161,6 @@ qsm/
 │   │   ├── quark/       # 搜索与元数据
 │   │   ├── templates/   # 前端模板 (Jinja2)
 │   │   ├── transfer/    # 转存与重命名引擎
-│   │   ├── webdav/      # WebDAV 服务实现
 │   │   └── main.py      # 应用入口
 │   ├── tests/           # 测试用例
 │   └── requirements.txt

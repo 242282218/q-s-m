@@ -1,5 +1,10 @@
+import re
+import math
 import time
-from typing import List, Optional, Any
+import logging
+import unicodedata
+from datetime import datetime, timezone
+from typing import Optional, Dict, Any, List
 
 from app.core.config import get_settings
 from app.quark.core.media_fetcher import MediaFetcher
@@ -7,52 +12,32 @@ from app.quark.core.models import MatchResult, MediaInfo
 from app.quark.core.quark_client import AsyncQuarkAPIClient
 from app.quark.core.cache import get_cache, generate_cache_key
 from app.quark.core.enhanced_scoring import score_item
+from app.quark.core.scoring import QualityEvaluator
+
+from app.quark.schemas.search import SearchResponse, MediaDto, ResourceDto
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 class SearchService:
-    """
-    搜索服务，用于协调夸克资源搜索的各个组件
-    """
-
     def __init__(self):
         self.media_fetcher = MediaFetcher()
         self.quark_client = AsyncQuarkAPIClient()
+        self.quality_evaluator = QualityEvaluator()
 
-    async def search_by_tmdb_id(self, tmdb_id: int, max_results: int, media_type: str = "movie") -> Any:
-        """
-        通过TMDB ID搜索夸克资源
-        
-        Args:
-            tmdb_id: TMDB ID
-            max_results: 最大结果数量
-            media_type: 媒体类型
-            
-        Returns:
-            搜索结果对象
-        """
-        import logging
-        logging.basicConfig(level=logging.INFO)
-        logger = logging.getLogger(__name__)
-        logger.info(f"search_by_tmdb_id called: tmdb_id={tmdb_id}, max_results={max_results}, media_type={media_type}")
-        
-        from app.quark.schemas.search import SearchResponse, MediaDto, ResourceDto
-        
+    async def search_by_tmdb_id(self, tmdb_id: int, max_results: int, media_type: str = "movie") -> SearchResponse:
         cache = get_cache()
         cache_key = generate_cache_key("quark:search:tmdb", tmdb_id=tmdb_id, media_type=media_type)
         
-        # 检查缓存
         cached_result = await cache.get(cache_key)
         if cached_result:
             logger.info(f"Returning cached result: {len(cached_result.get('resources', []))} resources")
             return SearchResponse(**cached_result)
         
         try:
-            # 获取媒体信息
             media_info = await self.media_fetcher.fetch_by_tmdb_id(tmdb_id, media_type)
             if not media_info:
-                # 尝试切换媒体类型
                 other_type = "tv" if media_type == "movie" else "movie"
                 media_info = await self.media_fetcher.fetch_by_tmdb_id(tmdb_id, other_type)
             
@@ -61,68 +46,39 @@ class SearchService:
             
             result = await self._search_common(media_info, media_info.title, max_results)
             
-            # 存入缓存
             await cache.set(cache_key, result.model_dump())
             
             return result
         except Exception as e:
+            logger.error(f"search_by_tmdb_id failed: {e}")
             return SearchResponse(success=False, message=f"搜索失败: {str(e)}", resources=[], total=0)
-
-    async def search_by_title(self, title: str, year: Optional[int], max_results: int) -> Any:
-        """
-        通过标题搜索夸克资源
-        
-        Args:
-            title: 标题
-            year: 年份
-            max_results: 最大结果数量
-            
-        Returns:
-            搜索结果对象
-        """
-        from app.quark.schemas.search import SearchResponse, MediaDto, ResourceDto
-        
+    
+    async def search_by_title(self, title: str, year: Optional[int], max_results: int) -> SearchResponse:
         cache = get_cache()
         cache_key = generate_cache_key("quark:search:title", title=title, year=year)
         
-        # 检查缓存
         cached_result = await cache.get(cache_key)
         if cached_result:
             return SearchResponse(**cached_result)
         
         try:
-            # 搜索媒体信息
             media_info = await self.media_fetcher.search_by_title(title, year)
             
-            # 如果TMDB搜索失败，尝试直接搜索夸克资源
             if not media_info:
                 result = await self._search_direct(title, max_results)
             else:
                 result = await self._search_common(media_info, title, max_results)
             
-            # 存入缓存
             await cache.set(cache_key, result.model_dump())
             
             return result
         except Exception as e:
+            logger.error(f"search_by_title failed: {e}")
             return SearchResponse(success=False, message=f"搜索失败: {str(e)}", resources=[], total=0)
     
-    async def _search_direct(self, keyword: str, max_results: int) -> Any:
-        """
-        直接搜索夸克资源，不进行TMDB匹配
-        
-        Args:
-            keyword: 搜索关键词
-            max_results: 最大结果数量
-            
-        Returns:
-            搜索结果对象
-        """
-        from app.quark.schemas.search import SearchResponse, ResourceDto
-        
+    async def _search_direct(self, keyword: str, max_results: int) -> SearchResponse:
         start = time.time()
         
-        # 搜索夸克资源
         resources = await self.quark_client.search_resources(keyword, page_size=max_results or settings.quark_search_max_results)
         
         if not resources:
@@ -135,15 +91,13 @@ class SearchService:
                 message="未找到相关资源"
             )
         
-        # 评估资源质量
         results: List[ResourceDto] = []
         for resource in resources:
             quality_info = self.quality_evaluator.evaluate(resource.name, resource.size)
             quality_score = quality_info.get_score()
             
-            # 默认置信度0.5
             confidence = 0.5
-            overall = quality_score * 0.5 + confidence * 50  # 综合评分
+            overall = quality_score * 0.5 + confidence * 50
             
             results.append(
                 ResourceDto(
@@ -159,10 +113,8 @@ class SearchService:
                 )
             )
         
-        # 按综合评分排序，保留所有有效资源
         results = sorted(results, key=lambda x: x.overall_score, reverse=True)
         
-        # 标记最佳资源
         if results:
             results[0].is_best = True
         
@@ -173,30 +125,15 @@ class SearchService:
             total=len(results),
             query_time=round(time.time()-start, 3)
         )
-
-    async def _search_common(self, media_info: MediaInfo, keyword: str, max_results: int) -> Any:
-        """
-        通用搜索逻辑
-        
-        Args:
-            media_info: 媒体信息
-            keyword: 搜索关键词
-            max_results: 最大结果数量
-            
-        Returns:
-            搜索结果对象
-        """
-        import logging
-        logger = logging.getLogger(__name__)
+    
+    async def _search_common(self, media_info: MediaInfo, keyword: str, max_results: int) -> SearchResponse:
         logger.info(f"_search_common called: keyword={keyword}, max_results={max_results}")
-        
-        from app.quark.schemas.search import SearchResponse, MediaDto, ResourceDto
         
         start = time.time()
         
-        # 搜索夸克资源
         resources = await self.quark_client.search_resources(keyword, page_size=max_results or settings.quark_search_max_results)
         logger.info(f"Quark client returned: {len(resources)} resources")
+        
         if not resources:
             return SearchResponse(
                 success=True, 
@@ -206,7 +143,6 @@ class SearchService:
                 query_time=round(time.time()-start, 3)
             )
         
-        # 使用新的打分系统
         scored_resources = []
         for resource in resources:
             item_dict = {
@@ -221,19 +157,14 @@ class SearchService:
             }
             
             score_breakdown = score_item(keyword, item_dict)
-            if score_breakdown is not None:
-                scored_resources.append((resource, score_breakdown))
+            if score_breakdown is None:
+                continue
+            scored_resources.append((resource, score_breakdown))
         
-        # 按最终得分排序
         scored_resources.sort(key=lambda x: x[1]["score"], reverse=True)
         
-        # 标记最佳结果
-        if scored_resources:
-            scored_resources[0] = (scored_resources[0][0], scored_resources[0][1])
-        
-        # 转换为DTO
         resource_dtos = []
-        for resource, breakdown in scored_resources:
+        for idx, (resource, breakdown) in enumerate(scored_resources):
             resource_dtos.append(
                 ResourceDto(
                     name=resource.name,
@@ -242,17 +173,17 @@ class SearchService:
                     quality_level=self._determine_quality_level(breakdown),
                     resolution=self._determine_resolution(breakdown),
                     codec=self._determine_codec(breakdown),
-                    is_best=(scored_resources[0][1] == breakdown),
-                    Conf=breakdown["Conf"],
-                    Qual=breakdown["Qual"],
-                    alpha=breakdown["alpha"],
-                    tags=breakdown["tags"],
-                    size_gb=breakdown["size_gb"],
-                    C_text=breakdown["C_text"],
-                    C_intent=breakdown["C_intent"],
-                    C_plaus=breakdown["C_plaus"],
-                    P=breakdown["P"],
-                    R=breakdown["R"],
+                    is_best=(idx == 0),
+                    Conf=breakdown.get("Conf"),
+                    Qual=breakdown.get("Qual"),
+                    alpha=breakdown.get("alpha"),
+                    tags=breakdown.get("tags", []),
+                    size_gb=breakdown.get("size_gb"),
+                    C_text=breakdown.get("C_text"),
+                    C_intent=breakdown.get("C_intent"),
+                    C_plaus=breakdown.get("C_plaus"),
+                    P=breakdown.get("P"),
+                    R=breakdown.get("R"),
                 )
             )
         
@@ -294,13 +225,8 @@ class SearchService:
             return "H.265/H.264"
         else:
             return "未知"
-
-    def _to_media_dto(self, media: MediaInfo) -> Any:
-        """
-        转换为媒体DTO
-        """
-        from app.quark.schemas.search import MediaDto
-        
+    
+    def _to_media_dto(self, media: MediaInfo) -> MediaDto:
         return MediaDto(
             tmdb_id=media.tmdb_id,
             title=media.title,

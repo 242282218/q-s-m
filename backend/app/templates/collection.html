@@ -31,28 +31,6 @@
             </div>
         </div>
     </section>
-
-    <!-- Playback Options Modal -->
-    <div id="play-modal" class="modal">
-        <div class="modal-content">
-            <button class="modal-close" onclick="closePlayModal()">&times;</button>
-            <h3 class="modal-title">选择播放方式</h3>
-            <div class="modal-actions">
-                <a id="btn-play-browser" href="#" target="_blank" class="modal-btn browser">
-                    <span class="icon">🌏</span> 浏览器播放
-                </a>
-                <a id="btn-play-mpv" href="#" class="modal-btn mpv">
-                    <span class="icon">🎬</span> 本地播放 (MPV)
-                </a>
-            </div>
-            <div class="modal-footer">
-                <div class="link-copy-box">
-                    <input type="text" id="webdav-link" readonly value="http://..." onclick="this.select()">
-                    <button onclick="copyWebDAVLink()">复制链接</button>
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
 
 <style>
@@ -103,18 +81,19 @@
     .empty-icon {
         font-size: 64px;
         margin-bottom: 20px;
-        opacity: 0.5;
+        opacity: 0.4;
     }
 
     .empty-text {
         font-size: 20px;
+        font-weight: 600;
         color: #fff;
         margin-bottom: 8px;
     }
 
     .empty-hint {
         font-size: 14px;
-        color: #888;
+        color: #666;
         margin-bottom: 24px;
     }
 
@@ -125,14 +104,21 @@
         padding: 12px 28px;
         border-radius: 8px;
         text-decoration: none;
-        font-weight: 600;
+        font-weight: 700;
+        font-size: 14px;
         transition: all 0.3s ease;
         box-shadow: 0 4px 12px rgba(229, 9, 20, 0.3);
+        border: none;
+        cursor: pointer;
     }
 
     .btn-primary:hover {
         transform: translateY(-2px);
         box-shadow: 0 6px 20px rgba(229, 9, 20, 0.4);
+    }
+
+    .btn-primary:active {
+        transform: translateY(0);
     }
 
     .pagination {
@@ -145,23 +131,26 @@
     }
 
     .btn-page {
-        background: rgba(255, 255, 255, 0.1);
+        background: rgba(255, 255, 255, 0.08);
         color: #fff;
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.12);
         padding: 10px 24px;
         border-radius: 8px;
         cursor: pointer;
         font-size: 14px;
+        font-weight: 600;
         transition: all 0.3s ease;
     }
 
     .btn-page:hover:not(:disabled) {
-        background: rgba(255, 255, 255, 0.2);
+        background: rgba(229, 9, 20, 0.15);
+        border-color: rgba(229, 9, 20, 0.4);
     }
 
     .btn-page:disabled {
-        opacity: 0.5;
+        opacity: 0.4;
         cursor: not-allowed;
+        background: rgba(255, 255, 255, 0.05);
     }
 
     .page-info {
@@ -193,20 +182,16 @@
         justify-content: center;
         z-index: 10;
         pointer-events: auto;
-        /* 确保可点击 */
     }
 
-    /* 播放按钮 */
-    .poster-card .play-btn,
+    /* 转存按钮 */
     .poster-card .transfer-btn {
         position: absolute;
         bottom: 70px;
-        /* 位于标题上方 */
         right: 8px;
         width: 40px;
         height: 40px;
-        background: #e50914;
-        /* Netflix Red */
+        background: #28a745;
         border: none;
         border-radius: 50%;
         color: #fff;
@@ -220,32 +205,17 @@
         justify-content: center;
         z-index: 10;
         box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
-        padding-left: 2px;
-        /* 视觉校正 */
-        pointer-events: auto;
-        /* 确保可点击 */
-    }
-
-    .poster-card .transfer-btn {
-        background: #28a745;
-        /* Green for transfer */
         padding-left: 0;
+        pointer-events: auto;
     }
 
     .poster-card:hover .delete-btn,
-    .poster-card:hover .play-btn,
     .poster-card:hover .transfer-btn {
         opacity: 1;
     }
 
-    .poster-card:hover .play-btn,
     .poster-card:hover .transfer-btn {
         transform: scale(1);
-    }
-
-    .poster-card .play-btn:hover {
-        transform: scale(1.1);
-        background: #f40612;
     }
 
     .poster-card .transfer-btn:hover {
@@ -278,130 +248,6 @@
     .status-badge.expired {
         background: rgba(220, 53, 69, 0.9);
         color: white;
-    }
-
-    /* Modal Styles */
-    .modal {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.8);
-        backdrop-filter: blur(5px);
-        z-index: 1000;
-        align-items: center;
-        justify-content: center;
-        animation: fadeIn 0.2s ease;
-    }
-
-    .modal-content {
-        background: #181818;
-        padding: 30px;
-        border-radius: 12px;
-        width: 90%;
-        max-width: 400px;
-        position: relative;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-    }
-
-    .modal-close {
-        position: absolute;
-        top: 10px;
-        right: 15px;
-        background: none;
-        border: none;
-        color: #888;
-        font-size: 28px;
-        cursor: pointer;
-    }
-
-    .modal-close:hover {
-        color: #fff;
-    }
-
-    .modal-title {
-        margin: 0 0 24px 0;
-        text-align: center;
-        font-size: 20px;
-    }
-
-    .modal-actions {
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-    }
-
-    .modal-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-        padding: 16px;
-        border-radius: 8px;
-        text-decoration: none;
-        font-weight: 600;
-        transition: transform 0.2s;
-        color: white;
-    }
-
-    .modal-btn:hover {
-        transform: scale(1.02);
-    }
-
-    .modal-btn.browser {
-        background: linear-gradient(135deg, #007bff, #0056b3);
-    }
-
-    .modal-btn.mpv {
-        background: linear-gradient(135deg, #6f42c1, #59359a);
-    }
-
-    .modal-footer {
-        margin-top: 24px;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
-        padding-top: 16px;
-    }
-
-    .link-copy-box {
-        display: flex;
-        gap: 8px;
-    }
-
-    .link-copy-box input {
-        flex: 1;
-        background: #000;
-        border: 1px solid #333;
-        color: #888;
-        padding: 8px;
-        border-radius: 4px;
-        font-size: 12px;
-    }
-
-    .link-copy-box button {
-        background: #333;
-        color: #fff;
-        border: none;
-        padding: 0 12px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 12px;
-    }
-
-    .link-copy-box button:hover {
-        background: #444;
-    }
-
-    @keyframes fadeIn {
-        from {
-            opacity: 0;
-        }
-
-        to {
-            opacity: 1;
-        }
     }
 </style>
 
@@ -478,10 +324,7 @@
                 return `
       <div class="poster-card" data-id="${item.id}">
         <button class="delete-btn" onclick="deleteCollection(${item.id}, event)" title="删除收藏">×</button>
-        ${item.status === 1
-                    ? `<button class="play-btn" onclick="playCollection(${item.id}, event)" title="立即播放">▶</button>`
-                    : `<button class="transfer-btn" onclick="transferCollection(${item.id}, event)" title="转存到网盘">📥</button>`
-                }
+        <button class="transfer-btn" onclick="transferCollection(${item.id}, event)" title="转存到网盘">📥</button>
         <a href="/${item.media_type}/${item.tmdb_id}">
           <div class="poster-media">
             <img 
@@ -530,13 +373,11 @@
 
     async function deleteCollection(id, event) {
         event.preventDefault();
-        event.stopPropagation(); // 阻止冒泡
+        event.stopPropagation();
 
         if (!confirm('确定要删除这个收藏吗？')) {
             return;
         }
-
-
 
         try {
             const response = await fetch(`/api/collection/${id}`, {
@@ -545,87 +386,12 @@
             const data = await response.json();
 
             if (data.success) {
-                // 重新加载当前页
                 loadCollections(currentPage);
             } else {
                 alert('删除失败: ' + data.message);
             }
         } catch (error) {
             alert('删除失败: ' + error.message);
-        }
-    }
-
-    function closePlayModal() {
-        document.getElementById('play-modal').style.display = 'none';
-    }
-
-    function copyWebDAVLink() {
-        const input = document.getElementById('webdav-link');
-        input.select();
-        document.execCommand('copy');
-        alert('链接已复制');
-    }
-
-    // Improve transferCollection scoping fix (move out of deleteCollection if nested)
-    // Actually the previous file content showed transferCollection was nested inside deleteCollection by mistake?
-    // Let's ensure top level functions.
-
-    async function playCollection(id, event) {
-        event.preventDefault();
-        event.stopPropagation();
-
-        const btn = event.currentTarget;
-        const originalText = btn.innerHTML;
-        btn.innerHTML = '<span class="loading-spinner" style="width:16px;height:16px;border-width:2px;margin:0;"></span>';
-        btn.disabled = true;
-
-        try {
-            const response = await fetch('/api/transfer/instant-play', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ collection_id: id })
-            });
-
-            const data = await response.json();
-
-            if (data.success) {
-                // Show Modal
-                const modal = document.getElementById('play-modal');
-                const btnBrowser = document.getElementById('btn-play-browser');
-                const btnMpv = document.getElementById('btn-play-mpv');
-                const linkInput = document.getElementById('webdav-link');
-
-                // Set Links
-                btnBrowser.href = data.webdav_url;
-                btnMpv.href = data.mpv_url || '#';
-
-                // If MPV URL is not available (e.g. server logic tweak), handle gracefully
-                if (!data.mpv_url) {
-                    btnMpv.style.opacity = '0.5';
-                    btnMpv.onclick = (e) => { e.preventDefault(); alert('MPV 链接生成失败'); };
-                } else {
-                    btnMpv.style.opacity = '1';
-                    btnMpv.onclick = null;
-                }
-
-                linkInput.value = data.webdav_url;
-
-                modal.style.display = 'flex';
-
-                // Close modal on outside click
-                modal.onclick = (e) => {
-                    if (e.target === modal) closePlayModal();
-                };
-
-            } else {
-                alert('准备播放失败: ' + data.message);
-            }
-        } catch (error) {
-            console.error('播放请求错误:', error);
-            alert('请求失败');
-        } finally {
-            btn.innerHTML = originalText;
-            btn.disabled = false;
         }
     }
 

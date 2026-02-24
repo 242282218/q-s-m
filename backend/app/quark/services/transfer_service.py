@@ -2,6 +2,7 @@
 夸克转存服务
 直接实现夸克转存功能，提供转存服务
 """
+import logging
 import re
 from typing import Optional, Dict, Any, List
 
@@ -11,6 +12,7 @@ from app.quark.core.transfer_models import ShareInfo, FileDetail, TransferResult
 from app.quark.core.transfer_utils import parse_share_url, random_delay
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 class TransferService:
@@ -140,42 +142,42 @@ class TransferService:
         to_dir_name: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        ??????
+        转存资源
         
         Args:
-            link: ??????
-            to_dir_fid: ????ID
-            to_dir_name: ??????
+            link: 夸克分享链接
+            to_dir_fid: 目标目录ID
+            to_dir_name: 目标目录名称
             
         Returns:
-            ????
+            转存结果
         """
         try:
-            # ??Cookie????
+            # 检查Cookie是否配置
             if not self.cookie:
                 return {
                     "success": False,
-                    "message": "????Cookie???",
+                    "message": "夸克网盘Cookie未配置",
                     "task_id": "",
                     "saved_files": []
                 }
             
-            # ??????
+            # 解析分享链接
             share_info = await self.parse_share_url(link)
             if not share_info:
                 return {
                     "success": False,
-                    "message": "????????",
+                    "message": "解析分享链接失败",
                     "task_id": "",
                     "saved_files": []
                 }
             
-            # ??????
+            # 获取所有文件
             files = await self.get_all_files(share_info)
             if not files:
                 return {
                     "success": False,
-                    "message": "????????",
+                    "message": "分享链接中没有文件",
                     "task_id": "",
                     "saved_files": []
                 }
@@ -186,7 +188,7 @@ class TransferService:
                 if not safe_dir_name:
                     return {
                         "success": False,
-                        "message": "??????",
+                        "message": "目录名称无效",
                         "task_id": "",
                         "saved_files": []
                     }
@@ -194,13 +196,13 @@ class TransferService:
                 if not created_dir_fid:
                     return {
                         "success": False,
-                        "message": "??????",
+                        "message": "创建目录失败",
                         "task_id": "",
                         "saved_files": []
                     }
                 target_dir_fid = created_dir_fid
             
-            # ????
+            # 执行转存
             result = await self.transfer_batch(files, share_info, target_dir_fid)
             
             return {
@@ -212,7 +214,7 @@ class TransferService:
         except Exception as e:
             return {
                 "success": False,
-                "message": f"????: {str(e)}",
+                "message": f"转存失败: {str(e)}",
                 "task_id": "",
                 "saved_files": []
             }
@@ -271,14 +273,13 @@ class TransferService:
             目录ID，失败返回None
         """
         try:
-            # 检查Cookie是否配置
             if not self.cookie:
-                print("创建目录失败: 夸克网盘Cookie未配置")
+                logger.error("创建目录失败: 夸克网盘Cookie未配置")
                 return None
             
             async with QuarkTransferClient(self.cookie) as client:
                 return await client.create_dir(dir_name, pdir_fid)
         except Exception as e:
-            print(f"创建目录失败: {str(e)}")
+            logger.error(f"创建目录失败: {str(e)}")
             return None
 

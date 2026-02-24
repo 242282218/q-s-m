@@ -56,7 +56,6 @@ class CollectionItem(BaseModel):
     category: Optional[str] = None
     status: int = 0
     saved_at: datetime
-    last_played_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True  # 支持 ORM 模型转换

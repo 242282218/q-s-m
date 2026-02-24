@@ -172,13 +172,3 @@ class CollectionService:
         collection.status = status
         self.db.commit()
         return True, "状态更新成功"
-
-    def update_last_played(self, collection_id: int) -> Tuple[bool, str]:
-        """更新最后播放时间"""
-        collection = self.get_by_id(collection_id)
-        if not collection:
-            return False, "收藏不存在"
-        
-        collection.last_played_at = datetime.utcnow()
-        self.db.commit()
-        return True, "更新成功"

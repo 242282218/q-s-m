@@ -737,7 +737,8 @@ a {
     gap: 32px;
   }
   .person-name {
-  font-size: 32px;
+    font-size: 32px;
+  }
 }
 
 .quark-resources-scroll {

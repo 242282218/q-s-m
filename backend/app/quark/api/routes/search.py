@@ -1,10 +1,18 @@
+import logging
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Query
+from pydantic import BaseModel
 
+from app.core.config import get_settings
+from app.quark.core.transfer_client import QuarkTransferClient
 from app.quark.services.search_service import SearchService
+from app.services.tmdb import TmdbClient
+from app.transfer.renamer import Renamer
 
 router = APIRouter(prefix="/quark", tags=["quark"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/search/tmdb/{tmdb_id}", summary="通过TMDB ID搜索夸克资源")
@@ -24,8 +32,6 @@ async def search_by_tmdb_id(
     Returns:
         搜索结果
     """
-    import logging
-    logger = logging.getLogger(__name__)
     logger.info(f"API called: tmdb_id={tmdb_id}, media_type={media_type}, max_results={max_results}")
     service = SearchService()
     result = await service.search_by_tmdb_id(tmdb_id, max_results, media_type)
@@ -54,15 +60,6 @@ async def search_by_title(
     return await service.search_by_title(title, year, max_results)
 
 
-# ==================== 转存路由 ====================
-import re
-from typing import Optional
-from pydantic import BaseModel
-from app.core.config import get_settings
-from app.transfer.quark_client import QuarkTransferClient
-from app.services.tmdb import TmdbClient
-
-
 def contains_chinese(text: str) -> bool:
     """检查是否包含中文字符"""
     if not text:
@@ -80,24 +77,18 @@ async def get_chinese_title(client: TmdbClient, title: str, year: Optional[int],
         else:
             results = await client.search_tv(query=title, year=year)
         
-        # 查找匹配项
         for item in results:
-            # 简单的年份匹配验证（如果提供了年份）
             item_date = item.get("release_date") or item.get("first_air_date")
             item_year = int(item_date.split("-")[0]) if item_date else None
             
             if year and item_year and abs(item_year - year) > 1:
                 continue
                 
-            # 返回中文标题 (TMDB默认返回请求语言的标题，我们在client中设置了zh-CN)
-            # 但有些条目只有英文名，所以再次检查
             cn_title = item.get("title") or item.get("name")
             if cn_title and contains_chinese(cn_title):
                 return cn_title
                 
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.warning(f"TMDB search failed: {e}")
     
     return None
@@ -108,7 +99,7 @@ class TransferRequest(BaseModel):
     link: str
     to_dir_fid: str = "0"
     to_dir_name: Optional[str] = None
-    media_type: str = "movie"  # movie 或 tv
+    media_type: str = "movie"
     title: Optional[str] = None
     year: Optional[int] = None
 
@@ -127,10 +118,6 @@ async def transfer_resource(request: TransferRequest):
     Returns:
         转存结果
     """
-    import logging
-    logger = logging.getLogger(__name__)
-    
-    # 根据 media_type 构建目标路径: /收藏TV/Movies 或 /收藏TV/TV Shows
     category_dirs = {
         'movie': 'Movies',
         'tv': 'TV Shows',
@@ -139,7 +126,6 @@ async def transfer_resource(request: TransferRequest):
     }
     category_dir = category_dirs.get(request.media_type, 'Movies')
     
-    # 构建完整目录名: /收藏TV/Movies/资源名
     if request.to_dir_name:
         full_dir_name = f"/收藏TV/{category_dir}/{request.to_dir_name}"
     else:
@@ -158,20 +144,16 @@ async def transfer_resource(request: TransferRequest):
         
         saved_files = [f["fid"] for f in files]
         
-        # 自动重命名
         renamed_count = 0
         if success and request.title:
-            from app.transfer.renamer import Renamer
             renamer = Renamer()
-            
-            # 优化标题：始终尝试获取中文名（标准化命名）
             final_title = request.title
             try:
                 tmdb_client = TmdbClient(
                     settings.tmdb_api_key, 
                     api_base=settings.tmdb_api_base,
-                    proxy=settings.http_proxy,  # 传入显式配置的代理
-                    timeout=5.0  # 设置短超时，避免卡顿
+                    proxy=settings.http_proxy,
+                    timeout=5.0
                 )
                 cn_title = await get_chinese_title(
                     tmdb_client, 
@@ -190,11 +172,9 @@ async def transfer_resource(request: TransferRequest):
             logger.info(f"Rename logic: original_title='{request.title}', year={request.year}, contains_chinese={contains_chinese(request.title)}, final_title='{final_title}'")
             
             for f in files:
-                # 只处理视频文件
                 if not renamer.is_video_file(f["name"]):
                     continue
                 
-                # 生成新文件名
                 rename_result = renamer.generate_path(
                     original_filename=f["name"],
                     title=final_title,

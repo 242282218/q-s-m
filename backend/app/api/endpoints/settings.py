@@ -75,8 +75,6 @@ class SettingsUpdate(BaseModel):
     
     # Quark Transfer
     QUARK_TRANSFER_COOKIE: Optional[str] = None
-    QUARK_TRANSFER_WEBDAV_USERNAME: Optional[str] = None
-    QUARK_TRANSFER_WEBDAV_PASSWORD: Optional[str] = None
 
 
 @router.get("/settings", response_class=HTMLResponse)

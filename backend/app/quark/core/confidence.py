@@ -1,5 +1,8 @@
 import re
-from typing import Dict, Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.quark.core.models import MatchDetails, MediaInfo
 
 
 class ConfidenceCalculator:
@@ -7,7 +10,7 @@ class ConfidenceCalculator:
     置信度计算器，用于计算资源与媒体信息的匹配置信度
     """
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.weights = {
             "exact_title_match": 0.5,
             "title_match": 0.3,
@@ -17,7 +20,7 @@ class ConfidenceCalculator:
             "season_match": 0.1,
         }
     
-    def calculate(self, resource_title: str, media_info: Any) -> Any:
+    def calculate(self, resource_title: str, media_info: "MediaInfo") -> "MatchDetails":
         """
         计算置信度
         

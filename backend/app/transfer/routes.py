@@ -13,8 +13,6 @@ from .service import TransferService
 router = APIRouter(prefix="/transfer", tags=["transfer"])
 
 
-# ==================== Request/Response Schemas ====================
-
 class ValidateLinkRequest(BaseModel):
     """验证链接请求"""
     share_url: str
@@ -40,21 +38,6 @@ class TransferExecResponse(BaseModel):
     message: str
     files: list = []
 
-
-class InstantPlayRequest(BaseModel):
-    """立即播放请求"""
-    collection_id: int
-
-
-class InstantPlayResponse(BaseModel):
-    """立即播放响应"""
-    success: bool
-    message: str
-    webdav_url: Optional[str] = None
-    mpv_url: Optional[str] = None
-
-
-# ==================== API Routes ====================
 
 @router.post("/validate", response_model=ValidateLinkResponse, summary="验证分享链接")
 async def validate_link(
@@ -94,35 +77,5 @@ async def transfer_exec(
             auto_rename=request.auto_rename,
         )
         return TransferExecResponse(success=success, message=message, files=files)
-    finally:
-        await service.close()
-
-
-@router.post("/instant-play", response_model=InstantPlayResponse, summary="立即播放")
-async def instant_play(
-    request: InstantPlayRequest,
-    db: Session = Depends(get_db),
-):
-    """
-    立即播放
-    
-    检查资源是否已转存，如未转存则自动转存，然后返回 WebDAV 播放链接
-    """
-    service = TransferService(db)
-    try:
-        success, message, webdav_url = await service.instant_play(
-            collection_id=request.collection_id,
-        )
-        
-        mpv_url = None
-        if webdav_url:
-            mpv_url = f"mpv://{webdav_url}"
-        
-        return InstantPlayResponse(
-            success=success,
-            message=message,
-            webdav_url=webdav_url,
-            mpv_url=mpv_url,
-        )
     finally:
         await service.close()

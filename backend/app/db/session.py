@@ -17,8 +17,12 @@ DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 # 创建引擎
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False},  # SQLite 需要此参数
-    echo=False,  # 设为 True 可打印 SQL 语句用于调试
+    connect_args={"check_same_thread": False},
+    echo=False,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_recycle=1800,
 )
 
 # 创建 Session 工厂

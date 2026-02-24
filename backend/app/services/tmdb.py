@@ -14,9 +14,8 @@ DEFAULT_LANG = "zh-CN"
 
 GENRE_TONE = {
     10749: "romance",
-    18: "family",
     10751: "family",
-    18: "action",
+    18: "drama",
     80: "action",
     9648: "mystery",
     53: "mystery",

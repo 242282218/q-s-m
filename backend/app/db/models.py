@@ -1,11 +1,16 @@
 """
 SQLAlchemy ORM 模型定义
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Index
 from sqlalchemy.orm import relationship
 
 from .session import Base
+
+
+def utc_now() -> datetime:
+    """返回带时区信息的 UTC 时间"""
+    return datetime.now(timezone.utc)
 
 
 class Collection(Base):
@@ -26,8 +31,7 @@ class Collection(Base):
     file_structure = Column(Text, nullable=True)  # JSON 格式存储文件夹结构
     category = Column(String(20), nullable=True)  # 'movie', 'tv', 'anime', 'documentary'
     status = Column(Integer, default=0)  # 0: 仅链接, 1: 已转存, 2: 已失效
-    saved_at = Column(DateTime, default=datetime.utcnow)
-    last_played_at = Column(DateTime, nullable=True)
+    saved_at = Column(DateTime, default=utc_now)
 
     # 关联转存记录
     transfer_records = relationship("TransferHistory", back_populates="collection", cascade="all, delete-orphan")
@@ -55,7 +59,7 @@ class TransferHistory(Base):
     local_path = Column(String(512), nullable=False)  # 网盘内路径
     file_name = Column(String(255), nullable=False)
     file_size = Column(Integer, nullable=True)
-    transferred_at = Column(DateTime, default=datetime.utcnow)
+    transferred_at = Column(DateTime, default=utc_now)
 
     # 关联收藏
     collection = relationship("Collection", back_populates="transfer_records")

@@ -200,7 +200,7 @@ def popularity_score(views) -> float:
 
 def freshness_score(updatetime: str) -> float:
     if not updatetime: return 0.5
-    now = datetime(2026, 1, 8, tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
     try:
         dt = datetime.fromisoformat(updatetime.replace("Z", "+00:00"))
         days = (now - dt).total_seconds() / 86400

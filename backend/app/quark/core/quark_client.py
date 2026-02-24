@@ -55,12 +55,35 @@ class AsyncQuarkAPIClient:
         self.timeout = timeout
         self.last_request_time = 0.0
         self.seen_ids: Set[int] = set()
+        self._session: Optional[aiohttp.ClientSession] = None
 
         self.headers = {
             "User-Agent": "Mozilla/5.0",
             "Accept": "application/json, text/plain, */*",
             "Content-Type": "application/json",
         }
+
+    @property
+    def session(self) -> aiohttp.ClientSession:
+        """延迟创建并复用 session"""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=self.timeout),
+                headers=self.headers
+            )
+        return self._session
+
+    async def close(self) -> None:
+        """关闭客户端会话"""
+        if self._session and not self._session.closed:
+            await self._session.close()
+            self._session = None
+
+    async def __aenter__(self) -> "AsyncQuarkAPIClient":
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        await self.close()
 
     async def _rate_limit_wait(self):
         now = time.time()
@@ -73,18 +96,16 @@ class AsyncQuarkAPIClient:
         await self._rate_limit_wait()
         for attempt in range(self.max_retries):
             try:
-                timeout = aiohttp.ClientTimeout(total=self.timeout)
-                async with aiohttp.ClientSession(timeout=timeout) as session:
-                    async with session.post(url, headers=self.headers, json=data) as resp:
-                        if resp.status == 200:
-                            return await resp.json()
-                        elif resp.status != 200:
-                            try:
-                                error_data = await resp.json()
-                                logger.warning(f"夸克搜索 API HTTP {resp.status}: {error_data}")
-                            except:
-                                text = await resp.text()
-                                logger.warning(f"夸克搜索 API HTTP {resp.status}: {text[:200]}")
+                async with self.session.post(url, json=data) as resp:
+                    if resp.status == 200:
+                        return await resp.json()
+                    elif resp.status != 200:
+                        try:
+                            error_data = await resp.json()
+                            logger.warning(f"夸克搜索 API HTTP {resp.status}: {error_data}")
+                        except Exception:
+                            text = await resp.text()
+                            logger.warning(f"夸克搜索 API HTTP {resp.status}: {text[:200]}")
                         if attempt < self.max_retries - 1:
                             await asyncio.sleep(self.retry_delay * (attempt + 1))
             except Exception as e:
