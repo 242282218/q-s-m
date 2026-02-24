@@ -1,0 +1,33 @@
+checklist_version: "1.0"
+last_updated: ""
+
+iteration:
+  id: ""
+  goal: ""
+  status: ""
+
+required_checks:
+  - id: STRUCT
+    description: "目录结构符合 TARGET TREE"
+    status: ""
+    evidence: ""
+
+  - id: DOCS_SYNC
+    description: "docs/HANDOFF.md 已同步更新"
+    status: ""
+    evidence: ""
+
+  - id: WORKFLOW
+    description: "阶段顺序 Read→Plan→Implement→Verify→Docs→Gate→Handoff"
+    status: ""
+    evidence: ""
+
+  - id: SMOKE_TEST
+    description: "冒烟测试通过 (>=3 条命令 PASS)"
+    status: ""
+    evidence: ""
+
+optional_checks: []
+
+deliverable_valid: true
+notes: ""
