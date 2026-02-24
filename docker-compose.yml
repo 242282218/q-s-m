@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  quark-search:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: quark-search
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./.env:/app/.env
+      - ./logs:/app/logs
+    environment:
+      - TZ=Asia/Shanghai
+    # 资源限制建议 (可选)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '1'
+    #       memory: 1G

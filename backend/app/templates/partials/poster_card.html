@@ -1,0 +1,16 @@
+<a class="poster-card tone-{{ poster.tone }}" href="/{{ poster.media_type }}/{{ poster.id }}">
+  <div class="poster-media">
+    {% if poster.poster_url %}
+      <img src="{{ poster.poster_url }}" alt="{{ poster.title }}">
+    {% else %}
+      <div class="poster-skeleton"></div>
+    {% endif %}
+    <div class="poster-gradient"></div>
+  </div>
+  <div class="poster-text">
+    <div class="poster-title">{{ poster.title }}</div>
+    {% if poster.subtitle %}
+      <div class="poster-subtitle">{{ poster.subtitle }}</div>
+    {% endif %}
+  </div>
+</a>

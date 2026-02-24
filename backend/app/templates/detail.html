@@ -1,0 +1,398 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page">
+  <section class="detail-hero"
+    style="{% if item.backdrop_url %}background-image: linear-gradient(180deg, rgba(0,0,0,0.6), #141414), url('{{ item.backdrop_url }}');{% else %}background-color:#141414;{% endif %}">
+    <div class="detail-shell">
+      <div class="detail-poster">
+        {% if item.poster_url %}
+        <img src="{{ item.poster_url }}" alt="{{ item.title }}">
+        {% else %}
+        <div class="poster-skeleton"></div>
+        {% endif %}
+      </div>
+      <div class="detail-meta">
+        <h1 class="detail-title">{{ item.title }}</h1>
+        <div class="detail-subtitle">
+          {% if item.year %}<span>{{ item.year }}</span>{% endif %}
+          {% if item.vote %}<span class="dot">•</span><span>评分 {{ "%.1f"|format(item.vote) }}</span>{% endif %}
+          {% if item.runtime %}<span class="dot">•</span><span>{{ item.runtime }} 分钟</span>{% endif %}
+        </div>
+        {% if item.genres %}
+        <div class="detail-tags">
+          {% for g in item.genres %}
+          <span class="tag">{{ g }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if item.tagline %}
+        <p class="detail-tagline">"{{ item.tagline }}"</p>
+        {% endif %}
+        {% if item.overview %}
+        <p class="detail-overview">{{ item.overview }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="section detail-section" id="quark-resources-section">
+    <div class="section-header">
+      <span class="section-icon">📦</span>
+      <h2 class="section-title">夸克网盘资源</h2>
+    </div>
+    <div class="section-body">
+      <div id="quark-resources-container">
+        <div class="empty" id="quark-empty" style="display: none;">加载中...</div>
+        <div id="quark-resources-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section detail-section">
+    <div class="section-header">
+      <span class="section-icon">👥</span>
+      <h2 class="section-title">演员阵容</h2>
+    </div>
+    <div class="section-body">
+      {% if item.cast %}
+      <div class="cast-grid">
+        {% for c in item.cast %}
+        <a class="cast-link" href="/person/{{ c.id }}">
+          <div class="cast-card">
+            <div class="cast-avatar">
+              {% if c.profile_url %}
+              <img src="{{ c.profile_url }}" alt="{{ c.name }}">
+              {% else %}
+              <div class="poster-skeleton"></div>
+              {% endif %}
+            </div>
+            <div class="cast-name">{{ c.name }}</div>
+            {% if c.character %}<div class="cast-role">{{ c.character }}</div>{% endif %}
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty">暂无演员信息。</div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="section detail-section">
+    <div class="section-header">
+      <span class="section-icon">📺</span>
+      <h2 class="section-title">相关推荐</h2>
+    </div>
+    <div class="section-body">
+      {% if recommendations %}
+      <div class="posters-grid">
+        {% for poster in recommendations %}
+        {% include "partials/poster_card.html" %}
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty">暂无相关推荐。</div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="section detail-section">
+    <div class="section-header">
+      <span class="section-icon">🎬</span>
+      <h2 class="section-title">视频预览</h2>
+    </div>
+    <div class="section-body">
+      {% if item.videos %}
+      <div class="video-grid">
+        {% for v in item.videos[:2] %}
+        <div class="video-card" data-video-key="{{ v.key }}">
+          <div class="video-thumbnail" onclick="playVideo(this, '{{ v.key }}')">
+            <img src="https://img.youtube.com/vi/{{ v.key }}/mqdefault.jpg" alt="{{ v.name }}" loading="lazy">
+            <div class="video-play-button">
+              <svg viewBox="0 0 68 48" width="68" height="48">
+                <path
+                  d="M66.52,7.74c-0.78-2.93-2.49-5.41-5.42-6.19C55.79,.13,34,0,34,0S12.21,.13,6.9,1.55 C3.97,2.33,2.27,4.81,1.48,7.74C0.06,13.05,0,24,0,24s0.06,10.95,1.48,16.26c0.78,2.93,2.49,5.41,5.42,6.19 C12.21,47.87,34,48,34,48s21.79-0.13,27.1-1.55c2.93-0.78,4.64-3.26,5.42-6.19C67.94,34.95,68,24,68,24S67.94,13.05,66.52,7.74z"
+                  fill="#f00"></path>
+                <path d="M 45,24 27,14 27,34" fill="#fff"></path>
+              </svg>
+            </div>
+          </div>
+          <div class="video-content">
+            <div class="video-title">{{ v.name }}</div>
+            {% if v.type %}<div class="video-meta">{{ v.type }}{% if v.official %} · 官方{% endif %}</div>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty">暂无视频资源。</div>
+      {% endif %}
+    </div>
+  </section>
+</div>
+
+<script>
+  const mediaType = '{{ item.media_type }}';
+  const itemId = {{ item.id }};
+  const itemTitle = '{{ item.title | replace("'", "\\'") }}';
+  const itemYear = {{ item.year or 0 }};
+  const itemPosterPath = '{{ item.poster_path | default("", true) }}';
+  const itemBackdropPath = '{{ item.backdrop_path | default("", true) }}';
+  let isCollected = false;
+  let collectionId = null;
+
+
+  function playVideo(thumbnail, videoKey) {
+    const card = thumbnail.closest('.video-card');
+    const thumbnailDiv = card.querySelector('.video-thumbnail');
+
+    const iframe = document.createElement('iframe');
+    iframe.src = `https://www.youtube.com/embed/${videoKey}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
+    iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture');
+    iframe.setAttribute('allowfullscreen', '');
+    iframe.setAttribute('frameborder', '0');
+
+    thumbnailDiv.innerHTML = '';
+    thumbnailDiv.appendChild(iframe);
+    thumbnailDiv.classList.add('video-playing');
+  }
+
+  async function searchQuarkResources() {
+    const container = document.getElementById('quark-resources-container');
+    const empty = document.getElementById('quark-empty');
+    const list = document.getElementById('quark-resources-list');
+
+    empty.style.display = 'none';
+    list.style.display = 'none';
+    list.innerHTML = '';
+
+    try {
+      let response = await fetch(`/api/quark/search/tmdb/${itemId}?media_type=${mediaType}&max_results=100`);
+      let data = await response.json();
+
+      if (!data.success && (data.message === '媒体不存在' || data.message === 'Media does not exist')) {
+        response = await fetch(`/api/quark/search/title?title=${encodeURIComponent(itemTitle)}&year=${itemYear || ''}&max_results=100`);
+        data = await response.json();
+      }
+
+      if (data.success && data.resources && data.resources.length > 0) {
+        empty.style.display = 'none';
+        list.style.display = 'block';
+
+        let html = '<div class="quark-resources-scroll">';
+
+        data.resources.forEach((resource, index) => {
+          const isBest = resource.is_best ? '<span class="badge-best" style="background: linear-gradient(135deg, #e50914, #b20710); color: white; padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; margin-left: 6px; box-shadow: 0 2px 8px rgba(229, 9, 20, 0.3);">最佳</span>' : '';
+          const qualityBadge = resource.quality_level ? `<span class="badge-quality" style="background: linear-gradient(135deg, #333, #1a1a1a); color: #fff; padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; margin-left: 6px; border: 1px solid rgba(255,255,255,0.1);">${resource.resolution || resource.quality_level}</span>` : '';
+
+          const tags = resource.tags || [];
+          const tagsHtml = tags.length > 0 ? `
+            <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 0.5rem;">
+              ${tags.map(tag => `<span style="background: rgba(255,255,255,0.08); color: #e0e0e0; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 500; border: 1px solid rgba(255,255,255,0.1); transition: all 0.2s ease;">${tag.toUpperCase()}</span>`).join('')}
+            </div>
+          ` : '';
+
+          html += `
+            <div class="quark-resource-card-horizontal" style="background: linear-gradient(145deg, #1a1a1a, #0f0f0f); padding: 1rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; min-width: 280px; max-width: 320px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); transition: all 0.3s ease;">
+              <div style="display: flex; align-items: start; justify-content: space-between; margin-bottom: 0.75rem;">
+                <h4 style="margin: 0; font-size: 13px; color: #fff; flex: 1; line-height: 1.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500;">${index + 1}. ${resource.name}</h4>
+                <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+                  ${isBest}
+                  ${qualityBadge}
+                </div>
+              </div>
+              ${tagsHtml}
+              <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 12px; color: #888; margin-bottom: 0.75rem; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                <span style="color: #666;">资源评分:</span>
+                <span style="color: #e50914; font-weight: 700; font-size: 16px;">${(resource.overall_score * 10).toFixed(1)}</span>
+              </div>
+              <div style="display: flex; gap: 8px; margin-bottom: 0.5rem;">
+                <a href="${resource.link}" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #e50914, #b20710); color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-size: 12px; font-weight: 600; flex: 1; text-align: center; box-sizing: border-box; box-shadow: 0 4px 12px rgba(229, 9, 20, 0.3); transition: all 0.3s ease;">打开链接</a>
+                <button onclick="collectResource('${resource.link.replace(/'/g, "\\'")}', '${resource.name.replace(/'/g, "\\'")}', this)" id="collect-btn-${index}" style="display: inline-block; background: linear-gradient(135deg, #ffc107, #e0a800); color: #000; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-size: 12px; font-weight: 600; flex: 1; text-align: center; box-sizing: border-box; box-shadow: 0 4px 12px rgba(255, 193, 7, 0.3); transition: all 0.3s ease; border: none; cursor: pointer;">⭐ 收藏</button>
+              </div>
+              <div style="display: flex; gap: 8px; margin-bottom: 0.5rem;">
+                <button onclick="saveResource('${resource.link}', this)" style="display: inline-block; background: linear-gradient(135deg, #007bff, #0056b3); color: white; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-size: 12px; font-weight: 600; flex: 1; text-align: center; box-sizing: border-box; box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3); transition: all 0.3s ease; border: none; cursor: pointer;">保存到网盘</button>
+              </div>
+              <div id="save-status-${index}" style="font-size: 11px; color: #666; text-align: center; min-height: 16px;"></div>
+            </div>
+          `;
+        });
+
+        html += '</div>';
+        list.innerHTML = html;
+      } else {
+        empty.style.display = 'block';
+        empty.textContent = data.message || '未找到相关资源';
+        list.style.display = 'none';
+      }
+    } catch (error) {
+      console.error('搜索失败:', error);
+      empty.style.display = 'block';
+      empty.textContent = '搜索失败，请稍后重试';
+      list.style.display = 'none';
+    }
+  }
+
+  function normalizeFolderName(rawName) {
+    let name = (rawName || '').trim();
+    name = name.replace(/^\d+\.\s*/, '');
+    name = name.replace(/[\\/:*?"<>|]/g, ' ');
+    name = name.replace(/\s+/g, ' ').trim();
+    return name;
+  }
+
+  function getCardTitle(card) {
+    if (!card) {
+      return '';
+    }
+    const titleEl = card.querySelector('h4');
+    return titleEl ? (titleEl.textContent || '') : '';
+  }
+
+  async function saveResource(link, button) {
+    // 禁用按钮，防止重复点击
+    button.disabled = true;
+    button.innerHTML = '保存中...';
+    button.style.background = 'linear-gradient(135deg, #6c757d, #5a6268)';
+
+    // 找到对应的状态显示元素
+    const card = button.closest('.quark-resource-card-horizontal');
+    const folderName = normalizeFolderName(getCardTitle(card));
+    const statusDiv = card.querySelector('[id^="save-status-"]');
+    statusDiv.innerHTML = '<span style="color: #ffc107;">正在保存...</span>';
+
+    try {
+      const payload = {
+        link: link,
+        to_dir_fid: '0',
+        media_type: mediaType,  // 传递媒体类型用于分类
+        title: itemTitle,       // 传递标题用于重命名
+        year: itemYear || null  // 传递年份用于重命名
+      };
+      if (folderName) {
+        payload.to_dir_name = folderName;
+      }
+      const response = await fetch('/api/quark/transfer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        button.innerHTML = '保存成功';
+        button.style.background = 'linear-gradient(135deg, #28a745, #1e7e34)';
+        statusDiv.innerHTML = `<span style="color: #28a745;">${result.message || '保存成功'}</span>`;
+      } else {
+        button.innerHTML = '保存失败';
+        button.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
+        statusDiv.innerHTML = `<span style="color: #dc3545;">${result.message || '保存失败'}</span>`;
+      }
+    } catch (error) {
+      button.innerHTML = '保存失败';
+      button.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
+      statusDiv.innerHTML = `<span style="color: #dc3545;">保存失败: ${error.message}</span>`;
+    } finally {
+      // 3秒后恢复按钮状态
+      setTimeout(() => {
+        button.disabled = false;
+        button.innerHTML = '保存资源';
+        button.style.background = 'linear-gradient(135deg, #007bff, #0056b3)';
+        // 6秒后清空状态信息
+        setTimeout(() => {
+          statusDiv.innerHTML = '';
+        }, 3000);
+      }, 3000);
+    }
+  }
+
+  // 检查当前影片是否已收藏
+  async function checkCollectionStatus() {
+    try {
+      const response = await fetch(`/api/collection/check/${itemId}?media_type=${mediaType}`);
+      const data = await response.json();
+      isCollected = data.collected;
+      collectionId = data.id;
+    } catch (error) {
+      console.error('检查收藏状态失败:', error);
+    }
+  }
+
+  // 收藏资源（每个资源独立收藏，支持多版本）
+  async function collectResource(shareUrl, resourceName, button) {
+    button.disabled = true;
+    button.innerHTML = '收藏中...';
+    button.style.background = 'linear-gradient(135deg, #6c757d, #5a6268)';
+
+    try {
+      const response = await fetch('/api/collection/add', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tmdb_id: itemId,
+          media_type: mediaType,
+          title: resourceName,  // 使用资源名称作为标题
+          year: itemYear || null,
+          poster_path: itemPosterPath,
+          backdrop_path: itemBackdropPath,
+          share_url: shareUrl
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        collectionId = result.id;
+        button.innerHTML = '✅ 已收藏';
+        button.style.background = 'linear-gradient(135deg, #28a745, #1e7e34)';
+        button.style.color = '#fff';
+        // 只更新当前按钮状态，不影响其他按钮（支持多版本收藏）
+      } else {
+        button.innerHTML = result.message || '收藏失败';
+        button.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
+        button.style.color = '#fff';
+        setTimeout(() => {
+          button.disabled = false;
+          button.innerHTML = '⭐ 收藏';
+          button.style.background = 'linear-gradient(135deg, #ffc107, #e0a800)';
+          button.style.color = '#000';
+        }, 2000);
+      }
+    } catch (error) {
+      button.innerHTML = '收藏失败';
+      button.style.background = 'linear-gradient(135deg, #dc3545, #c82333)';
+      button.style.color = '#fff';
+      setTimeout(() => {
+        button.disabled = false;
+        button.innerHTML = '⭐ 收藏';
+        button.style.background = 'linear-gradient(135deg, #ffc107, #e0a800)';
+        button.style.color = '#000';
+      }, 2000);
+    }
+  }
+
+  // 更新所有收藏按钮状态
+  function updateAllCollectButtons() {
+    const buttons = document.querySelectorAll('[id^="collect-btn-"]');
+    buttons.forEach(btn => {
+      if (isCollected) {
+        btn.innerHTML = '✅ 已收藏';
+        btn.style.background = 'linear-gradient(135deg, #28a745, #1e7e34)';
+        btn.style.color = '#fff';
+        btn.disabled = true;
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    // 直接搜索资源（支持多版本收藏，不需要检查全局状态）
+    searchQuarkResources();
+  });
+</script>
+{% endblock %}

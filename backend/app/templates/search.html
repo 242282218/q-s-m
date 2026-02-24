@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page">
+  <section class="section">
+    <div class="section-header">
+      <span class="section-icon">🔍</span>
+      <h2 class="section-title">搜索结果{% if query %}：{{ query }}{% endif %}</h2>
+    </div>
+    {% if not query %}
+      <p class="empty">请输入关键字后搜索。</p>
+    {% else %}
+      <div class="posters-grid">
+        {% if posters %}
+          {% for poster in posters %}
+            {% include "partials/poster_card.html" %}
+          {% endfor %}
+        {% else %}
+          <div class="empty">未找到相关结果。</div>
+        {% endif %}
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
