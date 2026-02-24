@@ -1,7 +1,7 @@
 import re
 import math
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict
 
 
 @dataclass
@@ -26,13 +26,24 @@ class QualityInfo:
 
 
 class QualityEvaluator:
-    """质量评估器"""
+    """
+    质量评估器
+    
+    优化记录:
+    - 2026-02-24: 添加评估结果缓存，避免重复计算
+    """
     
     def __init__(self) -> None:
-        pass
+        self._cache: Dict[str, QualityInfo] = {}
+        self._cache_max_size = 500
     
     def evaluate(self, name: str, size_str: Optional[str] = None) -> QualityInfo:
         """评估资源质量"""
+        cache_key = f"{name}:{size_str}"
+        
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+        
         info = QualityInfo()
         
         name_lower = name.lower()
@@ -86,6 +97,11 @@ class QualityEvaluator:
         
         if size_str:
             info.score = self._calculate_score(size_str)
+        
+        if len(self._cache) >= self._cache_max_size:
+            oldest_key = next(iter(self._cache))
+            del self._cache[oldest_key]
+        self._cache[cache_key] = info
         
         return info
     

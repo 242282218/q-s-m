@@ -6,17 +6,30 @@ from app.services.tmdb import TmdbClient
 class MediaFetcher:
     """
     媒体获取器，用于从TMDB获取媒体信息
+    
+    优化记录:
+    - 2026-02-24: 支持外部传入 TmdbClient，避免重复创建
     """
     
-    def __init__(self):
-        from app.core.config import get_settings
-        settings = get_settings()
-        self.tmdb = TmdbClient(
-            settings.tmdb_api_key,
-            api_base=settings.tmdb_api_base,
-            image_base=settings.tmdb_image_base,
-            language=settings.default_language,
-        )
+    def __init__(self, tmdb_client: Optional[Any] = None):
+        self._external_client = tmdb_client
+        self._internal_client: Optional[Any] = None
+    
+    @property
+    def tmdb(self) -> Any:
+        if self._external_client:
+            return self._external_client
+        if self._internal_client is None:
+            from app.services.tmdb import TmdbClient
+            from app.core.config import get_settings
+            settings = get_settings()
+            self._internal_client = TmdbClient(
+                settings.tmdb_api_key,
+                api_base=settings.tmdb_api_base,
+                image_base=settings.tmdb_image_base,
+                language=settings.default_language,
+            )
+        return self._internal_client
     
     async def fetch_by_tmdb_id(self, tmdb_id: int, media_type: str = "movie") -> Optional[Any]:
         """

@@ -2,6 +2,57 @@
 
 {% block content %}
 <div class="page">
+  {% if hero_item %}
+  <section class="hero-section" aria-label="精选推荐">
+    <div class="hero-background">
+      {% if hero_item.backdrop_url %}
+      <img src="{{ hero_item.backdrop_url }}" alt="{{ hero_item.title }}" loading="eager">
+      {% elif hero_item.poster_url %}
+      <img src="{{ hero_item.poster_url }}" alt="{{ hero_item.title }}" loading="eager">
+      {% endif %}
+      <div class="hero-gradient" aria-hidden="true"></div>
+      <div class="hero-vignette" aria-hidden="true"></div>
+    </div>
+    <div class="hero-content">
+      {% if hero_item.vote and hero_item.vote >= 7 %}
+      <span class="hero-badge">98% 匹配</span>
+      {% endif %}
+      <h1 class="hero-title">{{ hero_item.title }}</h1>
+      <div class="hero-meta">
+        {% if hero_item.year %}<span class="hero-meta-item">{{ hero_item.year }}</span>{% endif %}
+        {% if hero_item.vote %}
+        <span class="hero-meta-divider" aria-hidden="true"></span>
+        <span class="hero-meta-item rating">⭐ {{ "%.1f"|format(hero_item.vote) }}</span>
+        {% endif %}
+        {% if hero_item.runtime %}
+        <span class="hero-meta-divider" aria-hidden="true"></span>
+        <span class="hero-meta-item">{{ hero_item.runtime }} 分钟</span>
+        {% endif %}
+      </div>
+      {% if hero_item.genres %}
+      <div class="hero-tags">
+        {% for g in hero_item.genres[:4] %}
+        <span class="hero-tag">{{ g }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% if hero_item.overview %}
+      <p class="hero-overview">{{ hero_item.overview }}</p>
+      {% endif %}
+      <div class="hero-actions">
+        <a href="/{{ hero_item.media_type }}/{{ hero_item.id }}" class="hero-btn hero-btn-primary">
+          <span class="hero-btn-icon">▶</span>
+          <span>查看详情</span>
+        </a>
+        <a href="/{{ hero_item.media_type }}/{{ hero_item.id }}" class="hero-btn hero-btn-secondary">
+          <span class="hero-btn-icon">ℹ</span>
+          <span>更多信息</span>
+        </a>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
   {% set section_titles = {
     "trending": "本周趋势",
     "popular": "热门电影",
@@ -16,18 +67,21 @@
   } %}
 
   {% for key, posters in sections.items() %}
-    <section class="section">
+    <section class="section" aria-labelledby="section-{{ key }}">
       <div class="section-header">
-        <span class="section-icon">{{ section_icons.get(key, "🎞️") }}</span>
-        <h2 class="section-title">{{ section_titles.get(key, key) }}</h2>
+        <span class="section-icon" aria-hidden="true">{{ section_icons.get(key, "🎞️") }}</span>
+        <h2 class="section-title" id="section-{{ key }}">{{ section_titles.get(key, key) }}</h2>
       </div>
-      <div class="posters-grid">
+      <div class="posters-grid" role="list">
         {% if posters %}
           {% for poster in posters %}
             {% include "partials/poster_card.html" %}
           {% endfor %}
         {% else %}
-          <div class="empty">暂无数据</div>
+          <div class="empty" role="status">
+            <div class="empty-icon">📭</div>
+            <div class="empty-text">暂无数据</div>
+          </div>
         {% endif %}
       </div>
     </section>

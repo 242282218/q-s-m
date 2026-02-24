@@ -2,249 +2,114 @@
 
 {% block content %}
 <div class="page">
-    <section class="section">
-        <div class="section-header">
-            <span class="section-icon">⚙️</span>
-            <h2 class="section-title">系统设置</h2>
+  <section class="section" aria-labelledby="settings-title">
+    <div class="section-header">
+      <span class="section-icon" aria-hidden="true">⚙️</span>
+      <h2 class="section-title" id="settings-title">系统设置</h2>
+    </div>
+
+    <div class="settings-container">
+      <p class="settings-desc">修改配置后可能需要重启服务才能生效。</p>
+
+      <form id="settingsForm" class="settings-form">
+        <!-- 基础配置 -->
+        <div class="settings-section">
+          <h3 class="settings-section-title">基础配置</h3>
+          <div class="form-group">
+            <label for="TMDB_API_KEY">TMDB API Key</label>
+            <input type="text" id="TMDB_API_KEY" name="TMDB_API_KEY" value="{{ settings.tmdb_api_key }}" required placeholder="输入您的 TMDB API Key">
+            <small>用于获取影视元数据，可在 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">TMDB 官网</a> 申请</small>
+          </div>
+          <div class="form-group">
+            <label for="HTTP_PROXY">HTTP 代理</label>
+            <input type="text" id="HTTP_PROXY" name="HTTP_PROXY" value="{{ settings.http_proxy or '' }}" placeholder="http://127.0.0.1:7890">
+            <small>访问 TMDB API 可能需要代理，留空则不使用代理</small>
+          </div>
+          <div class="form-group">
+            <label for="LOG_LEVEL">日志级别</label>
+            <select id="LOG_LEVEL" name="LOG_LEVEL">
+              <option value="DEBUG" {% if settings.log_level == 'DEBUG' %}selected{% endif %}>DEBUG - 调试</option>
+              <option value="INFO" {% if settings.log_level == 'INFO' %}selected{% endif %}>INFO - 信息</option>
+              <option value="WARNING" {% if settings.log_level == 'WARNING' %}selected{% endif %}>WARNING - 警告</option>
+              <option value="ERROR" {% if settings.log_level == 'ERROR' %}selected{% endif %}>ERROR - 错误</option>
+            </select>
+          </div>
         </div>
 
-        <div class="settings-container">
-            <p class="settings-desc">修改配置后可能需要重启服务才能生效。</p>
-
-            <form id="settingsForm" class="settings-form">
-                <!-- 基础配置 -->
-                <div class="settings-section">
-                    <h3 class="settings-section-title">基础配置</h3>
-                    <div class="form-group">
-                        <label for="TMDB_API_KEY">TMDB API Key</label>
-                        <input type="text" id="TMDB_API_KEY" name="TMDB_API_KEY" value="{{ settings.tmdb_api_key }}" required>
-                        <small>用于获取影视元数据</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="HTTP_PROXY">HTTP 代理</label>
-                        <input type="text" id="HTTP_PROXY" name="HTTP_PROXY" value="{{ settings.http_proxy or '' }}" placeholder="http://127.0.0.1:7890">
-                        <small>访问 TMDB API 可能需要代理</small>
-                    </div>
-                    <div class="form-group">
-                        <label for="LOG_LEVEL">日志级别</label>
-                        <select id="LOG_LEVEL" name="LOG_LEVEL">
-                            <option value="DEBUG" {% if settings.log_level == 'DEBUG' %}selected{% endif %}>DEBUG</option>
-                            <option value="INFO" {% if settings.log_level == 'INFO' %}selected{% endif %}>INFO</option>
-                            <option value="WARNING" {% if settings.log_level == 'WARNING' %}selected{% endif %}>WARNING</option>
-                            <option value="ERROR" {% if settings.log_level == 'ERROR' %}selected{% endif %}>ERROR</option>
-                        </select>
-                    </div>
-                </div>
-
-                <!-- 夸克网盘配置 -->
-                <div class="settings-section">
-                    <h3 class="settings-section-title">夸克网盘配置</h3>
-                    <div class="form-group">
-                        <label for="QUARK_TRANSFER_COOKIE">Cookie</label>
-                        <textarea id="QUARK_TRANSFER_COOKIE" name="QUARK_TRANSFER_COOKIE" rows="3" placeholder="输入夸克网盘 Cookie">{{ settings.quark_cookie }}</textarea>
-                        <small>用于转存和管理网盘资源</small>
-                    </div>
-                </div>
-
-                <div class="form-actions">
-                    <button type="submit" class="btn btn-primary">保存配置</button>
-                </div>
-            </form>
+        <!-- 夸克网盘配置 -->
+        <div class="settings-section">
+          <h3 class="settings-section-title">夸克网盘配置</h3>
+          <div class="form-group">
+            <label for="QUARK_TRANSFER_COOKIE">Cookie</label>
+            <textarea id="QUARK_TRANSFER_COOKIE" name="QUARK_TRANSFER_COOKIE" rows="4" placeholder="输入夸克网盘 Cookie">{{ settings.quark_cookie }}</textarea>
+            <small>用于转存和管理网盘资源，请从浏览器开发者工具中复制 Cookie</small>
+          </div>
         </div>
-    </section>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">保存配置</button>
+        </div>
+      </form>
+    </div>
+  </section>
 </div>
-
-<style>
-    .settings-container {
-        max-width: 800px;
-        margin: 0 auto;
-        padding: 0 16px 32px;
-    }
-
-    .settings-desc {
-        color: #888;
-        margin-bottom: 24px;
-        font-size: 14px;
-    }
-
-    .settings-section {
-        background: linear-gradient(135deg, #1a1a1a 0%, #1f1f1f 100%);
-        padding: 24px;
-        border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        margin-bottom: 24px;
-    }
-
-    .settings-section-title {
-        margin: 0 0 20px 0;
-        padding-bottom: 12px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        font-size: 18px;
-        font-weight: 700;
-        color: #fff;
-    }
-
-    .form-group {
-        margin-bottom: 20px;
-    }
-
-    .form-group:last-child {
-        margin-bottom: 0;
-    }
-
-    label {
-        display: block;
-        margin-bottom: 8px;
-        font-weight: 600;
-        color: #e0e0e0;
-        font-size: 14px;
-    }
-
-    input[type="text"],
-    input[type="password"],
-    select,
-    textarea {
-        width: 100%;
-        padding: 12px 16px;
-        background: #141414;
-        border: 1px solid #333;
-        border-radius: 8px;
-        font-size: 14px;
-        color: #fff;
-        box-sizing: border-box;
-        transition: all 0.3s ease;
-        font-family: inherit;
-    }
-
-    input::placeholder,
-    textarea::placeholder {
-        color: #666;
-    }
-
-    input:focus,
-    select:focus,
-    textarea:focus {
-        border-color: #e50914;
-        outline: none;
-        box-shadow: 0 0 0 3px rgba(229, 9, 20, 0.15);
-    }
-
-    select {
-        cursor: pointer;
-        appearance: none;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-        background-repeat: no-repeat;
-        background-position: right 12px center;
-        padding-right: 36px;
-    }
-
-    select option {
-        background: #1f1f1f;
-        color: #fff;
-    }
-
-    textarea {
-        resize: vertical;
-        min-height: 80px;
-    }
-
-    small {
-        display: block;
-        margin-top: 6px;
-        color: #666;
-        font-size: 12px;
-    }
-
-    .form-actions {
-        display: flex;
-        justify-content: flex-end;
-        padding: 0;
-    }
-
-    .btn {
-        padding: 12px 32px;
-        border: none;
-        border-radius: 8px;
-        font-size: 14px;
-        font-weight: 700;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-
-    .btn-primary {
-        background: linear-gradient(135deg, #e50914, #b20710);
-        color: white;
-        box-shadow: 0 4px 12px rgba(229, 9, 20, 0.3);
-    }
-
-    .btn-primary:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(229, 9, 20, 0.4);
-    }
-
-    .btn-primary:active {
-        transform: translateY(0);
-    }
-
-    @media (min-width: 768px) {
-        .settings-container {
-            padding: 0 24px 40px;
-        }
-
-        .settings-section {
-            padding: 28px;
-        }
-
-        .settings-section-title {
-            font-size: 20px;
-        }
-    }
-
-    @media (min-width: 1280px) {
-        .settings-container {
-            padding: 0 48px 48px;
-        }
-
-        .settings-section {
-            padding: 32px;
-        }
-    }
-</style>
 
 <script>
 document.getElementById('settingsForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const formData = new FormData(e.target);
-    const data = Object.fromEntries(formData.entries());
-    
-    // Convert empty strings to null for optional fields
-    for (const key in data) {
-        if (data[key] === '') {
-            data[key] = null;
-        }
+  e.preventDefault();
+
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  const originalText = submitBtn.textContent;
+  submitBtn.textContent = '保存中...';
+  submitBtn.disabled = true;
+
+  const formData = new FormData(e.target);
+  const data = Object.fromEntries(formData.entries());
+
+  // Convert empty strings to null for optional fields
+  for (const key in data) {
+    if (data[key] === '') {
+      data[key] = null;
     }
-    
-    try {
-        const response = await fetch('/api/settings/update', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(data),
-        });
-        
-        const result = await response.json();
-        
-        if (response.ok) {
-            alert(result.message);
-            window.location.reload();
-        } else {
-            alert('保存失败: ' + (result.detail || result.message));
-        }
-    } catch (error) {
-        alert('保存失败: ' + error.message);
+  }
+
+  try {
+    const response = await fetch('/api/settings/update', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+
+    if (response.ok) {
+      submitBtn.textContent = '保存成功!';
+      submitBtn.classList.add('btn-success');
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } else {
+      submitBtn.textContent = '保存失败';
+      submitBtn.classList.add('btn-error');
+      alert('保存失败: ' + (result.detail || result.message));
+      setTimeout(() => {
+        submitBtn.textContent = originalText;
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('btn-error');
+      }, 2000);
     }
+  } catch (error) {
+    submitBtn.textContent = '保存失败';
+    submitBtn.classList.add('btn-error');
+    alert('保存失败: ' + error.message);
+    setTimeout(() => {
+      submitBtn.textContent = originalText;
+      submitBtn.disabled = false;
+      submitBtn.classList.remove('btn-error');
+    }, 2000);
+  }
 });
 </script>
 {% endblock %}

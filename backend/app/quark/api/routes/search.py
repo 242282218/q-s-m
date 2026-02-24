@@ -2,7 +2,7 @@ import logging
 import re
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
 
 from app.core.config import get_settings
@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 @router.get("/search/tmdb/{tmdb_id}", summary="通过TMDB ID搜索夸克资源")
 async def search_by_tmdb_id(
+    request: Request,
     tmdb_id: int,
     media_type: str = Query("movie", description="媒体类型，可选值：movie, tv"),
     max_results: int = Query(20, description="最大结果数量", ge=1, le=100)
@@ -33,7 +34,10 @@ async def search_by_tmdb_id(
         搜索结果
     """
     logger.info(f"API called: tmdb_id={tmdb_id}, media_type={media_type}, max_results={max_results}")
-    service = SearchService()
+    
+    quark_client = getattr(request.app.state, 'quark_client', None)
+    service = SearchService(quark_client=quark_client)
+    
     result = await service.search_by_tmdb_id(tmdb_id, max_results, media_type)
     logger.info(f"API returned: total={result.total}, resources={len(result.resources)}")
     return result
@@ -41,6 +45,7 @@ async def search_by_tmdb_id(
 
 @router.get("/search/title", summary="通过标题搜索夸克资源")
 async def search_by_title(
+    request: Request,
     title: str = Query(..., description="搜索标题"),
     year: Optional[int] = Query(None, description="年份"),
     max_results: int = Query(20, description="最大结果数量", ge=1, le=100)
@@ -56,7 +61,9 @@ async def search_by_title(
     Returns:
         搜索结果
     """
-    service = SearchService()
+    quark_client = getattr(request.app.state, 'quark_client', None)
+    service = SearchService(quark_client=quark_client)
+    
     return await service.search_by_title(title, year, max_results)
 
 
@@ -105,7 +112,7 @@ class TransferRequest(BaseModel):
 
 
 @router.post("/transfer", summary="保存资源到网盘")
-async def transfer_resource(request: TransferRequest):
+async def transfer_resource(request: Request, req: TransferRequest):
     """
     保存分享资源到网盘
     
@@ -124,52 +131,57 @@ async def transfer_resource(request: TransferRequest):
         'anime': 'Anime',
         'documentary': 'Documentary',
     }
-    category_dir = category_dirs.get(request.media_type, 'Movies')
+    category_dir = category_dirs.get(req.media_type, 'Movies')
     
-    if request.to_dir_name:
-        full_dir_name = f"/收藏TV/{category_dir}/{request.to_dir_name}"
+    if req.to_dir_name:
+        full_dir_name = f"/收藏TV/{category_dir}/{req.to_dir_name}"
     else:
         full_dir_name = f"/收藏TV/{category_dir}"
     
-    logger.info(f"Transfer request: link={request.link}, target_dir={full_dir_name}")
+    logger.info(f"Transfer request: link={req.link}, target_dir={full_dir_name}")
     
     settings = get_settings()
     client = QuarkTransferClient(settings.quark_cookie)
     
     try:
         success, message, files = await client.transfer_share(
-            share_url=request.link,
+            share_url=req.link,
             target_dir=full_dir_name
         )
         
         saved_files = [f["fid"] for f in files]
         
         renamed_count = 0
-        if success and request.title:
+        if success and req.title:
             renamer = Renamer()
-            final_title = request.title
+            final_title = req.title
             try:
-                tmdb_client = TmdbClient(
-                    settings.tmdb_api_key, 
-                    api_base=settings.tmdb_api_base,
-                    proxy=settings.http_proxy,
-                    timeout=5.0
-                )
+                tmdb_client = getattr(request.app.state, 'tmdb_client', None)
+                if tmdb_client is None:
+                    tmdb_client = TmdbClient(
+                        settings.tmdb_api_key, 
+                        api_base=settings.tmdb_api_base,
+                        proxy=settings.http_proxy,
+                        timeout=5.0
+                    )
+                
                 cn_title = await get_chinese_title(
                     tmdb_client, 
-                    request.title, 
-                    request.year, 
-                    request.media_type
+                    req.title, 
+                    req.year, 
+                    req.media_type
                 )
-                await tmdb_client.close()
+                
+                if tmdb_client != request.app.state.tmdb_client:
+                    await tmdb_client.close()
                 
                 if cn_title:
                     final_title = cn_title
-                    logger.info(f"Using Chinese title: {cn_title} (was {request.title})")
+                    logger.info(f"Using Chinese title: {cn_title} (was {req.title})")
             except Exception as e:
                 logger.warning(f"Failed to get chinese title: {e}")
             
-            logger.info(f"Rename logic: original_title='{request.title}', year={request.year}, contains_chinese={contains_chinese(request.title)}, final_title='{final_title}'")
+            logger.info(f"Rename logic: original_title='{req.title}', year={req.year}, contains_chinese={contains_chinese(req.title)}, final_title='{final_title}'")
             
             for f in files:
                 if not renamer.is_video_file(f["name"]):
@@ -178,9 +190,9 @@ async def transfer_resource(request: TransferRequest):
                 rename_result = renamer.generate_path(
                     original_filename=f["name"],
                     title=final_title,
-                    year=request.year,
-                    media_type=request.media_type,
-                    category=request.media_type
+                    year=req.year,
+                    media_type=req.media_type,
+                    category=req.media_type
                 )
                 
                 if rename_result.new_name != f["name"]:
@@ -208,6 +220,8 @@ async def transfer_resource(request: TransferRequest):
             "message": f"转存异常: {str(e)}",
             "saved_files": []
         }
+    finally:
+        await client.close()
     
     logger.info(f"Transfer result: success={result.get('success')}, message={result.get('message')}")
     return result

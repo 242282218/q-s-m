@@ -5,24 +5,19 @@ import os
 from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.pool import StaticPool
 
-# 数据库文件路径
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DATABASE_PATH = DATA_DIR / "qsm.db"
 
-# SQLite 连接 URL
 DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
-# 创建引擎
 engine = create_engine(
     DATABASE_URL,
     connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
     echo=False,
-    pool_size=5,
-    max_overflow=10,
-    pool_timeout=30,
-    pool_recycle=1800,
 )
 
 # 创建 Session 工厂

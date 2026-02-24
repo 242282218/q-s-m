@@ -21,10 +21,36 @@ logger = logging.getLogger(__name__)
 
 
 class SearchService:
-    def __init__(self):
-        self.media_fetcher = MediaFetcher()
-        self.quark_client = AsyncQuarkAPIClient()
+    """
+    搜索服务
+    
+    优化记录:
+    - 2026-02-24: 支持外部传入 tmdb_client 和 quark_client，避免重复创建
+    """
+    def __init__(
+        self,
+        tmdb_client: Optional[Any] = None,
+        quark_client: Optional[AsyncQuarkAPIClient] = None
+    ):
+        self._external_tmdb_client = tmdb_client
+        self._external_quark_client = quark_client
+        self._internal_media_fetcher: Optional[MediaFetcher] = None
+        self._internal_quark_client: Optional[AsyncQuarkAPIClient] = None
         self.quality_evaluator = QualityEvaluator()
+    
+    @property
+    def media_fetcher(self) -> MediaFetcher:
+        if self._internal_media_fetcher is None:
+            self._internal_media_fetcher = MediaFetcher(tmdb_client=self._external_tmdb_client)
+        return self._internal_media_fetcher
+    
+    @property
+    def quark_client(self) -> AsyncQuarkAPIClient:
+        if self._external_quark_client:
+            return self._external_quark_client
+        if self._internal_quark_client is None:
+            self._internal_quark_client = AsyncQuarkAPIClient()
+        return self._internal_quark_client
 
     async def search_by_tmdb_id(self, tmdb_id: int, max_results: int, media_type: str = "movie") -> SearchResponse:
         cache = get_cache()

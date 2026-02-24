@@ -1,11 +1,11 @@
-<a class="poster-card tone-{{ poster.tone }}" href="/{{ poster.media_type }}/{{ poster.id }}">
+<a class="poster-card tone-{{ poster.tone }}" href="/{{ poster.media_type }}/{{ poster.id }}" aria-label="{{ poster.title }}{% if poster.subtitle %} - {{ poster.subtitle }}{% endif %}">
   <div class="poster-media">
     {% if poster.poster_url %}
-      <img src="{{ poster.poster_url }}" alt="{{ poster.title }}">
+      <img src="{{ poster.poster_url }}" alt="{{ poster.title }} 海报" loading="lazy" decoding="async">
     {% else %}
-      <div class="poster-skeleton"></div>
+      <div class="poster-skeleton" aria-hidden="true"></div>
     {% endif %}
-    <div class="poster-gradient"></div>
+    <div class="poster-gradient" aria-hidden="true"></div>
   </div>
   <div class="poster-text">
     <div class="poster-title">{{ poster.title }}</div>

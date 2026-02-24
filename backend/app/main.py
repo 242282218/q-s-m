@@ -19,10 +19,43 @@ logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    
+    from .services.tmdb import TmdbClient
+    from .quark.core.quark_client import AsyncQuarkAPIClient
+    from .quark.core.cache import get_cache
+    
+    app.state.tmdb_client = TmdbClient(
+        settings.tmdb_api_key,
+        api_base=settings.tmdb_api_base,
+        image_base=settings.tmdb_image_base,
+        language=settings.default_language,
+        proxy=settings.http_proxy,
+    )
+    
+    app.state.quark_client = AsyncQuarkAPIClient()
+    
+    cache = get_cache()
+    cache.start_cleanup()
+    
+    logger.info("Application started: HTTP clients and cache initialized")
+    
     yield
+    
+    if hasattr(app.state, 'tmdb_client') and app.state.tmdb_client:
+        await app.state.tmdb_client.close()
+        logger.info("TmdbClient closed")
+    
+    if hasattr(app.state, 'quark_client') and app.state.quark_client:
+        await app.state.quark_client.close()
+        logger.info("QuarkAPIClient closed")
+    
+    await cache.stop_cleanup()
+    
+    logger.info("Application shutdown complete")
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 

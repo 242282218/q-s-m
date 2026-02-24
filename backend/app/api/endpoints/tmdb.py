@@ -1,27 +1,23 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Request
 import httpx
 import logging
 
 from ...services.tmdb import TmdbClient
-from ...core.config import get_settings, Settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Dependency to get TmdbClient
-def get_tmdb_client(settings: Settings = Depends(get_settings)) -> TmdbClient:
-    return TmdbClient(
-        settings.tmdb_api_key,
-        api_base=settings.tmdb_api_base,
-        image_base=settings.tmdb_image_base,
-        language=settings.default_language,
-    )
+
+def get_tmdb_client(request: Request) -> TmdbClient:
+    """从应用状态获取共享的 TmdbClient 实例"""
+    return request.app.state.tmdb_client
+
 
 @router.get("/details", summary="获取TMDB详情")
 async def get_tmdb_details(
+    request: Request,
     media_type: str, 
     tmdb_id: int,
-    tmdb_client: TmdbClient = Depends(get_tmdb_client)
 ):
     """
     获取TMDB详情，用于获取海报等信息
@@ -29,6 +25,7 @@ async def get_tmdb_details(
     - **media_type**: 媒体类型 (movie 或 tv)
     - **tmdb_id**: TMDB ID
     """
+    tmdb_client = get_tmdb_client(request)
     try:
         logger.info(f"获取TMDB详情: media_type={media_type}, tmdb_id={tmdb_id}")
         data = await tmdb_client.details(media_type, tmdb_id)
@@ -51,5 +48,3 @@ async def get_tmdb_details(
     except Exception as e:
         logger.error(f"获取TMDB详情失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"获取TMDB详情失败: {str(e)}")
-    finally:
-        await tmdb_client.close()

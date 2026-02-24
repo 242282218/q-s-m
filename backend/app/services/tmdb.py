@@ -3,14 +3,17 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, List, Optional
 import logging
+import time
 
 import httpx
 
 from ..core.config import get_settings
+from ..quark.core.cache import get_cache
 
 DEFAULT_POSTER_SIZE = "w500"
 DEFAULT_BACKDROP_SIZE = "w780"
 DEFAULT_LANG = "zh-CN"
+HOME_SECTIONS_CACHE_TTL = 300
 
 GENRE_TONE = {
     10749: "romance",
@@ -180,7 +183,24 @@ def adapt_poster(item: Dict[str, Any], client: TmdbClient) -> Dict[str, Any]:
 
 
 async def gather_sections(client: TmdbClient) -> Dict[str, List[Dict[str, Any]]]:
-    # Use return_exceptions=True to avoid one failure breaking everything
+    """
+    获取首页各分区数据，支持缓存
+    
+    缓存策略：
+    - 缓存时间：300秒（5分钟）
+    - 缓存键：home_sections
+    - 失败时返回空列表，不影响其他分区
+    """
+    cache = get_cache()
+    cache_key = "tmdb:home_sections"
+    
+    cached_data = await cache.get(cache_key)
+    if cached_data:
+        logger.debug("返回缓存的首页分区数据")
+        return cached_data
+    
+    start_time = time.time()
+    
     results = await asyncio.gather(
         client.trending("all", "week"),
         client.movies("popular"),
@@ -190,7 +210,7 @@ async def gather_sections(client: TmdbClient) -> Dict[str, List[Dict[str, Any]]]
     )
     
     keys = ["trending", "popular", "top_rated", "now_playing"]
-    data = {}
+    data: Dict[str, List[Dict[str, Any]]] = {}
     
     for key, result in zip(keys, results):
         if isinstance(result, Exception):
@@ -198,7 +218,12 @@ async def gather_sections(client: TmdbClient) -> Dict[str, List[Dict[str, Any]]]
             data[key] = []
         else:
             data[key] = result
-            
+    
+    await cache.set(cache_key, data, ttl=HOME_SECTIONS_CACHE_TTL)
+    
+    elapsed = time.time() - start_time
+    logger.info(f"首页分区数据获取完成，耗时 {elapsed:.2f}s，已缓存 {HOME_SECTIONS_CACHE_TTL}s")
+    
     return data
 
 def adapt_detail(item: Dict, client: TmdbClient) -> Dict:
