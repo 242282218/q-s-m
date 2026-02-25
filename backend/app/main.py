@@ -1,15 +1,19 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from datetime import datetime
+from typing import Callable
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 
 from .core.config import get_settings
 from .core.logging import setup_logging
-from .db.session import init_db
+from .db.session import init_db, get_query_stats, reset_query_stats
 from .api.api import api_router
 from .api.endpoints.home import router as home_router
 from .api.endpoints.settings import router as settings_router
@@ -22,6 +26,7 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
     init_db()
     
     from .services.tmdb import TmdbClient
@@ -41,6 +46,13 @@ async def lifespan(app: FastAPI):
     cache = get_cache()
     cache.start_cleanup()
     
+    # 初始化性能统计
+    app.state.request_stats = {
+        "total_requests": 0,
+        "total_time": 0.0,
+        "slow_requests": []
+    }
+    
     logger.info("Application started: HTTP clients and cache initialized")
     
     yield
@@ -57,11 +69,79 @@ async def lifespan(app: FastAPI):
     
     logger.info("Application shutdown complete")
 
-app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
+# 创建 FastAPI 应用
+app = FastAPI(
+    title=settings.app_name,
+    lifespan=lifespan,
+    docs_url="/api/docs" if settings.debug else None,
+    redoc_url="/api/redoc" if settings.debug else None,
+)
+
+# 添加 Gzip 压缩中间件 - 压缩响应数据减少传输时间
+app.add_middleware(
+    GZipMiddleware,
+    minimum_size=1000,  # 只压缩大于 1KB 的响应
+    compresslevel=6,    # 压缩级别 (1-9)
+)
+
+# 添加 CORS 中间件
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.middleware("http")
+async def performance_monitoring(request: Request, call_next: Callable) -> Response:
+    """
+    性能监控中间件
+    - 记录请求耗时
+    - 记录慢请求
+    - 添加响应头
+    """
+    start_time = time.time()
+    
+    response = await call_next(request)
+    
+    process_time = time.time() - start_time
+    
+    # 更新统计
+    if hasattr(request.app.state, "request_stats"):
+        request.app.state.request_stats["total_requests"] += 1
+        request.app.state.request_stats["total_time"] += process_time
+        
+        # 记录慢请求 (>1秒)
+        if process_time > 1.0:
+            request.app.state.request_stats["slow_requests"].append({
+                "path": request.url.path,
+                "method": request.method,
+                "time": round(process_time, 3),
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            # 只保留最近100条慢请求
+            if len(request.app.state.request_stats["slow_requests"]) > 100:
+                request.app.state.request_stats["slow_requests"].pop(0)
+    
+    # 添加性能相关的响应头
+    response.headers["X-Process-Time"] = str(process_time)
+    response.headers["X-Request-ID"] = str(id(request))
+    
+    # 静态资源添加缓存头
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "public, max-age=86400"  # 24小时缓存
+    
+    return response
+
+
+# 挂载静态文件
 APP_DIR = Path(__file__).parent
 STATIC_DIR = APP_DIR / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
 
 @app.get("/api/health", summary="健康检查")
 async def health_check() -> dict:
@@ -72,12 +152,50 @@ async def health_check() -> dict:
         "timestamp": datetime.utcnow().isoformat()
     }
 
+
+@app.get("/api/metrics", summary="性能指标")
+async def get_metrics() -> dict:
+    """获取应用性能指标"""
+    stats = getattr(app.state, "request_stats", {})
+    total_requests = stats.get("total_requests", 0)
+    total_time = stats.get("total_time", 0.0)
+    
+    # 获取数据库查询统计
+    db_stats = get_query_stats()
+    
+    return {
+        "requests": {
+            "total": total_requests,
+            "avg_time": round(total_time / max(total_requests, 1), 3),
+            "slow_requests_count": len(stats.get("slow_requests", [])),
+        },
+        "database": db_stats,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+@app.post("/api/metrics/reset", summary="重置性能指标")
+async def reset_metrics() -> dict:
+    """重置性能统计"""
+    if hasattr(app.state, "request_stats"):
+        app.state.request_stats = {
+            "total_requests": 0,
+            "total_time": 0.0,
+            "slow_requests": []
+        }
+    reset_query_stats()
+    return {"message": "Metrics reset successfully"}
+
+
+# 注册路由
 app.include_router(api_router, prefix="/api")
 app.include_router(home_router)
 app.include_router(settings_router)
 
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    """全局异常处理"""
     logger.error(f"Global exception: {exc}", exc_info=True)
     if settings.debug:
         return JSONResponse(

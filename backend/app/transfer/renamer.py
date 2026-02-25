@@ -33,8 +33,53 @@ class Renamer:
     """
     
     VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.ts', '.rmvb'}
+    SUBTITLE_EXTENSIONS = {'.srt', '.ass', '.ssa', '.sub', '.vtt'}
     
-    EPISODE_PATTERNS = [
+    _SPECIAL_KEYWORDS_RAW = [
+        r"\bSP\d*\b",
+        r"\bSpecials?\b",
+        r"\bOVA\b",
+        r"\bOAD\b",
+        r"\bONA\b",
+        r"\bRecap\b",
+        r"特别篇",
+        r"特別篇",
+        r"番外",
+    ]
+    _EXTRAS_KEYWORDS_RAW = [
+        r"\bextras?\b",
+        r"behind\s*the\s*scenes?",
+        r"making\s*of",
+        r"deleted?\s*scenes?",
+        r"interviews?",
+        r"trailers?",
+        r"\bPV\b",
+        r"\bNCOP\b",
+        r"\bNCED\b",
+        r"\bOP\d*\b",
+        r"\bED\d*\b",
+        r"花絮",
+        r"幕后",
+        r"預告",
+        r"预告",
+    ]
+    _NOISE_DIR_KEYWORDS_RAW = [
+        r"\b1080p\b",
+        r"\b2160p\b",
+        r"\b4k\b",
+        r"\b720p\b",
+        r"\bBDMV\b",
+        r"\bCERTIFICATE\b",
+        r"\bBACKUP\b",
+        r"\bSample\b",
+        r"@eaDir",
+    ]
+    
+    SPECIAL_KEYWORDS = [re.compile(p, re.IGNORECASE) for p in _SPECIAL_KEYWORDS_RAW]
+    EXTRAS_KEYWORDS = [re.compile(p, re.IGNORECASE) for p in _EXTRAS_KEYWORDS_RAW]
+    NOISE_DIR_KEYWORDS = [re.compile(p, re.IGNORECASE) for p in _NOISE_DIR_KEYWORDS_RAW]
+    
+    _EPISODE_PATTERNS_RAW = [
         r'[Ss](\d{1,2})[Ee](\d{1,3})',
         r'第(\d{1,3})[集话話]',
         r'[Ee][Pp]?(\d{1,3})',
@@ -42,14 +87,17 @@ class Renamer:
         r'[-_]\s*(\d{2,3})(?:\s|$|\[)',
         r'[Ee](\d{1,3})(?:\s|$|\[)',
         r'(\d{1,3})[话話集]',
+        r'(?:^|[-_\s\.])(\d{1,3})(?:[_\s\.]|@|v\d|$)',
     ]
-    
-    SEASON_PATTERNS = [
+    _SEASON_PATTERNS_RAW = [
         r'[Ss](\d{1,2})',
         r'[Ss]eason\s*(\d{1,2})',
         r'第(\d{1,2})[季部]',
         r'第([一二三四五六七八九十]{1,3})[季部]',
     ]
+    
+    EPISODE_PATTERNS = [re.compile(p, re.IGNORECASE) for p in _EPISODE_PATTERNS_RAW]
+    SEASON_PATTERNS = [re.compile(p, re.IGNORECASE) for p in _SEASON_PATTERNS_RAW]
 
     GARBLED_REPLACEMENTS = {
         "鏀惰棌TV": "影视收藏",
@@ -98,21 +146,18 @@ class Renamer:
         season = None
         episode = None
         
-        # 提取季数
         for pattern in self.SEASON_PATTERNS:
-            match = re.search(pattern, filename, re.IGNORECASE)
+            match = pattern.search(filename)
             if match:
                 parsed = self._parse_numeric_token(match.group(1))
                 if parsed is not None:
                     season = parsed
                     break
         
-        # 提取集数
-        for pattern in self.EPISODE_PATTERNS:
-            match = re.search(pattern, filename, re.IGNORECASE)
+        for idx, pattern in enumerate(self.EPISODE_PATTERNS):
+            match = pattern.search(filename)
             if match:
-                # S01E01 格式会同时匹配季和集
-                if 'Ss' in pattern or 'Ee' in pattern.lower()[:2]:
+                if idx == 0:
                     groups = match.groups()
                     if len(groups) == 2:
                         parsed_season = self._parse_numeric_token(groups[0])
@@ -130,11 +175,10 @@ class Renamer:
                     if parsed_episode is not None:
                         episode = parsed_episode
                 if episode is not None:
-                    break
-        
-        # 默认季数为 1
-        if episode is not None and season is None:
-            season = 1
+                    if episode > 300:
+                        episode = None
+                    else:
+                        break
         
         return season, episode
 
@@ -168,6 +212,31 @@ class Renamer:
         """判断是否为视频文件"""
         ext = self.get_file_extension(filename)
         return ext in self.VIDEO_EXTENSIONS
+
+    def is_subtitle_file(self, filename: str) -> bool:
+        """判断是否为字幕文件"""
+        ext = self.get_file_extension(filename)
+        return ext in self.SUBTITLE_EXTENSIONS
+
+    @staticmethod
+    def _contains_keyword(text: str, patterns: List) -> bool:
+        if not text:
+            return False
+        for pattern in patterns:
+            if pattern.search(text):
+                return True
+        return False
+
+    def is_special_content(self, name: str, parent_name: Optional[str] = None) -> bool:
+        text = f"{name or ''} {parent_name or ''}"
+        return self._contains_keyword(text, self.SPECIAL_KEYWORDS)
+
+    def is_extra_content(self, name: str, parent_name: Optional[str] = None) -> bool:
+        text = f"{name or ''} {parent_name or ''}"
+        return self._contains_keyword(text, self.EXTRAS_KEYWORDS)
+
+    def is_noise_directory(self, name: str) -> bool:
+        return self._contains_keyword(name or "", self.NOISE_DIR_KEYWORDS)
 
     def sanitize_filename(self, name: str) -> str:
         """
@@ -246,8 +315,9 @@ class Renamer:
         title: str,
         year: Optional[int],
         tmdb_id: Optional[int] = None,
+        media_type: str = "movie",
     ) -> str:
-        """构建媒体根目录名：Title (Year) [tmdbid=xxxx]"""
+        """构建媒体根目录名：只有电影才附加 [tmdbid=xxxx] 标签，避免 Emby 将剧集误认为电影"""
         safe_title = self.sanitize_for_emby(title, ascii_only=False)
         if not safe_title:
             safe_title = self.sanitize_for_emby(title, ascii_only=True)
@@ -257,7 +327,7 @@ class Renamer:
             base = f"{safe_title} ({year})"
         else:
             base = safe_title
-        if tmdb_id:
+        if tmdb_id and media_type == "movie":
             return f"{base} [tmdbid={tmdb_id}]"
         return base
 

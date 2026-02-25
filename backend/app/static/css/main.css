@@ -1954,6 +1954,11 @@ select {
   color: var(--color-text-primary);
 }
 
+.status-badge.deleted {
+  background: linear-gradient(135deg, #fd7e14 0%, #e65100 100%);
+  color: var(--color-text-primary);
+}
+
 .status-badge.not-transferred {
   background: linear-gradient(135deg, rgba(255, 193, 7, 0.9) 0%, rgba(255, 152, 0, 0.9) 100%);
   color: #1a1a1a;
@@ -1971,6 +1976,36 @@ select {
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-secondary);
   border: 1px solid var(--color-border-subtle);
+}
+
+.collection-actions {
+  margin-left: auto;
+}
+
+.collection-verify-btn {
+  padding: var(--spacing-2) var(--spacing-4);
+}
+
+@media (max-width: 767px) {
+  .collection-header {
+    flex-wrap: wrap;
+    gap: var(--spacing-2);
+  }
+
+  .collection-actions {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .collection-verify-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .collection-count {
+    margin-left: 0;
+  }
 }
 
 /* ============================================

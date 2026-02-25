@@ -1,11 +1,15 @@
 """
 Collection API 路由
 """
+import json
 from typing import Optional
-from fastapi import APIRouter, Depends, Query, Path
+from fastapi import APIRouter, Body, Depends, Query, Path, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from ..db.session import get_db
+from ..core.config import get_settings, Settings
+from ..quark.core.transfer_client import QuarkTransferClient
 from .schemas import (
     CollectionAddRequest,
     CollectionAddResponse,
@@ -16,8 +20,12 @@ from .schemas import (
     CollectionCheckLinkResponse,
     CollectionCheckLinksRequest,
     CollectionCheckLinksResponse,
+    CollectionVerifyRequest,
+    CollectionVerifySingleResponse,
+    CollectionVerifyResult,
 )
 from .service import CollectionService
+from .verify_service import CollectionVerifyService
 
 router = APIRouter(prefix="/collection", tags=["collection"])
 
@@ -149,3 +157,65 @@ def check_links_collection(
             "status": r["status"],
         } for r in results]
     )
+
+
+@router.post("/verify", summary="验证收藏网盘状态（SSE）")
+async def verify_collections(
+    request: Optional[CollectionVerifyRequest] = Body(default=None),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """
+    验证收藏对应网盘目录是否存在，并同步修正收藏状态。
+    """
+    client = QuarkTransferClient(settings.quark_transfer_cookie or "")
+    service = CollectionVerifyService(db, client)
+    collection_ids = (request.collection_ids if request else None)
+
+    async def event_stream():
+        try:
+            async for event in service.verify_all(collection_ids=collection_ids):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            error_event = {
+                "type": "error",
+                "current": 0,
+                "total": 0,
+                "percentage": 0,
+                "message": f"验证流异常: {str(e)}",
+                "level": "error",
+            }
+            yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+        finally:
+            await client.close()
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers=headers)
+
+
+@router.post(
+    "/verify/{collection_id}",
+    response_model=CollectionVerifySingleResponse,
+    summary="验证单个收藏网盘状态",
+)
+async def verify_single_collection(
+    collection_id: int = Path(..., description="收藏 ID"),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    client = QuarkTransferClient(settings.quark_transfer_cookie or "")
+    service = CollectionVerifyService(db, client)
+    try:
+        result = await service.verify_single(collection_id)
+        return CollectionVerifySingleResponse(
+            success=True,
+            result=CollectionVerifyResult(**result),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    finally:
+        await client.close()

@@ -6,8 +6,18 @@
   <meta name="description" content="Nitfix - 影视海报墙，浏览热门电影和剧集，管理您的收藏">
   <meta name="theme-color" content="#0a0a0a">
   <title>{{ page_title or "Nitfix - 影视海报墙" }}</title>
+  
+  <!-- 预加载关键资源 -->
+  <link rel="preconnect" href="https://image.tmdb.org">
+  <link rel="dns-prefetch" href="https://image.tmdb.org">
+  
+  <!-- 样式表 -->
   <link rel="stylesheet" href="/static/css/main.css">
+  
+  <!-- 脚本加载优化 -->
+  <script src="/static/js/cache.js" defer></script>
   <script src="/static/js/main.js" defer></script>
+  
   {% block head %}{% endblock %}
 </head>
 <body>

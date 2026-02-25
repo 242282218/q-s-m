@@ -1,5 +1,6 @@
 [
   "backend/tests/test_emby_naming.py::test_build_episode_filename",
+  "backend/tests/test_emby_naming.py::test_build_video_action_fallback_keeps_chinese_suffix",
   "backend/tests/test_emby_naming.py::test_extract_episode_info_with_chinese_season",
   "backend/tests/test_emby_naming.py::test_pick_romanized_title_prefers_romaji",
   "backend/tests/test_emby_naming.py::test_resolve_media_category_detects_anime",
@@ -11,5 +12,9 @@
   "backend/tests/test_optimizations.py::test_collection_js_syntax",
   "backend/tests/test_optimizations.py::test_css_optimizations",
   "backend/tests/test_optimizations.py::test_dummy",
-  "backend/tests/test_rename_saved_tree.py::test_rename_saved_tree_tv_recursive"
+  "backend/tests/test_rename_saved_tree.py::test_rename_saved_tree_tv_recursive",
+  "backend/tests/test_rename_saved_tree.py::test_reorganize_and_cleanup_tv_recursive",
+  "backend/tests/test_transfer_flatten_single_root.py::test_transfer_flatten_single_root_recurses_to_files",
+  "backend/tests/test_transfer_flatten_single_root.py::test_transfer_flatten_single_root_respects_max_depth",
+  "backend/tests/test_transfer_flatten_single_root.py::test_transfer_flatten_single_root_stops_on_multiple_children"
 ]

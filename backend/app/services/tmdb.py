@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 import logging
 import time
+from functools import lru_cache
 
 import httpx
 
@@ -14,6 +16,8 @@ DEFAULT_POSTER_SIZE = "w500"
 DEFAULT_BACKDROP_SIZE = "w780"
 DEFAULT_LANG = "zh-CN"
 HOME_SECTIONS_CACHE_TTL = 300
+DETAIL_CACHE_TTL = 600  # 详情页缓存10分钟
+SEARCH_CACHE_TTL = 180  # 搜索结果缓存3分钟
 
 GENRE_TONE = {
     10749: "romance",
@@ -29,7 +33,19 @@ GENRE_TONE = {
 
 logger = logging.getLogger(__name__)
 
+
 class TmdbClient:
+    """
+    TMDB API 客户端 - 性能优化版本
+    
+    优化记录:
+    - 2026-02-26: 添加连接池、keep-alive、请求缓存、批量请求优化
+    """
+    
+    # 类级别的共享连接池
+    _shared_transport: Optional[httpx.AsyncHTTPTransport] = None
+    _shared_limits: Optional[httpx.Limits] = None
+    
     def __init__(
         self,
         api_key: str,
@@ -46,37 +62,100 @@ class TmdbClient:
         self.image_base = image_base or settings.tmdb_image_base
         self.language = language or settings.default_language
         
-        # 优先使用传入的代理，其次检查 settings（如果有），最后是环境变量
+        # 代理配置
         import os
-        
         system_proxy = os.environ.get("HTTP_PROXY") or os.environ.get("HTTPS_PROXY")
-        # Also check settings
         settings_proxy = settings.http_proxy
         final_proxy = proxy or settings_proxy or system_proxy
         
         if final_proxy:
             logger.info(f"TmdbClient utilizing proxy: {final_proxy}")
         else:
-            logger.info("TmdbClient initialized without explicit proxy (will use env if set)")
-            
+            logger.info("TmdbClient initialized without explicit proxy")
+        
+        # 优化：使用共享连接池配置
+        if TmdbClient._shared_limits is None:
+            TmdbClient._shared_limits = httpx.Limits(
+                max_keepalive_connections=20,
+                max_connections=50,
+                keepalive_expiry=60.0
+            )
+        
+        if TmdbClient._shared_transport is None:
+            TmdbClient._shared_transport = httpx.AsyncHTTPTransport(
+                limits=TmdbClient._shared_limits,
+                retries=2  # 自动重试
+            )
+        
         self._client = httpx.AsyncClient(
             base_url=self.api_base,
-            headers={"Accept": "application/json"},
-            timeout=timeout,
+            headers={
+                "Accept": "application/json",
+                "Accept-Encoding": "gzip, deflate",  # 启用压缩
+            },
+            timeout=httpx.Timeout(timeout, connect=3.0),
             proxy=final_proxy,
-            trust_env=True
+            trust_env=True,
+            transport=TmdbClient._shared_transport,
+            # http2=True,  # 需要安装 httpx[http2]，暂不使用
         )
+        
+        # 请求统计
+        self._request_count = 0
+        self._cache_hits = 0
 
     async def close(self) -> None:
         await self._client.aclose()
 
-    async def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def _get(self, path: str, params: Optional[Dict[str, Any]] = None, use_cache: bool = True) -> Dict[str, Any]:
+        """
+        发送 GET 请求，支持缓存
+        
+        Args:
+            path: API 路径
+            params: 查询参数
+            use_cache: 是否使用缓存
+        """
         params = params or {}
         params.setdefault("api_key", self.api_key)
         params.setdefault("language", self.language)
-        resp = await self._client.get(path, params=params)
-        resp.raise_for_status()
-        return resp.json()
+        
+        # 生成缓存键
+        cache_key = None
+        if use_cache:
+            cache_key = f"tmdb:{path}:{hash(str(sorted(params.items())))}"
+            cache = get_cache()
+            cached = await cache.get(cache_key)
+            if cached:
+                self._cache_hits += 1
+                logger.debug(f"Cache hit for {path}")
+                return cached
+        
+        self._request_count += 1
+        start_time = time.time()
+        
+        try:
+            resp = await self._client.get(path, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+            
+            # 缓存结果
+            if use_cache and cache_key:
+                cache = get_cache()
+                ttl = DETAIL_CACHE_TTL if "/" in path and path.split("/")[-1].isdigit() else SEARCH_CACHE_TTL
+                await cache.set(cache_key, data, ttl=ttl)
+            
+            elapsed = time.time() - start_time
+            if elapsed > 0.5:
+                logger.warning(f"Slow TMDB request: {elapsed:.2f}s for {path}")
+            
+            return data
+        except httpx.HTTPStatusError as e:
+            logger.error(f"TMDB HTTP error {e.response.status_code} for {path}: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"TMDB request failed for {path}: {e}")
+            raise
 
     async def trending(self, media_type: str = "all", window: str = "week") -> List[Dict[str, Any]]:
         data = await self._get(f"/trending/{media_type}/{window}")
@@ -137,21 +216,39 @@ class TmdbClient:
         data = await self._get("/discover/tv", params=params)
         return data.get("results", [])
 
+    def _merge_and_sort_results(
+        self, 
+        results: List, 
+        limit: int = 20,
+        default_media_type: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        合并多个搜索结果并按热度排序。
+        """
+        combined = []
+        seen_ids = set()
+        for r in results:
+            if isinstance(r, list):
+                for item in r:
+                    item_id = item.get("id")
+                    if item_id and item_id not in seen_ids:
+                        seen_ids.add(item_id)
+                        if not item.get("media_type"):
+                            if default_media_type:
+                                item["media_type"] = default_media_type
+                            else:
+                                item["media_type"] = "movie" if "title" in item else "tv"
+                        combined.append(item)
+        combined.sort(key=lambda x: x.get("popularity", 0) or 0, reverse=True)
+        return combined[:limit]
+
     async def china_trending(self) -> List[Dict[str, Any]]:
         results = await asyncio.gather(
             self.discover_movies(with_original_language="zh", sort_by="popularity.desc"),
             self.discover_tv(with_original_language="zh", sort_by="popularity.desc"),
             return_exceptions=True,
         )
-        combined = []
-        for r in results:
-            if isinstance(r, list):
-                for item in r:
-                    if item.get("id") and item.get("id") not in [c.get("id") for c in combined]:
-                        item["media_type"] = item.get("media_type") or ("movie" if "title" in item else "tv")
-                        combined.append(item)
-        combined.sort(key=lambda x: x.get("popularity", 0) or 0, reverse=True)
-        return combined[:20]
+        return self._merge_and_sort_results(results)
 
     async def anime_popular(self) -> List[Dict[str, Any]]:
         results = await asyncio.gather(
@@ -177,18 +274,9 @@ class TmdbClient:
             ),
             return_exceptions=True,
         )
-        combined = []
-        for r in results:
-            if isinstance(r, list):
-                for item in r:
-                    if item.get("id") and item.get("id") not in [c.get("id") for c in combined]:
-                        item["media_type"] = item.get("media_type") or ("movie" if "title" in item else "tv")
-                        combined.append(item)
-        combined.sort(key=lambda x: x.get("popularity", 0) or 0, reverse=True)
-        return combined[:20]
+        return self._merge_and_sort_results(results)
 
     async def anime_latest(self) -> List[Dict[str, Any]]:
-        from datetime import datetime, timedelta
         today = datetime.now().strftime("%Y-%m-%d")
         two_months_ago = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")
         
@@ -207,18 +295,9 @@ class TmdbClient:
             ),
             return_exceptions=True,
         )
-        combined = []
-        for r in results:
-            if isinstance(r, list):
-                for item in r:
-                    if item.get("id") and item.get("id") not in [c.get("id") for c in combined]:
-                        item["media_type"] = item.get("media_type") or "tv"
-                        combined.append(item)
-        combined.sort(key=lambda x: x.get("popularity", 0) or 0, reverse=True)
-        return combined[:20]
+        return self._merge_and_sort_results(results, default_media_type="tv")
 
     async def tv_latest(self) -> List[Dict[str, Any]]:
-        from datetime import datetime, timedelta
         today = datetime.now().strftime("%Y-%m-%d")
         two_months_ago = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")
         
@@ -240,15 +319,7 @@ class TmdbClient:
             ),
             return_exceptions=True,
         )
-        combined = []
-        for r in results:
-            if isinstance(r, list):
-                for item in r:
-                    if item.get("id") and item.get("id") not in [c.get("id") for c in combined]:
-                        item["media_type"] = item.get("media_type") or "tv"
-                        combined.append(item)
-        combined.sort(key=lambda x: x.get("popularity", 0) or 0, reverse=True)
-        return combined[:20]
+        return self._merge_and_sort_results(results, default_media_type="tv")
 
     async def tv_popular(self) -> List[Dict[str, Any]]:
         results = await asyncio.gather(
@@ -258,15 +329,7 @@ class TmdbClient:
             ),
             return_exceptions=True,
         )
-        combined = []
-        for r in results:
-            if isinstance(r, list):
-                for item in r:
-                    if item.get("id") and item.get("id") not in [c.get("id") for c in combined]:
-                        item["media_type"] = item.get("media_type") or "tv"
-                        combined.append(item)
-        combined.sort(key=lambda x: x.get("popularity", 0) or 0, reverse=True)
-        return combined[:20]
+        return self._merge_and_sort_results(results, default_media_type="tv")
 
     async def search_multi(self, query: str) -> List[Dict[str, Any]]:
         if not query:
@@ -295,8 +358,6 @@ class TmdbClient:
     async def alternative_titles(self, media_type: str, item_id: int) -> List[Dict[str, Any]]:
         """
         获取电影/剧集别名列表。
-        - movie: /movie/{id}/alternative_titles
-        - tv: /tv/{id}/alternative_titles
         """
         path = f"/{media_type}/{item_id}/alternative_titles"
         data = await self._get(path, params={})
@@ -332,6 +393,14 @@ class TmdbClient:
         if not path:
             return None
         return f"{self.image_base}{size}{path}"
+    
+    def get_stats(self) -> Dict[str, int]:
+        """获取客户端统计信息"""
+        return {
+            "request_count": self._request_count,
+            "cache_hits": self._cache_hits,
+            "cache_hit_rate": round(self._cache_hits / max(self._request_count, 1) * 100, 1)
+        }
 
 
 def tone_from_genres(genre_ids: Optional[List[int]]) -> str:
@@ -377,17 +446,10 @@ async def gather_sections(client: TmdbClient) -> Dict[str, List[Dict[str, Any]]]
     """
     获取首页各分区数据，支持缓存
     
-    分区配置（针对国内用户优化）：
-    1. anime_latest - 动漫 · 新番（日漫+中国漫画）
-    2. tv_latest - TV · 新作（华语+日韩新剧）
-    3. top_rated - 高分佳作
-    4. tv_popular - TV · 热播（国产剧集）
-    5. anime_popular - 动漫 · 热播（日漫+中国漫画）
-    
-    缓存策略：
-    - 缓存时间：300秒（5分钟）
-    - 缓存键：home_sections
-    - 失败时返回空列表，不影响其他分区
+    优化:
+    - 使用并发请求
+    - 缓存结果
+    - 错误隔离
     """
     cache = get_cache()
     cache_key = "tmdb:home_sections"
@@ -399,6 +461,7 @@ async def gather_sections(client: TmdbClient) -> Dict[str, List[Dict[str, Any]]]
     
     start_time = time.time()
     
+    # 并发获取所有分区数据
     results = await asyncio.gather(
         client.anime_latest(),
         client.tv_latest(),
@@ -425,6 +488,7 @@ async def gather_sections(client: TmdbClient) -> Dict[str, List[Dict[str, Any]]]
     
     return data
 
+
 def adapt_detail(item: Dict, client: TmdbClient) -> Dict:
     title = item.get("title") or item.get("name") or "未命名"
     date_field = item.get("release_date") or item.get("first_air_date") or ""
@@ -433,32 +497,30 @@ def adapt_detail(item: Dict, client: TmdbClient) -> Dict:
     runtime = item.get("runtime") or (item.get("episode_run_time") or [None])[0]
     vote = item.get("vote_average")
 
+    # 优化：使用列表推导式减少循环
     cast_raw = (item.get("credits") or {}).get("cast") or []
-    cast = []
-    for c in cast_raw[:12]:
-        cast.append(
-            {
-                "id": c.get("id"),
-                "name": c.get("name") or "",
-                "character": c.get("character") or "",
-                "profile_url": client.image_url(c.get("profile_path"), "w300"),
-            }
-        )
+    cast = [
+        {
+            "id": c.get("id"),
+            "name": c.get("name") or "",
+            "character": c.get("character") or "",
+            "profile_url": client.image_url(c.get("profile_path"), "w300"),
+        }
+        for c in cast_raw[:12]
+    ]
 
+    # 优化：过滤和限制视频数量
     videos_raw = (item.get("videos") or {}).get("results") or []
-    videos = []
-    for v in videos_raw:
-        if v.get("site") != "YouTube" or not v.get("key"):
-            continue
-        videos.append(
-            {
-                "key": v.get("key"),
-                "name": v.get("name") or "",
-                "type": v.get("type") or "",
-                "official": v.get("official") or False,
-            }
-        )
-    videos = videos[:2]
+    videos = [
+        {
+            "key": v.get("key"),
+            "name": v.get("name") or "",
+            "type": v.get("type") or "",
+            "official": v.get("official") or False,
+        }
+        for v in videos_raw
+        if v.get("site") == "YouTube" and v.get("key")
+    ][:2]
 
     recommendations = (item.get("recommendations") or {}).get("results") or []
     if not recommendations:
@@ -491,12 +553,12 @@ def adapt_person(person: Dict, client: TmdbClient, credits: List[Dict]) -> Dict:
         date = c.get("release_date") or c.get("first_air_date") or ""
         return (va, pop, date)
 
+    # 优化：单次遍历完成过滤
     filtered = []
     for c in credits:
         mt = c.get("media_type") or ("movie" if "title" in c else "tv")
-        if mt not in ("movie", "tv") or not c.get("id"):
-            continue
-        filtered.append(c)
+        if mt in ("movie", "tv") and c.get("id"):
+            filtered.append(c)
 
     top_sorted = sorted(filtered, key=credit_score, reverse=True)[:12]
     top_credits = []
@@ -511,22 +573,19 @@ def adapt_person(person: Dict, client: TmdbClient, credits: List[Dict]) -> Dict:
             adapted["subtitle"] = " · ".join(subtitle_parts)
         top_credits.append(adapted)
 
-    all_credits = []
-    for c in filtered:
-        mt = c.get("media_type") or ("movie" if "title" in c else "tv")
-        title = c.get("title") or c.get("name") or "未命名"
-        date_field = c.get("release_date") or c.get("first_air_date") or ""
-        year = date_field.split("-")[0] if date_field else ""
-        role = c.get("character") or c.get("job") or ""
-        all_credits.append(
-            {
-                "id": c.get("id"),
-                "media_type": mt,
-                "title": title,
-                "year": year,
-                "role": role,
-            }
-        )
+    # 优化：列表推导式
+    all_credits = [
+        {
+            "id": c.get("id"),
+            "media_type": c.get("media_type") or ("movie" if "title" in c else "tv"),
+            "title": c.get("title") or c.get("name") or "未命名",
+            "year": (c.get("release_date") or c.get("first_air_date") or "").split("-")[0] if (
+                c.get("release_date") or c.get("first_air_date")
+            ) else "",
+            "role": c.get("character") or c.get("job") or "",
+        }
+        for c in filtered
+    ]
     all_credits.sort(key=lambda x: x.get("year") or "", reverse=True)
 
     return {

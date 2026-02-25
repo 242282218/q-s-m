@@ -22,6 +22,11 @@ const limit = 20;
 let totalItems = 0;
 let renameAbortController = null;
 let renameInProgress = false;
+let verifyAbortController = null;
+let verifyInProgress = false;
+let lastSilentVerifyAt = 0;
+
+const SILENT_VERIFY_COOLDOWN_MS = 10 * 60 * 1000;
 
 /** 图片加载配置 */
 const IMAGE_CONFIG = {
@@ -107,6 +112,40 @@ function renderCardsBatch(items, grid) {
     grid.appendChild(fragment);
 }
 
+function buildTransferBadgeHtml(statusNum) {
+    if (statusNum === 1) {
+        return '<span class="status-badge transfer-status transferred">已转存</span>';
+    }
+    if (statusNum === 2) {
+        return '<span class="status-badge transfer-status expired">已失效</span>';
+    }
+    if (statusNum === 3) {
+        return '<span class="status-badge transfer-status deleted">网盘已删除</span>';
+    }
+    return '<span class="status-badge transfer-status not-transferred">未转存</span>';
+}
+
+function updateCardStatus(collectionId, newStatus) {
+    const card = document.querySelector(`.poster-card[data-id="${collectionId}"]`);
+    if (!card) return;
+
+    const statusNum = Number(newStatus ?? 0);
+    card.dataset.status = String(statusNum);
+
+    const transferBadge = card.querySelector('.transfer-status');
+    if (transferBadge) {
+        transferBadge.outerHTML = buildTransferBadgeHtml(statusNum);
+    }
+
+    const renameBtn = card.querySelector('button[data-action="rename"]');
+    if (renameBtn) {
+        const disabled = statusNum !== 1;
+        renameBtn.disabled = disabled;
+        renameBtn.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+        renameBtn.classList.toggle('is-disabled', disabled);
+    }
+}
+
 /**
  * 创建单个卡片元素
  * 优化: 使用 createElement 替代 innerHTML，提高安全性
@@ -136,14 +175,7 @@ function createCardElement(item, imageSize) {
     let statusBadgeHtml = '';
     const savedBadge = '<span class="status-badge saved">已收藏</span>';
     
-    let transferBadgeHtml = '';
-    if (statusNum === 1) {
-        transferBadgeHtml = '<span class="status-badge transferred">已转存</span>';
-    } else if (statusNum === 2) {
-        transferBadgeHtml = '<span class="status-badge expired">已失效</span>';
-    } else {
-        transferBadgeHtml = '<span class="status-badge not-transferred">未转存</span>';
-    }
+    const transferBadgeHtml = buildTransferBadgeHtml(statusNum);
     
     statusBadgeHtml = `<div class="status-badges">${savedBadge}${transferBadgeHtml}</div>`;
     
@@ -240,6 +272,7 @@ async function loadCollections(page = 1) {
         
         fetchMissingPosters();
         grid.style.display = 'grid';
+        silentVerifyCollections(data.items);
 
         const totalPages = Math.ceil(totalItems / limit);
         if (totalPages > 1) {
@@ -357,14 +390,16 @@ function getRenameModalElements() {
     };
 }
 
-function openRenameModal(resourceTitle) {
+function openRenameModal(resourceTitle, taskTitle = '重命名进度', icon = '✏️') {
     const { modal, title, progressFill, progressText, lines, summary } = getRenameModalElements();
     if (!modal || !title || !progressFill || !progressText || !lines || !summary) {
         console.error('[openRenameModal] 模态框 DOM 未就绪');
         return;
     }
 
-    title.textContent = `✏️ 重命名进度 - ${resourceTitle || '未知资源'}`;
+    title.textContent = resourceTitle
+        ? `${icon} ${taskTitle} - ${resourceTitle}`
+        : `${icon} ${taskTitle}`;
     progressFill.style.width = '0%';
     progressText.textContent = '0% (0/0)';
     lines.innerHTML = '';
@@ -379,10 +414,12 @@ function closeRenameModal(force = false) {
     const { modal } = getRenameModalElements();
     if (!modal) return;
 
-    if (!force && renameInProgress) {
-        const shouldAbort = confirm('重命名正在进行，关闭将中断任务，确定继续吗？');
+    if (!force && (renameInProgress || verifyInProgress)) {
+        const taskLabel = renameInProgress ? '重命名' : '网盘验证';
+        const shouldAbort = confirm(`${taskLabel}正在进行，关闭将中断任务，确定继续吗？`);
         if (!shouldAbort) return;
         renameAbortController?.abort();
+        verifyAbortController?.abort();
     }
 
     modal.style.display = 'none';
@@ -414,17 +451,24 @@ function appendRenameLog(message, level = 'info') {
     lines.scrollTop = lines.scrollHeight;
 }
 
-function updateRenameSummary(success, skipped, failed) {
+function setRenameSummaryText(text, hasError = false) {
     const { summary } = getRenameModalElements();
     if (!summary) return;
 
+    summary.textContent = text || '';
+    summary.classList.toggle('done', Boolean(text));
+    summary.classList.toggle('has-error', Boolean(text) && hasError);
+}
+
+function updateRenameSummary(success, skipped, failed) {
     const safeSuccess = Number.isFinite(success) ? success : 0;
     const safeSkipped = Number.isFinite(skipped) ? skipped : 0;
     const safeFailed = Number.isFinite(failed) ? failed : 0;
 
-    summary.textContent = `完成汇总：成功 ${safeSuccess} 个，跳过 ${safeSkipped} 个，失败 ${safeFailed} 个`;
-    summary.classList.add('done');
-    summary.classList.toggle('has-error', safeFailed > 0);
+    setRenameSummaryText(
+        `完成汇总：成功 ${safeSuccess} 个，跳过 ${safeSkipped} 个，失败 ${safeFailed} 个`,
+        safeFailed > 0
+    );
 }
 
 function parseSseData(chunk) {
@@ -444,6 +488,38 @@ function parseSseData(chunk) {
     } catch (error) {
         console.error('[parseSseData] 解析失败:', error, payload);
         return null;
+    }
+}
+
+async function consumeSseStream(response, onEvent) {
+    if (!response.body) {
+        throw new Error('浏览器不支持流式响应');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+
+    while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split(/\r?\n\r?\n/);
+        buffer = chunks.pop() || '';
+
+        chunks.forEach((chunk) => {
+            const eventData = parseSseData(chunk);
+            if (!eventData) return;
+            onEvent(eventData);
+        });
+    }
+
+    const finalChunk = buffer.trim();
+    if (!finalChunk) return;
+    const eventData = parseSseData(finalChunk);
+    if (eventData) {
+        onEvent(eventData);
     }
 }
 
@@ -487,6 +563,184 @@ function handleRenameEvent(eventData) {
     return false;
 }
 
+function handleVerifyEvent(eventData, { silent = false } = {}) {
+    if (!eventData || typeof eventData !== 'object') return false;
+
+    const type = eventData.type || 'log';
+    const level = eventData.level || 'info';
+    const current = Number(eventData.current ?? 0);
+    const total = Number(eventData.total ?? 0);
+    const percentage = Number(eventData.percentage ?? 0);
+    const message = eventData.message || '';
+
+    if (type === 'log') {
+        if (!silent) {
+            appendRenameLog(message, level);
+            if (total > 0) {
+                updateRenameProgress(current, total, percentage);
+            }
+        }
+        if (Number.isFinite(eventData.collection_id) && Number.isFinite(eventData.current_status)) {
+            updateCardStatus(eventData.collection_id, eventData.current_status);
+        }
+        return false;
+    }
+
+    if (type === 'progress') {
+        if (!silent) {
+            updateRenameProgress(current, total, percentage);
+        }
+        return false;
+    }
+
+    if (type === 'complete') {
+        if (!silent) {
+            updateRenameProgress(total, total, 100);
+            appendRenameLog(message || '验证完成', 'info');
+            setRenameSummaryText(
+                `完成汇总：存在 ${eventData.exists ?? 0} 个，已删除 ${eventData.deleted ?? 0} 个，失败 ${eventData.failed ?? 0} 个`,
+                Number(eventData.failed ?? 0) > 0
+            );
+            showToast('网盘验证完成', 'success');
+        }
+        return true;
+    }
+
+    if (type === 'error') {
+        if (!silent) {
+            appendRenameLog(message || '验证失败', 'error');
+            showToast(message || '网盘验证失败', 'error');
+        }
+        return true;
+    }
+
+    return false;
+}
+
+async function verifyCollections(button) {
+    if (verifyInProgress) {
+        showToast('已有网盘验证任务正在执行', 'info');
+        return;
+    }
+    if (renameInProgress) {
+        showToast('重命名任务执行中，请稍后再验证', 'info');
+        return;
+    }
+
+    const targetBtn = button || document.getElementById('verify-collections-btn');
+    const originalText = targetBtn?.innerHTML || '';
+    if (targetBtn) {
+        targetBtn.innerHTML = '<span class="loading-spinner" style="width:16px;height:16px;border-width:2px;margin:0;"></span>';
+        targetBtn.disabled = true;
+    }
+
+    verifyInProgress = true;
+    verifyAbortController = new AbortController();
+    lastSilentVerifyAt = Date.now();
+    let receivedComplete = false;
+
+    openRenameModal('全部收藏', '网盘验证进度', '🔍');
+    appendRenameLog('开始验证网盘状态', 'info');
+
+    try {
+        const response = await fetch('/api/collection/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+            signal: verifyAbortController.signal,
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP 错误: ${response.status}`);
+        }
+
+        await consumeSseStream(response, (eventData) => {
+            if (handleVerifyEvent(eventData)) {
+                receivedComplete = true;
+            }
+        });
+
+        if (!receivedComplete) {
+            appendRenameLog('验证流已结束，但未收到完成事件', 'warning');
+        }
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            appendRenameLog('网盘验证任务已中断', 'warning');
+            showToast('网盘验证任务已中断', 'info');
+        } else {
+            console.error('[verifyCollections] 请求失败:', error);
+            appendRenameLog(`验证失败: ${error.message}`, 'error');
+            showToast('网盘验证请求失败', 'error');
+        }
+    } finally {
+        verifyInProgress = false;
+        verifyAbortController = null;
+        if (targetBtn) {
+            targetBtn.innerHTML = originalText;
+            targetBtn.disabled = false;
+        }
+        loadCollections(currentPage);
+    }
+}
+
+async function silentVerifyCollection(collectionId) {
+    const response = await fetch(`/api/collection/verify/${collectionId}`, {
+        method: 'POST',
+    });
+    if (!response.ok) {
+        return;
+    }
+    const data = await response.json();
+    const result = data?.result;
+    if (!result || !Number.isFinite(result.collection_id)) {
+        return;
+    }
+    updateCardStatus(result.collection_id, result.current_status);
+}
+
+function shouldRunSilentVerify() {
+    if (renameInProgress || verifyInProgress) return false;
+    const now = Date.now();
+    return now - lastSilentVerifyAt >= SILENT_VERIFY_COOLDOWN_MS;
+}
+
+function silentVerifyCollections(items) {
+    if (!Array.isArray(items) || items.length === 0 || !shouldRunSilentVerify()) {
+        return;
+    }
+
+    const ids = items
+        .filter((item) => Number(item.status) === 1)
+        .map((item) => Number(item.id))
+        .filter((id) => Number.isFinite(id));
+
+    if (ids.length === 0) return;
+    lastSilentVerifyAt = Date.now();
+
+    const concurrency = 3;
+    let cursor = 0;
+
+    const runWorker = async () => {
+        while (cursor < ids.length) {
+            const index = cursor;
+            cursor += 1;
+            try {
+                await silentVerifyCollection(ids[index]);
+            } catch (error) {
+                console.warn('[silentVerifyCollections] 验证失败:', ids[index], error?.message || error);
+            }
+        }
+    };
+
+    const workers = [];
+    for (let i = 0; i < Math.min(concurrency, ids.length); i += 1) {
+        workers.push(runWorker());
+    }
+    Promise.all(workers).catch((error) => {
+        console.warn('[silentVerifyCollections] 批量验证异常:', error?.message || error);
+    });
+}
+
 function initRenameModal() {
     const { modal, closeTop, closeBottom } = getRenameModalElements();
     if (!modal || !closeTop || !closeBottom) return;
@@ -508,6 +762,10 @@ async function renameCollection(id, title, button) {
 
     if (renameInProgress) {
         showToast('已有重命名任务正在执行', 'info');
+        return;
+    }
+    if (verifyInProgress) {
+        showToast('网盘验证执行中，请稍后再重命名', 'info');
         return;
     }
 
@@ -534,38 +792,11 @@ async function renameCollection(id, title, button) {
             throw new Error(`HTTP 错误: ${response.status}`);
         }
 
-        if (!response.body) {
-            throw new Error('浏览器不支持流式响应');
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder('utf-8');
-        let buffer = '';
-
-        while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const chunks = buffer.split(/\r?\n\r?\n/);
-            buffer = chunks.pop() || '';
-
-            chunks.forEach((chunk) => {
-                const eventData = parseSseData(chunk);
-                if (!eventData) return;
-                if (handleRenameEvent(eventData)) {
-                    receivedComplete = true;
-                }
-            });
-        }
-
-        const finalChunk = buffer.trim();
-        if (finalChunk) {
-            const eventData = parseSseData(finalChunk);
-            if (eventData && handleRenameEvent(eventData)) {
+        await consumeSseStream(response, (eventData) => {
+            if (handleRenameEvent(eventData)) {
                 receivedComplete = true;
             }
-        }
+        });
 
         if (!receivedComplete) {
             appendRenameLog('重命名流已结束，但未收到完成事件', 'warning');
@@ -771,6 +1002,9 @@ document.getElementById('next-page')?.addEventListener('click', () => {
 document.addEventListener('DOMContentLoaded', () => {
     initEventDelegation();
     initRenameModal();
+    document.getElementById('verify-collections-btn')?.addEventListener('click', (event) => {
+        verifyCollections(event.currentTarget);
+    });
     loadCollections(1);
 });
 

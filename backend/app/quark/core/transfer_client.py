@@ -1,6 +1,7 @@
 """
 夸克转存客户端
 """
+import asyncio
 import time
 import random
 import logging
@@ -112,6 +113,32 @@ class QuarkTransferClient:
             headers["Cookie"] = self.cookie
         return headers
 
+    async def _parse_json_response(self, response, operation: str) -> Optional[Dict[str, Any]]:
+        """
+        解析 JSON 响应的辅助方法。
+        
+        Args:
+            response: aiohttp 响应对象
+            operation: 操作名称（用于日志）
+            
+        Returns:
+            解析后的 JSON 数据，失败返回 None
+        """
+        if response.status in (301, 302, 303, 307, 308):
+            logger.error(f"{operation}被重定向: {response.headers.get('location')}")
+            return None
+        if response.status != 200:
+            logger.error(f"{operation}失败，响应状态: {response.status}")
+            return None
+        if not (response.content_type and "json" in response.content_type):
+            logger.error(f"{operation}返回非JSON: {response.content_type}")
+            return None
+        try:
+            return await response.json()
+        except Exception as e:
+            logger.error(f"{operation} JSON解析失败: {e}")
+            return None
+
     def _apply_mobile_share_params(self, url: str, params: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
         if not self.mparam:
             return url, params
@@ -164,19 +191,12 @@ class QuarkTransferClient:
         
         try:
             async with self.session.post(url, headers=headers, params=params, json=payload, allow_redirects=False) as response:
-                if response.status in (301, 302, 303, 307, 308):
-                    logger.error(f"获取stoken被重定向: {response.headers.get('location')}")
+                data = await self._parse_json_response(response, "获取stoken")
+                if data is None:
                     return None
-                if response.status == 200:
-                    if response.content_type and "json" in response.content_type:
-                        data = await response.json()
-                    else:
-                        logger.error(f"获取stoken返回非JSON: {response.content_type}")
-                        return None
-                    if data.get("data") and data["data"].get("stoken") and data.get("code") == 0:
-                        return data["data"]["stoken"]
-                    logger.error(f"获取stoken失败: {data.get('message') or data.get('msg')}")
-                logger.error(f"获取stoken失败，响应状态: {response.status}")
+                if data.get("data") and data["data"].get("stoken") and data.get("code") == 0:
+                    return data["data"]["stoken"]
+                logger.error(f"获取stoken失败: {data.get('message') or data.get('msg')}")
         except Exception as e:
             logger.error(f"获取stoken异常: {str(e)}")
         
@@ -217,31 +237,24 @@ class QuarkTransferClient:
         
         try:
             async with self.session.get(url, headers=headers, params=params, allow_redirects=False) as response:
-                if response.status in (301, 302, 303, 307, 308):
-                    logger.error(f"获取分享文件被重定向: {response.headers.get('location')}")
+                data = await self._parse_json_response(response, "获取分享文件")
+                if data is None:
                     return [], False
-                if response.status == 200:
-                    if response.content_type and "json" in response.content_type:
-                        data = await response.json()
-                    else:
-                        logger.error(f"获取分享文件返回非JSON: {response.content_type}")
-                        return [], False
-                    if data.get("code") == 0 and data.get("data") and data["data"].get("list"):
-                        file_list = []
-                        for item in data["data"]["list"]:
-                            file_detail = FileDetail(
-                                fid=item["fid"],
-                                title=item.get("file_name") or item.get("name") or "",
-                                file_type=2 if item.get("dir") else 1,
-                                size=item.get("size", 0),
-                                pdir_fid=item.get("pdir_fid", "0"),
-                                share_fid_token=item.get("share_fid_token", "")
-                            )
-                            file_list.append(file_detail)
-                        total = data.get("metadata", {}).get("_total", 0)
-                        have_next = total > (page * int(params["_size"]))
-                        return file_list, have_next
-                logger.error(f"获取分享文件失败，响应状态: {response.status}")
+                if data.get("code") == 0 and data.get("data") and data["data"].get("list"):
+                    file_list = []
+                    for item in data["data"]["list"]:
+                        file_detail = FileDetail(
+                            fid=item["fid"],
+                            title=item.get("file_name") or item.get("name") or "",
+                            file_type=2 if item.get("dir") else 1,
+                            size=item.get("size", 0),
+                            pdir_fid=item.get("pdir_fid", "0"),
+                            share_fid_token=item.get("share_fid_token", "")
+                        )
+                        file_list.append(file_detail)
+                    total = data.get("metadata", {}).get("_total", 0)
+                    have_next = total > (page * int(params["_size"]))
+                    return file_list, have_next
         except Exception as e:
             logger.error(f"获取分享文件异常: {str(e)}")
         
@@ -284,19 +297,12 @@ class QuarkTransferClient:
         
         try:
             async with self.session.post(url, headers=headers, params=params, json=data, allow_redirects=False) as response:
-                if response.status in (301, 302, 303, 307, 308):
-                    logger.error(f"保存文件被重定向: {response.headers.get('location')}")
+                result = await self._parse_json_response(response, "保存文件")
+                if result is None:
                     return None
-                if response.status == 200:
-                    if response.content_type and "json" in response.content_type:
-                        result = await response.json()
-                    else:
-                        logger.error(f"保存文件返回非JSON: {response.content_type}")
-                        return None
-                    if result.get("code") == 0 and result.get("data"):
-                        return result["data"]
-                    logger.error(f"保存文件失败: {result.get('message') or result.get('msg')}")
-                logger.error(f"保存文件失败，响应状态: {response.status}")
+                if result.get("code") == 0 and result.get("data"):
+                    return result["data"]
+                logger.error(f"保存文件失败: {result.get('message') or result.get('msg')}")
         except Exception as e:
             logger.error(f"保存文件异常: {str(e)}")
         
@@ -327,24 +333,17 @@ class QuarkTransferClient:
         
         try:
             async with self.session.get(url, headers=headers, params=params, allow_redirects=False) as response:
-                if response.status in (301, 302, 303, 307, 308):
-                    logger.error(f"获取任务状态被重定向: {response.headers.get('location')}")
+                data = await self._parse_json_response(response, "获取任务状态")
+                if data is None:
                     return None
-                if response.status == 200:
-                    if response.content_type and "json" in response.content_type:
-                        data = await response.json()
-                    else:
-                        logger.error(f"获取任务状态返回非JSON: {response.content_type}")
-                        return None
-                    if data.get("code") == 0 and data.get("data"):
-                        status_data = data["data"]
-                        return TaskStatus(
-                            task_id=task_id,
-                            status=status_data.get("status", 0),
-                            message=status_data.get("message") or status_data.get("task_title", ""),
-                            progress=status_data.get("progress", 0)
-                        )
-                logger.error(f"获取任务状态失败，响应状态: {response.status}")
+                if data.get("code") == 0 and data.get("data"):
+                    status_data = data["data"]
+                    return TaskStatus(
+                        task_id=task_id,
+                        status=status_data.get("status", 0),
+                        message=status_data.get("message") or status_data.get("task_title", ""),
+                        progress=status_data.get("progress", 0)
+                    )
         except Exception as e:
             logger.error(f"获取任务状态异常: {str(e)}")
         
@@ -373,18 +372,11 @@ class QuarkTransferClient:
         
         try:
             async with self.session.post(url, headers=headers, params=params, json=data, allow_redirects=False) as response:
-                if response.status in (301, 302, 303, 307, 308):
-                    logger.error(f"创建目录被重定向: {response.headers.get('location')}")
+                result = await self._parse_json_response(response, "创建目录")
+                if result is None:
                     return None
-                if response.status == 200:
-                    if response.content_type and "json" in response.content_type:
-                        result = await response.json()
-                    else:
-                        logger.error(f"创建目录返回非JSON: {response.content_type}")
-                        return None
-                    if result.get("code") == 0 and result.get("data") and result["data"].get("fid"):
-                        return result["data"]["fid"]
-                logger.error(f"创建目录失败，响应状态: {response.status}")
+                if result.get("code") == 0 and result.get("data") and result["data"].get("fid"):
+                    return result["data"]["fid"]
         except Exception as e:
             logger.error(f"创建目录异常: {str(e)}")
         
@@ -412,17 +404,12 @@ class QuarkTransferClient:
         
         try:
             async with self.session.post(url, headers=headers, params=params, json=data, allow_redirects=False) as response:
-                if response.status in (301, 302, 303, 307, 308):
-                    logger.error(f"创建目录被重定向: {response.headers.get('location')}")
+                result = await self._parse_json_response(response, "创建目录")
+                if result is None:
                     return None
-                if response.status == 200 and response.content_type and "json" in response.content_type:
-                    result = await response.json()
-                    if result.get("code") == 0:
-                        return result
-                    else:
-                        logger.error(f"创建目录失败: path={dir_path}, code={result.get('code')}, message={result.get('message') or result.get('msg')}, response={result}")
-                else:
-                    logger.error(f"创建目录失败: path={dir_path}, status={response.status}, content_type={response.content_type}")
+                if result.get("code") == 0:
+                    return result
+                logger.error(f"创建目录失败: path={dir_path}, code={result.get('code')}, message={result.get('message') or result.get('msg')}, response={result}")
         except Exception as e:
             logger.error(f"创建目录异常: path={dir_path}, error={str(e)}")
         
@@ -446,13 +433,118 @@ class QuarkTransferClient:
         
         try:
             async with self.session.post(url, headers=headers, params=params, json=data, allow_redirects=False) as response:
-                if response.status == 200 and response.content_type and "json" in response.content_type:
-                    result = await response.json()
-                    return result.get("code") == 0
+                result = await self._parse_json_response(response, "重命名")
+                if result is None:
+                    return False
+                if result.get("code") == 0:
+                    return True
+                logger.error(
+                    "重命名失败: fid=%s, new_name=%s, code=%s, message=%s, response=%s",
+                    fid,
+                    new_name,
+                    result.get("code"),
+                    result.get("message") or result.get("msg"),
+                    result,
+                )
         except Exception as e:
             logger.error(f"重命名异常: {str(e)}")
         
         return False
+
+    async def move_file(self, fid_list: List[str], to_pdir_fid: str, current_dir_fid: Optional[str] = None) -> bool:
+        """
+        移动文件到目标目录。
+        """
+        if not fid_list:
+            return True
+
+        url = f"{self.BASE_URL}/1/clouddrive/file/move"
+        params = {"pr": "ucpro", "fr": "pc", "uc_param_str": ""}
+        normalized_fids = [str(fid) for fid in fid_list]
+        data = {
+            "action_type": 1,
+            "fid_list": normalized_fids,
+            "filelist": normalized_fids,
+            "to_pdir_fid": str(to_pdir_fid),
+        }
+        headers = self._build_headers(json_body=True, include_cookie=not self.mparam)
+
+        try:
+            async with self.session.post(url, headers=headers, params=params, json=data, allow_redirects=False) as response:
+                result = await self._parse_json_response(response, "移动文件")
+                if result is None:
+                    return False
+                if result.get("code") == 0:
+                    return True
+                logger.error(
+                    "移动文件失败: fid_list=%s, to_pdir_fid=%s, current_dir_fid=%s, code=%s, message=%s, response=%s",
+                    fid_list,
+                    to_pdir_fid,
+                    current_dir_fid,
+                    result.get("code"),
+                    result.get("message") or result.get("msg"),
+                    result,
+                )
+        except Exception as e:
+            logger.error(f"移动文件异常: {str(e)}")
+
+        return False
+
+    async def delete_file(self, fid_list: List[str]) -> bool:
+        """
+        删除文件或目录（移入回收站）。
+        """
+        if not fid_list:
+            return True
+
+        url = f"{self.BASE_URL}/1/clouddrive/file/delete"
+        params = {"pr": "ucpro", "fr": "pc", "uc_param_str": ""}
+        normalized_fids = [str(fid) for fid in fid_list]
+        data = {
+            "action_type": 2,
+            "fid_list": normalized_fids,
+            "filelist": normalized_fids,
+            "exclude_fids": [],
+        }
+        headers = self._build_headers(json_body=True, include_cookie=not self.mparam)
+
+        try:
+            async with self.session.post(url, headers=headers, params=params, json=data, allow_redirects=False) as response:
+                result = await self._parse_json_response(response, "删除文件")
+                if result is None:
+                    return False
+                if result.get("code") == 0:
+                    return True
+                logger.error(
+                    "删除文件失败: fid_list=%s, code=%s, message=%s, response=%s",
+                    fid_list,
+                    result.get("code"),
+                    result.get("message") or result.get("msg"),
+                    result,
+                )
+        except Exception as e:
+            logger.error(f"删除文件异常: {str(e)}")
+
+        return False
+
+    async def batch_delete(self, fid_list: List[str], batch_size: int = 50, delay_seconds: float = 0.2) -> int:
+        """
+        批量删除文件或目录，返回成功提交删除的 fid 数量。
+        """
+        if not fid_list:
+            return 0
+
+        deleted_count = 0
+        for index in range(0, len(fid_list), batch_size):
+            batch = fid_list[index:index + batch_size]
+            ok = await self.delete_file(batch)
+            if ok:
+                deleted_count += len(batch)
+            else:
+                logger.warning(f"批量删除部分失败: batch_start={index}, size={len(batch)}")
+            if delay_seconds > 0 and (index + batch_size) < len(fid_list):
+                await asyncio.sleep(delay_seconds)
+        return deleted_count
 
     async def ls_dir(self, pdir_fid: str) -> Dict[str, Any]:
         """

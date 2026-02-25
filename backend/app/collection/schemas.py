@@ -104,3 +104,28 @@ class CollectionLinkStatus(BaseModel):
 class CollectionCheckLinksResponse(BaseModel):
     """批量检查链接收藏状态响应"""
     results: List[CollectionLinkStatus]
+
+
+class CollectionVerifyRequest(BaseModel):
+    """批量验证收藏网盘状态请求"""
+    collection_ids: Optional[List[int]] = Field(
+        default=None,
+        description="可选，仅验证这些收藏 ID（为空时验证全部状态为 1/3 的收藏）",
+    )
+
+
+class CollectionVerifyResult(BaseModel):
+    """收藏网盘状态验证结果"""
+    collection_id: int
+    title: str
+    previous_status: int
+    current_status: int
+    exists: bool
+    checked_path: str
+    path_source: str
+
+
+class CollectionVerifySingleResponse(BaseModel):
+    """单条收藏网盘状态验证响应"""
+    success: bool
+    result: CollectionVerifyResult

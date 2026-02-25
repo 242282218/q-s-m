@@ -13,27 +13,21 @@ from ..services.tmdb import TmdbClient
 from ..db.models import Collection, TransferHistory
 from ..collection.service import CollectionService
 from ..quark.core.transfer_client import QuarkTransferClient
+from ..quark.core.path_resolver import QuarkPathResolver
 from ..utils.events import build_event_payload
 from .emby import (
-    ensure_season_directories,
+    cleanup_non_video_files,
+    collect_video_files,
     get_category_base_dir,
-    rename_saved_tree_to_emby,
+    reorganize_to_emby_structure,
     resolve_tmdb_naming_info,
     transfer_share_to_target_fid,
     wait_for_transfer_task,
 )
 from .renamer import Renamer
+from app.core.constants import PATH_REPLACEMENTS
 
 logger = logging.getLogger(__name__)
-
-PATH_REPLACEMENTS = {
-    "/鏀惰棌TV/Movies": "/影视收藏/电影",
-    "/鏀惰棌TV/TV Shows": "/影视收藏/电视剧",
-    "/鏀惰棌TV/Anime": "/影视收藏/动漫",
-    "/收藏TV/Movies": "/影视收藏/电影",
-    "/收藏TV/TV Shows": "/影视收藏/电视剧",
-    "/收藏TV/Anime": "/影视收藏/动漫",
-}
 
 
 class TransferService:
@@ -45,35 +39,29 @@ class TransferService:
         self.renamer = Renamer()
         self.collection_service = CollectionService(db)
         self._quark_client: Optional[QuarkTransferClient] = None
+        self._path_resolver: Optional[QuarkPathResolver] = None
 
     async def _get_client(self) -> QuarkTransferClient:
         if self._quark_client is None or self._quark_client.cookie != self._cookie:
             if self._quark_client:
                 await self._quark_client.close()
             self._quark_client = QuarkTransferClient(self._cookie)
+            self._path_resolver = QuarkPathResolver(self._quark_client)
             logger.debug("创建新的 QuarkTransferClient 实例")
         return self._quark_client
 
+    async def _get_path_resolver(self) -> QuarkPathResolver:
+        client = await self._get_client()
+        if self._path_resolver is None or self._path_resolver.client is not client:
+            self._path_resolver = QuarkPathResolver(client)
+        return self._path_resolver
+
     async def _find_fid_by_path_no_create(self, client: QuarkTransferClient, path: str) -> Optional[str]:
-        normalized = (path or "").strip()
-        if not normalized or normalized == "/":
-            return "0"
-        parts = [p for p in normalized.split("/") if p]
-        current_fid = "0"
-        for part in parts:
-            ls_resp = await client.ls_dir(current_fid)
-            if ls_resp.get("code") != 0:
-                return None
-            next_fid = None
-            for item in ls_resp.get("data", {}).get("list", []) or []:
-                name = item.get("file_name") or item.get("name")
-                if name == part and ((item.get("dir") is True) or (item.get("dir") == 1)):
-                    next_fid = item.get("fid")
-                    break
-            if not next_fid:
-                return None
-            current_fid = next_fid
-        return current_fid
+        resolver = await self._get_path_resolver()
+        if resolver.client is not client:
+            resolver = QuarkPathResolver(client)
+            self._path_resolver = resolver
+        return await resolver.find_fid_by_path_no_create(path)
 
     async def get_quark(self) -> QuarkTransferClient:
         """获取夸克客户端（异步方法）"""
@@ -84,6 +72,7 @@ class TransferService:
         if self._quark_client:
             await self._quark_client.close()
             self._quark_client = None
+            self._path_resolver = None
             logger.debug("QuarkTransferClient 连接已关闭")
 
     @staticmethod
@@ -156,6 +145,14 @@ class TransferService:
         )
 
         try:
+            keep_extras = bool(settings.transfer_keep_extras)
+            keep_subtitles = bool(settings.transfer_keep_subtitles)
+            dry_run = bool(settings.transfer_dry_run)
+            cleanup_enabled = bool(settings.transfer_cleanup_enabled)
+            cleanup_delete_non_video = bool(settings.transfer_cleanup_delete_non_video)
+            cleanup_delete_unselected_video = bool(settings.transfer_cleanup_delete_unselected_video)
+            cleanup_delete_empty_dirs = bool(settings.transfer_cleanup_delete_empty_dirs)
+
             naming = await resolve_tmdb_naming_info(
                 tmdb_client,
                 self.renamer,
@@ -168,7 +165,7 @@ class TransferService:
             if target_folder:
                 media_root_path = target_folder
             else:
-                media_root_name = self.renamer.build_media_root_name(naming.title, naming.year, naming.tmdb_id)
+                media_root_name = self.renamer.build_media_root_name(naming.title, naming.year, naming.tmdb_id, naming.media_type)
                 media_root_path = f"{get_category_base_dir(naming.category)}/{media_root_name}"
 
             media_root_fid = await client.get_fid_by_path(media_root_path)
@@ -189,21 +186,62 @@ class TransferService:
             if not task_done:
                 logger.warning(f"等待转存任务超时: task_id={task_id}")
 
-            renamed_count = 0
+            reorganized_count = 0
+            cleaned_count = 0
+            planned_cleanup_count = 0
             if auto_rename:
-                async for event in rename_saved_tree_to_emby(
-                    client=client,
-                    root_fid=media_root_fid,
-                    renamer=self.renamer,
-                    title=naming.title,
-                    year=naming.year,
-                    media_type=naming.media_type,
-                ):
-                    if event.get("type") == "complete":
-                        renamed_count = int(event.get("success", 0))
+                video_files = await collect_video_files(client, media_root_fid, self.renamer)
+                if not video_files:
+                    logger.warning("未识别到视频文件，跳过重组与清理: collection_id=%s", collection_id)
+                else:
+                    retained_fids = set()
+                    async for event in reorganize_to_emby_structure(
+                        client=client,
+                        root_fid=media_root_fid,
+                        root_path=media_root_path,
+                        video_files=video_files,
+                        renamer=self.renamer,
+                        title=naming.title,
+                        year=naming.year,
+                        media_type=naming.media_type,
+                        keep_extras=keep_extras,
+                        dry_run=dry_run,
+                    ):
+                        if event.get("type") == "complete":
+                            reorganized_count = int(event.get("success", 0))
+                            retained_fids.update(event.get("retained_fids") or [])
+                        else:
+                            level = event.get("level")
+                            msg = event.get("message", "")
+                            if level == "error":
+                                logger.warning(msg)
+                            else:
+                                logger.info(msg)
 
-            if naming.media_type == "tv":
-                await ensure_season_directories(client, media_root_path, naming.season_count, self.renamer)
+                    if cleanup_enabled:
+                        async for event in cleanup_non_video_files(
+                            client=client,
+                            root_fid=media_root_fid,
+                            renamer=self.renamer,
+                            protected_video_fids=retained_fids,
+                            keep_subtitles=keep_subtitles,
+                            dry_run=dry_run,
+                            delete_non_video=cleanup_delete_non_video,
+                            delete_unselected_videos=cleanup_delete_unselected_video,
+                            delete_empty_dirs=cleanup_delete_empty_dirs,
+                        ):
+                            if event.get("type") == "complete":
+                                cleaned_count = int(event.get("deleted", 0))
+                                planned_cleanup_count = int(event.get("planned", 0))
+                            else:
+                                level = event.get("level")
+                                msg = event.get("message", "")
+                                if level == "error":
+                                    logger.warning(msg)
+                                else:
+                                    logger.info(msg)
+                    else:
+                        logger.info("清理阶段已关闭，跳过 cleanup")
 
             ls_resp = await client.ls_dir(media_root_fid)
             saved_files = ls_resp.get("data", {}).get("list", []) if ls_resp.get("code") == 0 else []
@@ -237,8 +275,11 @@ class TransferService:
             ]
 
             status_msg = f"转存成功: {media_root_path}"
-            if auto_rename and renamed_count > 0:
-                status_msg += f"（已重命名 {renamed_count} 个文件/目录）"
+            if auto_rename:
+                if dry_run:
+                    status_msg += f"（DRY-RUN：重组计划 {reorganized_count}，清理计划 {planned_cleanup_count}）"
+                else:
+                    status_msg += f"（重组成功 {reorganized_count}，清理 {cleaned_count}）"
             if not task_done:
                 status_msg += "（任务仍在后台执行）"
 
@@ -290,6 +331,14 @@ class TransferService:
         )
 
         try:
+            keep_extras = bool(settings.transfer_keep_extras)
+            keep_subtitles = bool(settings.transfer_keep_subtitles)
+            dry_run = bool(settings.transfer_dry_run)
+            cleanup_enabled = bool(settings.transfer_cleanup_enabled)
+            cleanup_delete_non_video = bool(settings.transfer_cleanup_delete_non_video)
+            cleanup_delete_unselected_video = bool(settings.transfer_cleanup_delete_unselected_video)
+            cleanup_delete_empty_dirs = bool(settings.transfer_cleanup_delete_empty_dirs)
+
             naming = await resolve_tmdb_naming_info(
                 tmdb_client,
                 self.renamer,
@@ -309,10 +358,10 @@ class TransferService:
             if latest_record and latest_record.local_path:
                 media_root_path = self._normalize_storage_path(latest_record.local_path)
             else:
-                media_root_name = self.renamer.build_media_root_name(naming.title, naming.year, naming.tmdb_id)
+                media_root_name = self.renamer.build_media_root_name(naming.title, naming.year, naming.tmdb_id, naming.media_type)
                 media_root_path = f"{get_category_base_dir(naming.category)}/{media_root_name}"
 
-            expected_root_name = self.renamer.build_media_root_name(naming.title, naming.year, naming.tmdb_id)
+            expected_root_name = self.renamer.build_media_root_name(naming.title, naming.year, naming.tmdb_id, naming.media_type)
             expected_root_path = f"{get_category_base_dir(naming.category)}/{expected_root_name}"
 
             if media_root_path != expected_root_path:
@@ -358,18 +407,51 @@ class TransferService:
                 level="info",
             )
 
-            if naming.media_type == "tv":
-                await ensure_season_directories(client, media_root_path, naming.season_count, self.renamer)
+            video_files = await collect_video_files(client, media_root_fid, self.renamer)
+            if not video_files:
+                yield build_event_payload(
+                    event_type="log",
+                    message="未识别到视频文件，跳过重组与清理",
+                    level="warning",
+                )
+                return
 
-            async for event in rename_saved_tree_to_emby(
+            retained_fids = set()
+            async for event in reorganize_to_emby_structure(
                 client=client,
                 root_fid=media_root_fid,
+                root_path=media_root_path,
+                video_files=video_files,
                 renamer=self.renamer,
                 title=naming.title,
                 year=naming.year,
                 media_type=naming.media_type,
+                keep_extras=keep_extras,
+                dry_run=dry_run,
             ):
+                if event.get("type") == "complete":
+                    retained_fids.update(event.get("retained_fids") or [])
                 yield event
+
+            if cleanup_enabled:
+                async for event in cleanup_non_video_files(
+                    client=client,
+                    root_fid=media_root_fid,
+                    renamer=self.renamer,
+                    protected_video_fids=retained_fids,
+                    keep_subtitles=keep_subtitles,
+                    dry_run=dry_run,
+                    delete_non_video=cleanup_delete_non_video,
+                    delete_unselected_videos=cleanup_delete_unselected_video,
+                    delete_empty_dirs=cleanup_delete_empty_dirs,
+                ):
+                    yield event
+            else:
+                yield build_event_payload(
+                    event_type="log",
+                    message="清理阶段已关闭，跳过 cleanup",
+                    level="info",
+                )
         except SQLAlchemyError as e:
             self.db.rollback()
             logger.error(f"重命名失败 - 数据库错误: id={collection_id}, error={e}")

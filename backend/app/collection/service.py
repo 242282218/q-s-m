@@ -217,6 +217,61 @@ class CollectionService:
         """根据 ID 获取收藏"""
         return self.db.query(Collection).filter(Collection.id == collection_id).first()
 
+    def get_by_ids(self, collection_ids: List[int]) -> List[Collection]:
+        """根据 ID 列表批量获取收藏。"""
+        if not collection_ids:
+            return []
+        return (
+            self.db.query(Collection)
+            .filter(Collection.id.in_(collection_ids))
+            .all()
+        )
+
+    def get_transferred_collections(self) -> List[Collection]:
+        """获取所有已转存收藏。"""
+        return (
+            self.db.query(Collection)
+            .filter(Collection.status == 1)
+            .all()
+        )
+
+    def batch_update_status(self, updates: List[Tuple[int, int]]) -> int:
+        """
+        批量更新收藏状态。
+
+        Args:
+            updates: [(collection_id, new_status), ...]
+
+        Returns:
+            更新成功的记录数
+        """
+        if not updates:
+            return 0
+
+        valid_updates = [
+            (collection_id, status)
+            for collection_id, status in updates
+            if status in (0, 1, 2, 3)
+        ]
+        if not valid_updates:
+            return 0
+
+        updated = 0
+        try:
+            for collection_id, status in valid_updates:
+                affected = (
+                    self.db.query(Collection)
+                    .filter(Collection.id == collection_id)
+                    .update({"status": status}, synchronize_session=False)
+                )
+                updated += int(affected or 0)
+            self.db.commit()
+            return updated
+        except SQLAlchemyError as e:
+            self.db.rollback()
+            logger.error(f"批量更新状态失败: error={e}")
+            return 0
+
     def delete(self, collection_id: int) -> Tuple[bool, str]:
         """
         删除收藏
@@ -255,12 +310,12 @@ class CollectionService:
         
         Args:
             collection_id: 收藏 ID
-            status: 状态值 (0: 仅链接, 1: 已转存, 2: 已失效)
+            status: 状态值 (0: 仅链接, 1: 已转存, 2: 已失效, 3: 网盘已删除)
             
         Returns:
             (success, message)
         """
-        if status not in (0, 1, 2):
+        if status not in (0, 1, 2, 3):
             logger.warning(f"状态更新失败 - 无效状态值: id={collection_id}, status={status}")
             return False, "无效的状态值"
         

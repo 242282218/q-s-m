@@ -12,9 +12,10 @@ from app.quark.core.transfer_client import QuarkTransferClient
 from app.quark.services.search_service import SearchService
 from app.services.tmdb import TmdbClient
 from app.transfer.emby import (
-    ensure_season_directories,
+    cleanup_non_video_files,
+    collect_video_files,
     get_category_base_dir,
-    rename_saved_tree_to_emby,
+    reorganize_to_emby_structure,
     resolve_tmdb_naming_info,
     transfer_share_to_target_fid,
     wait_for_transfer_task,
@@ -122,27 +123,6 @@ def resolve_final_title(req: TransferRequest, tmdb_title: Optional[str]) -> Opti
     return None
 
 
-async def rename_saved_tree(
-    client: QuarkTransferClient,
-    root_fid: str,
-    renamer: Renamer,
-    title: str,
-    year: Optional[int],
-    media_type: str,
-) -> int:
-    """
-    向后兼容包装：递归重命名云端目录树（Emby v1.6）。
-    """
-    return await rename_saved_tree_to_emby(
-        client=client,
-        root_fid=root_fid,
-        renamer=renamer,
-        title=title,
-        year=year,
-        media_type=media_type,
-    )
-
-
 @router.post("/transfer", summary="保存资源到网盘")
 async def transfer_resource(
     request: Request,
@@ -156,6 +136,13 @@ async def transfer_resource(
     cookie = settings.quark_transfer_cookie or settings.quark_cookie
     renamer = Renamer()
     client = QuarkTransferClient(cookie)
+    keep_extras = bool(settings.transfer_keep_extras)
+    keep_subtitles = bool(settings.transfer_keep_subtitles)
+    dry_run = bool(settings.transfer_dry_run)
+    cleanup_enabled = bool(settings.transfer_cleanup_enabled)
+    cleanup_delete_non_video = bool(settings.transfer_cleanup_delete_non_video)
+    cleanup_delete_unselected_video = bool(settings.transfer_cleanup_delete_unselected_video)
+    cleanup_delete_empty_dirs = bool(settings.transfer_cleanup_delete_empty_dirs)
 
     collection_id = None
     collection_created = False
@@ -175,8 +162,8 @@ async def transfer_resource(
 
     try:
         query_title = (
-            normalize_title_candidate(req.resource_name)
-            or normalize_title_candidate(req.title)
+            normalize_title_candidate(req.title)
+            or normalize_title_candidate(req.resource_name)
             or normalize_title_candidate(req.to_dir_name)
         )
         naming = await resolve_tmdb_naming_info(
@@ -188,7 +175,7 @@ async def transfer_resource(
             year=req.year,
         )
 
-        media_root_name = renamer.build_media_root_name(naming.title, naming.year, naming.tmdb_id)
+        media_root_name = renamer.build_media_root_name(naming.title, naming.year, naming.tmdb_id, naming.media_type)
         base_dir = get_category_base_dir(naming.category)
         media_root_path = f"{base_dir}/{media_root_name}"
 
@@ -223,17 +210,56 @@ async def transfer_resource(
         if not task_done:
             logger.warning(f"转存任务等待超时: task_id={task_id}")
 
-        renamed_count = await rename_saved_tree_to_emby(
-            client=client,
-            root_fid=media_root_fid,
-            renamer=renamer,
-            title=naming.title,
-            year=naming.year,
-            media_type=naming.media_type,
-        )
+        reorganized_count = 0
+        cleaned_count = 0
+        planned_cleanup_count = 0
 
-        if naming.media_type == "tv":
-            await ensure_season_directories(client, media_root_path, naming.season_count, renamer)
+        video_files = await collect_video_files(client, media_root_fid, renamer)
+        if not video_files:
+            logger.warning("未识别到视频文件，跳过重组与清理")
+        else:
+            retained_fids = set()
+            async for event in reorganize_to_emby_structure(
+                client=client,
+                root_fid=media_root_fid,
+                root_path=media_root_path,
+                video_files=video_files,
+                renamer=renamer,
+                title=naming.title,
+                year=naming.year,
+                media_type=naming.media_type,
+                keep_extras=keep_extras,
+                dry_run=dry_run,
+            ):
+                if event.get("type") == "complete":
+                    reorganized_count = int(event.get("success", 0))
+                    retained_fids.update(event.get("retained_fids") or [])
+                elif event.get("level") == "error":
+                    logger.warning(event.get("message", ""))
+                else:
+                    logger.info(event.get("message", ""))
+
+            if cleanup_enabled:
+                async for event in cleanup_non_video_files(
+                    client=client,
+                    root_fid=media_root_fid,
+                    renamer=renamer,
+                    protected_video_fids=retained_fids,
+                    keep_subtitles=keep_subtitles,
+                    dry_run=dry_run,
+                    delete_non_video=cleanup_delete_non_video,
+                    delete_unselected_videos=cleanup_delete_unselected_video,
+                    delete_empty_dirs=cleanup_delete_empty_dirs,
+                ):
+                    if event.get("type") == "complete":
+                        cleaned_count = int(event.get("deleted", 0))
+                        planned_cleanup_count = int(event.get("planned", 0))
+                    elif event.get("level") == "error":
+                        logger.warning(event.get("message", ""))
+                    else:
+                        logger.info(event.get("message", ""))
+            else:
+                logger.info("清理阶段已关闭，跳过 cleanup")
 
         if naming.tmdb_id:
             collection_service = CollectionService(db)
@@ -255,8 +281,10 @@ async def transfer_resource(
                 collection_id = col_id
 
         status_msg = f"转存成功: {media_root_path}"
-        if renamed_count > 0:
-            status_msg += f"（已重命名 {renamed_count} 个文件/目录）"
+        if dry_run:
+            status_msg += f"（DRY-RUN：重组计划 {reorganized_count}，清理计划 {planned_cleanup_count}）"
+        else:
+            status_msg += f"（重组成功 {reorganized_count}，清理 {cleaned_count}）"
         if not task_done:
             status_msg += "（任务仍在后台执行）"
 

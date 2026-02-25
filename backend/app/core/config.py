@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     quark_cookie: str = Field("", alias="QUARK_COOKIE")
     quark_transfer_cookie: str = Field("", alias="QUARK_TRANSFER_COOKIE")
 
+    transfer_keep_extras: bool = Field(False, alias="TRANSFER_KEEP_EXTRAS")
+    transfer_keep_subtitles: bool = Field(False, alias="TRANSFER_KEEP_SUBTITLES")
+    transfer_dry_run: bool = Field(False, alias="TRANSFER_DRY_RUN")
+    transfer_cleanup_enabled: bool = Field(True, alias="TRANSFER_CLEANUP_ENABLED")
+    transfer_cleanup_delete_non_video: bool = Field(True, alias="TRANSFER_CLEANUP_DELETE_NON_VIDEO")
+    transfer_cleanup_delete_unselected_video: bool = Field(True, alias="TRANSFER_CLEANUP_DELETE_UNSELECTED_VIDEO")
+    transfer_cleanup_delete_empty_dirs: bool = Field(True, alias="TRANSFER_CLEANUP_DELETE_EMPTY_DIRS")
+
     base_movie_dir: str = Field("/影视收藏/电影", alias="BASE_MOVIE_DIR")
     base_tv_dir: str = Field("/影视收藏/电视剧", alias="BASE_TV_DIR")
     base_anime_dir: str = Field("/影视收藏/动漫", alias="BASE_ANIME_DIR")

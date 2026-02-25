@@ -7,9 +7,14 @@
 {% block content %}
 <div class="page">
   <section class="section" aria-labelledby="collection-title">
-    <div class="section-header">
+    <div class="section-header collection-header">
       <span class="section-icon" aria-hidden="true">⭐</span>
       <h2 class="section-title" id="collection-title">我的收藏</h2>
+      <div class="collection-actions">
+        <button type="button" class="btn btn-secondary collection-verify-btn" id="verify-collections-btn">
+          🔍 验证网盘状态
+        </button>
+      </div>
       <span class="collection-count" id="collection-count" aria-live="polite"></span>
     </div>
 

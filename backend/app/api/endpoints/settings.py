@@ -72,6 +72,13 @@ class SettingsUpdate(BaseModel):
     TMDB_API_KEY: Optional[str] = None
     HTTP_PROXY: Optional[str] = None
     QUARK_TRANSFER_COOKIE: Optional[str] = None
+    TRANSFER_KEEP_EXTRAS: Optional[bool] = None
+    TRANSFER_KEEP_SUBTITLES: Optional[bool] = None
+    TRANSFER_DRY_RUN: Optional[bool] = None
+    TRANSFER_CLEANUP_ENABLED: Optional[bool] = None
+    TRANSFER_CLEANUP_DELETE_NON_VIDEO: Optional[bool] = None
+    TRANSFER_CLEANUP_DELETE_UNSELECTED_VIDEO: Optional[bool] = None
+    TRANSFER_CLEANUP_DELETE_EMPTY_DIRS: Optional[bool] = None
 
 
 @router.get("/settings", response_class=HTMLResponse)
@@ -97,6 +104,10 @@ async def update_settings(update_data: SettingsUpdate):
     data = update_data.model_dump(exclude_none=True)
 
     for key, value in data.items():
+        if isinstance(value, bool):
+            updates[key] = "true" if value else "false"
+            continue
+
         text = str(value).strip()
         if text == KEEP_SENTINEL:
             continue

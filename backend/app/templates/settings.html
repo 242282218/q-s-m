@@ -69,6 +69,59 @@
           </div>
         </div>
 
+        <div class="settings-section">
+          <h3 class="settings-section-title">转存与清理策略</h3>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="TRANSFER_KEEP_EXTRAS" name="TRANSFER_KEEP_EXTRAS" {% if settings.transfer_keep_extras %}checked{% endif %}>
+              保留花絮（extras/幕后/预告等）
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="TRANSFER_KEEP_SUBTITLES" name="TRANSFER_KEEP_SUBTITLES" {% if settings.transfer_keep_subtitles %}checked{% endif %}>
+              保留字幕文件（.srt/.ass/.ssa/.sub/.vtt）
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="TRANSFER_DRY_RUN" name="TRANSFER_DRY_RUN" {% if settings.transfer_dry_run %}checked{% endif %}>
+              Dry-run（只预演，不执行移动/重命名/删除）
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="TRANSFER_CLEANUP_ENABLED" name="TRANSFER_CLEANUP_ENABLED" {% if settings.transfer_cleanup_enabled %}checked{% endif %}>
+              启用清理阶段
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="TRANSFER_CLEANUP_DELETE_NON_VIDEO" name="TRANSFER_CLEANUP_DELETE_NON_VIDEO" {% if settings.transfer_cleanup_delete_non_video %}checked{% endif %}>
+              清理非视频文件
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="TRANSFER_CLEANUP_DELETE_UNSELECTED_VIDEO" name="TRANSFER_CLEANUP_DELETE_UNSELECTED_VIDEO" {% if settings.transfer_cleanup_delete_unselected_video %}checked{% endif %}>
+              清理未选中视频（重复低质量/未归档）
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="TRANSFER_CLEANUP_DELETE_EMPTY_DIRS" name="TRANSFER_CLEANUP_DELETE_EMPTY_DIRS" {% if settings.transfer_cleanup_delete_empty_dirs %}checked{% endif %}>
+              清理空目录
+            </label>
+          </div>
+        </div>
+
         <div class="form-actions">
           <button type="submit" class="btn btn-primary">保存配置</button>
         </div>
@@ -87,7 +140,17 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
   submitBtn.textContent = '保存中...';
   submitBtn.disabled = true;
 
-  const data = Object.fromEntries(new FormData(e.target).entries());
+  const data = {};
+  const form = e.target;
+  const elements = Array.from(form.elements);
+  elements.forEach((el) => {
+    if (!el.name) return;
+    if (el.type === 'checkbox') {
+      data[el.name] = Boolean(el.checked);
+      return;
+    }
+    data[el.name] = el.value;
+  });
   const sensitiveFields = e.target.querySelectorAll('[data-sensitive="1"]');
 
   sensitiveFields.forEach((el) => {

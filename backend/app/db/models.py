@@ -30,7 +30,7 @@ class Collection(Base):
     quark_share_pwd = Column(String(20), nullable=True)
     file_structure = Column(Text, nullable=True)  # JSON 格式存储文件夹结构
     category = Column(String(20), nullable=True)  # 'movie', 'tv', 'anime', 'documentary'
-    status = Column(Integer, default=0)  # 0: 仅链接, 1: 已转存, 2: 已失效
+    status = Column(Integer, default=0)  # 0: 仅链接, 1: 已转存, 2: 已失效, 3: 网盘已删除
     saved_at = Column(DateTime, default=utc_now)
 
     # 关联转存记录

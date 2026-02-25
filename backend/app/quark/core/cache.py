@@ -273,13 +273,16 @@ class CacheManager:
         """
         批量设置缓存值
         
-        优化: 减少多次网络往返
+        优化: 使用 asyncio.gather 并行执行，减少多次网络往返
         """
         if not self.enabled or not self._backend:
             return
         
-        for key, value in items.items():
-            await self._backend.set(key, value, ttl or self.ttl)
+        effective_ttl = ttl or self.ttl
+        await asyncio.gather(*[
+            self._backend.set(key, value, effective_ttl)
+            for key, value in items.items()
+        ])
 
 
 _cache_manager: Optional[CacheManager] = None

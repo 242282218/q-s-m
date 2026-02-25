@@ -2,6 +2,10 @@
 优化验证测试
 验证前端优化是否正确实施
 """
+from pathlib import Path
+
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
 
 
 def test_dummy():
@@ -11,7 +15,7 @@ def test_dummy():
 
 def test_collection_js_syntax():
     """验证 collection.js 关键函数存在"""
-    js_path = "app/static/js/collection.js"
+    js_path = ROOT_DIR / "app" / "static" / "js" / "collection.js"
     with open(js_path, "r", encoding="utf-8") as f:
         content = f.read()
 
@@ -33,7 +37,7 @@ def test_collection_js_syntax():
 
 def test_css_optimizations():
     """验证 CSS 优化"""
-    css_path = "app/static/css/main.css"
+    css_path = ROOT_DIR / "app" / "static" / "css" / "main.css"
     with open(css_path, "r", encoding="utf-8") as f:
         content = f.read()
 
