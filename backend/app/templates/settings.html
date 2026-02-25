@@ -9,22 +9,38 @@
     </div>
 
     <div class="settings-container">
-      <p class="settings-desc">修改配置后可能需要重启服务才能生效。</p>
+      <p class="settings-desc">已配置的信息会以掩码显示。修改后保存才会更新。</p>
 
       <form id="settingsForm" class="settings-form">
-        <!-- 基础配置 -->
         <div class="settings-section">
           <h3 class="settings-section-title">基础配置</h3>
+
           <div class="form-group">
             <label for="TMDB_API_KEY">TMDB API Key</label>
-            <input type="text" id="TMDB_API_KEY" name="TMDB_API_KEY" value="{{ settings.tmdb_api_key }}" required placeholder="输入您的 TMDB API Key">
-            <small>用于获取影视元数据，可在 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">TMDB 官网</a> 申请</small>
+            <input
+              type="text"
+              id="TMDB_API_KEY"
+              name="TMDB_API_KEY"
+              value="{{ masked.tmdb_api_key }}"
+              data-sensitive="1"
+              autocomplete="off"
+              placeholder="未配置时请输入 TMDB API Key"
+            >
+            <small>当前显示为掩码；若不修改此项，提交时会保留原值</small>
           </div>
+
           <div class="form-group">
             <label for="HTTP_PROXY">HTTP 代理</label>
-            <input type="text" id="HTTP_PROXY" name="HTTP_PROXY" value="{{ settings.http_proxy or '' }}" placeholder="http://127.0.0.1:7890">
+            <input
+              type="text"
+              id="HTTP_PROXY"
+              name="HTTP_PROXY"
+              value="{{ settings.http_proxy or '' }}"
+              placeholder="http://127.0.0.1:7890"
+            >
             <small>访问 TMDB API 可能需要代理，留空则不使用代理</small>
           </div>
+
           <div class="form-group">
             <label for="LOG_LEVEL">日志级别</label>
             <select id="LOG_LEVEL" name="LOG_LEVEL">
@@ -36,13 +52,20 @@
           </div>
         </div>
 
-        <!-- 夸克网盘配置 -->
         <div class="settings-section">
           <h3 class="settings-section-title">夸克网盘配置</h3>
+
           <div class="form-group">
-            <label for="QUARK_TRANSFER_COOKIE">Cookie</label>
-            <textarea id="QUARK_TRANSFER_COOKIE" name="QUARK_TRANSFER_COOKIE" rows="4" placeholder="输入夸克网盘 Cookie">{{ settings.quark_cookie }}</textarea>
-            <small>用于转存和管理网盘资源，请从浏览器开发者工具中复制 Cookie</small>
+            <label for="QUARK_TRANSFER_COOKIE">QUARK_TRANSFER_COOKIE</label>
+            <textarea
+              id="QUARK_TRANSFER_COOKIE"
+              name="QUARK_TRANSFER_COOKIE"
+              rows="4"
+              data-sensitive="1"
+              autocomplete="off"
+              placeholder="未配置时请输入夸克网盘 Cookie"
+            >{{ masked.quark_transfer_cookie }}</textarea>
+            <small>当前显示为掩码；若不修改此项，提交时会保留原值</small>
           </div>
         </div>
 
@@ -58,15 +81,24 @@
 document.getElementById('settingsForm').addEventListener('submit', async (e) => {
   e.preventDefault();
 
+  const keepSentinel = '{{ keep_sentinel }}';
   const submitBtn = e.target.querySelector('button[type="submit"]');
   const originalText = submitBtn.textContent;
   submitBtn.textContent = '保存中...';
   submitBtn.disabled = true;
 
-  const formData = new FormData(e.target);
-  const data = Object.fromEntries(formData.entries());
+  const data = Object.fromEntries(new FormData(e.target).entries());
+  const sensitiveFields = e.target.querySelectorAll('[data-sensitive="1"]');
 
-  // Convert empty strings to null for optional fields
+  sensitiveFields.forEach((el) => {
+    const key = el.name;
+    const current = String(data[key] || '').trim();
+    const maskedLike = current !== '' && /^\*+$/.test(current.replace(/[^\*]/g, '')) && current.includes('***');
+    if (maskedLike || current === '') {
+      data[key] = keepSentinel;
+    }
+  });
+
   for (const key in data) {
     if (data[key] === '') {
       data[key] = null;
@@ -76,29 +108,24 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
   try {
     const response = await fetch('/api/settings/update', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
 
     const result = await response.json();
-
     if (response.ok) {
-      submitBtn.textContent = '保存成功!';
+      submitBtn.textContent = '保存成功';
       submitBtn.classList.add('btn-success');
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+      setTimeout(() => window.location.reload(), 800);
     } else {
       submitBtn.textContent = '保存失败';
       submitBtn.classList.add('btn-error');
-      alert('保存失败: ' + (result.detail || result.message));
+      alert('保存失败: ' + (result.detail || result.message || '未知错误'));
       setTimeout(() => {
         submitBtn.textContent = originalText;
         submitBtn.disabled = false;
         submitBtn.classList.remove('btn-error');
-      }, 2000);
+      }, 1500);
     }
   } catch (error) {
     submitBtn.textContent = '保存失败';
@@ -108,7 +135,7 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
       submitBtn.textContent = originalText;
       submitBtn.disabled = false;
       submitBtn.classList.remove('btn-error');
-    }, 2000);
+    }, 1500);
   }
 });
 </script>

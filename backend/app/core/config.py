@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     cache_ttl: int = Field(3600, alias="CACHE_TTL")
     
     quark_cookie: str = Field("", alias="QUARK_COOKIE")
+    quark_transfer_cookie: str = Field("", alias="QUARK_TRANSFER_COOKIE")
+
+    base_movie_dir: str = Field("/影视收藏/电影", alias="BASE_MOVIE_DIR")
+    base_tv_dir: str = Field("/影视收藏/电视剧", alias="BASE_TV_DIR")
+    base_anime_dir: str = Field("/影视收藏/动漫", alias="BASE_ANIME_DIR")
+    base_documentary_dir: str = Field("/影视收藏/纪录片", alias="BASE_DOCUMENTARY_DIR")
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

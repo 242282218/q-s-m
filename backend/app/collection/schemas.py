@@ -79,3 +79,28 @@ class CollectionDeleteResponse(BaseModel):
     """删除收藏响应"""
     success: bool
     message: str
+
+
+class CollectionCheckLinkResponse(BaseModel):
+    """检查链接收藏状态响应"""
+    collected: bool
+    id: Optional[int] = None
+    status: Optional[int] = None
+
+
+class CollectionCheckLinksRequest(BaseModel):
+    """批量检查链接收藏状态请求"""
+    links: List[str] = Field(..., description="分享链接列表")
+
+
+class CollectionLinkStatus(BaseModel):
+    """单个链接的收藏状态"""
+    link: str
+    collected: bool
+    id: Optional[int] = None
+    status: Optional[int] = None
+
+
+class CollectionCheckLinksResponse(BaseModel):
+    """批量检查链接收藏状态响应"""
+    results: List[CollectionLinkStatus]

@@ -108,8 +108,8 @@ class QuarkTransferClient:
         }
         if json_body:
             headers["Content-Type"] = "application/json"
-        if not include_cookie:
-            headers["Cookie"] = ""
+        if include_cookie and self.cookie:
+            headers["Cookie"] = self.cookie
         return headers
 
     def _apply_mobile_share_params(self, url: str, params: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
@@ -412,12 +412,19 @@ class QuarkTransferClient:
         
         try:
             async with self.session.post(url, headers=headers, params=params, json=data, allow_redirects=False) as response:
+                if response.status in (301, 302, 303, 307, 308):
+                    logger.error(f"创建目录被重定向: {response.headers.get('location')}")
+                    return None
                 if response.status == 200 and response.content_type and "json" in response.content_type:
                     result = await response.json()
                     if result.get("code") == 0:
                         return result
+                    else:
+                        logger.error(f"创建目录失败: path={dir_path}, code={result.get('code')}, message={result.get('message') or result.get('msg')}, response={result}")
+                else:
+                    logger.error(f"创建目录失败: path={dir_path}, status={response.status}, content_type={response.content_type}")
         except Exception as e:
-            logger.error(f"创建目录异常: {str(e)}")
+            logger.error(f"创建目录异常: path={dir_path}, error={str(e)}")
         
         return None
 
@@ -554,7 +561,7 @@ class QuarkTransferClient:
         self, 
         share_url: str, 
         target_dir: str = "/收藏TV"
-    ) -> Tuple[bool, str, List[Dict]]:
+    ) -> Tuple[bool, str, List[Dict], str]:
         """
         转存分享链接中的文件
         
@@ -563,19 +570,19 @@ class QuarkTransferClient:
             target_dir: 目标目录
             
         Returns:
-            (success, message, transferred_files)
+            (success, message, transferred_files, task_id)
         """
         is_valid, pwd_id, stoken = await self.validate_share_link(share_url)
         if not is_valid:
-            return False, "分享链接无效或已失效", []
+            return False, "分享链接无效或已失效", [], ""
         
         files, _ = await self.get_share_files(pwd_id, stoken)
         if not files:
-            return False, "分享链接中没有文件", []
+            return False, "分享链接中没有文件", [], ""
         
         target_fid = await self.get_fid_by_path(target_dir)
         if not target_fid:
-            return False, f"创建目标目录 {target_dir} 失败", []
+            return False, f"创建目标目录 {target_dir} 失败", [], ""
         
         fid_list = [f.fid for f in files]
         fid_token_list = [f.share_fid_token for f in files]
@@ -583,14 +590,16 @@ class QuarkTransferClient:
         result = await self.save_files(fid_list, fid_token_list, target_fid, pwd_id, stoken)
         
         if not result:
-            return False, "转存失败", []
+            return False, "转存失败", [], ""
+            
+        task_id = result.get("task_id", "")
         
         transferred_files = [
             {"fid": f.fid, "name": f.title, "size": f.size, "dir": f.file_type == 2}
             for f in files
         ]
         
-        return True, "转存成功", transferred_files
+        return True, "转存成功", transferred_files, task_id
 
     async def get_detail(self, pwd_id: str, stoken: str, pdir_fid: str = "0") -> Dict[str, Any]:
         """

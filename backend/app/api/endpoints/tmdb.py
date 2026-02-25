@@ -25,6 +25,9 @@ async def get_tmdb_details(
     - **media_type**: 媒体类型 (movie 或 tv)
     - **tmdb_id**: TMDB ID
     """
+    if tmdb_id <= 0:
+        raise HTTPException(status_code=400, detail="TMDB ID 必须为正整数")
+    
     tmdb_client = get_tmdb_client(request)
     try:
         logger.info(f"获取TMDB详情: media_type={media_type}, tmdb_id={tmdb_id}")
@@ -38,6 +41,8 @@ async def get_tmdb_details(
         }
     except httpx.HTTPStatusError as e:
         logger.error(f"TMDB API HTTP错误: {e.response.status_code} - {e.response.text}")
+        if e.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="TMDB 资源不存在")
         raise HTTPException(status_code=502, detail=f"TMDB API错误: {e.response.status_code}")
     except httpx.ConnectError as e:
         logger.error(f"TMDB API连接错误: {str(e)}")

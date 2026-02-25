@@ -90,6 +90,184 @@ class TmdbClient:
         data = await self._get(f"/tv/{category}")
         return data.get("results", [])
 
+    async def discover_movies(
+        self,
+        *,
+        with_genres: Optional[str] = None,
+        with_original_language: Optional[str] = None,
+        region: Optional[str] = None,
+        with_origin_country: Optional[str] = None,
+        sort_by: str = "popularity.desc",
+        page: int = 1,
+    ) -> List[Dict[str, Any]]:
+        params: Dict[str, Any] = {"page": page, "sort_by": sort_by}
+        if with_genres:
+            params["with_genres"] = with_genres
+        if with_original_language:
+            params["with_original_language"] = with_original_language
+        if region:
+            params["region"] = region
+        if with_origin_country:
+            params["with_origin_country"] = with_origin_country
+        data = await self._get("/discover/movie", params=params)
+        return data.get("results", [])
+
+    async def discover_tv(
+        self,
+        *,
+        with_genres: Optional[str] = None,
+        with_original_language: Optional[str] = None,
+        with_origin_country: Optional[str] = None,
+        with_type: Optional[str] = None,
+        sort_by: str = "popularity.desc",
+        page: int = 1,
+        extra_params: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        params: Dict[str, Any] = {"page": page, "sort_by": sort_by}
+        if with_genres:
+            params["with_genres"] = with_genres
+        if with_original_language:
+            params["with_original_language"] = with_original_language
+        if with_origin_country:
+            params["with_origin_country"] = with_origin_country
+        if with_type:
+            params["with_type"] = with_type
+        if extra_params:
+            params.update(extra_params)
+        data = await self._get("/discover/tv", params=params)
+        return data.get("results", [])
+
+    async def china_trending(self) -> List[Dict[str, Any]]:
+        results = await asyncio.gather(
+            self.discover_movies(with_original_language="zh", sort_by="popularity.desc"),
+            self.discover_tv(with_original_language="zh", sort_by="popularity.desc"),
+            return_exceptions=True,
+        )
+        combined = []
+        for r in results:
+            if isinstance(r, list):
+                for item in r:
+                    if item.get("id") and item.get("id") not in [c.get("id") for c in combined]:
+                        item["media_type"] = item.get("media_type") or ("movie" if "title" in item else "tv")
+                        combined.append(item)
+        combined.sort(key=lambda x: x.get("popularity", 0) or 0, reverse=True)
+        return combined[:20]
+
+    async def anime_popular(self) -> List[Dict[str, Any]]:
+        results = await asyncio.gather(
+            self.discover_tv(
+                with_genres="16",
+                with_original_language="ja",
+                sort_by="popularity.desc",
+            ),
+            self.discover_movies(
+                with_genres="16",
+                with_original_language="ja",
+                sort_by="popularity.desc",
+            ),
+            self.discover_tv(
+                with_genres="16",
+                with_original_language="zh",
+                sort_by="popularity.desc",
+            ),
+            self.discover_movies(
+                with_genres="16",
+                with_original_language="zh",
+                sort_by="popularity.desc",
+            ),
+            return_exceptions=True,
+        )
+        combined = []
+        for r in results:
+            if isinstance(r, list):
+                for item in r:
+                    if item.get("id") and item.get("id") not in [c.get("id") for c in combined]:
+                        item["media_type"] = item.get("media_type") or ("movie" if "title" in item else "tv")
+                        combined.append(item)
+        combined.sort(key=lambda x: x.get("popularity", 0) or 0, reverse=True)
+        return combined[:20]
+
+    async def anime_latest(self) -> List[Dict[str, Any]]:
+        from datetime import datetime, timedelta
+        today = datetime.now().strftime("%Y-%m-%d")
+        two_months_ago = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")
+        
+        results = await asyncio.gather(
+            self.discover_tv(
+                with_genres="16",
+                with_original_language="ja",
+                sort_by="popularity.desc",
+                extra_params={"first_air_date.gte": two_months_ago, "first_air_date.lte": today},
+            ),
+            self.discover_tv(
+                with_genres="16",
+                with_original_language="zh",
+                sort_by="popularity.desc",
+                extra_params={"first_air_date.gte": two_months_ago, "first_air_date.lte": today},
+            ),
+            return_exceptions=True,
+        )
+        combined = []
+        for r in results:
+            if isinstance(r, list):
+                for item in r:
+                    if item.get("id") and item.get("id") not in [c.get("id") for c in combined]:
+                        item["media_type"] = item.get("media_type") or "tv"
+                        combined.append(item)
+        combined.sort(key=lambda x: x.get("popularity", 0) or 0, reverse=True)
+        return combined[:20]
+
+    async def tv_latest(self) -> List[Dict[str, Any]]:
+        from datetime import datetime, timedelta
+        today = datetime.now().strftime("%Y-%m-%d")
+        two_months_ago = (datetime.now() - timedelta(days=60)).strftime("%Y-%m-%d")
+        
+        results = await asyncio.gather(
+            self.discover_tv(
+                with_original_language="zh",
+                sort_by="popularity.desc",
+                extra_params={"first_air_date.gte": two_months_ago, "first_air_date.lte": today},
+            ),
+            self.discover_tv(
+                with_original_language="ja",
+                sort_by="popularity.desc",
+                extra_params={"first_air_date.gte": two_months_ago, "first_air_date.lte": today},
+            ),
+            self.discover_tv(
+                with_original_language="ko",
+                sort_by="popularity.desc",
+                extra_params={"first_air_date.gte": two_months_ago, "first_air_date.lte": today},
+            ),
+            return_exceptions=True,
+        )
+        combined = []
+        for r in results:
+            if isinstance(r, list):
+                for item in r:
+                    if item.get("id") and item.get("id") not in [c.get("id") for c in combined]:
+                        item["media_type"] = item.get("media_type") or "tv"
+                        combined.append(item)
+        combined.sort(key=lambda x: x.get("popularity", 0) or 0, reverse=True)
+        return combined[:20]
+
+    async def tv_popular(self) -> List[Dict[str, Any]]:
+        results = await asyncio.gather(
+            self.discover_tv(
+                with_original_language="zh",
+                sort_by="popularity.desc",
+            ),
+            return_exceptions=True,
+        )
+        combined = []
+        for r in results:
+            if isinstance(r, list):
+                for item in r:
+                    if item.get("id") and item.get("id") not in [c.get("id") for c in combined]:
+                        item["media_type"] = item.get("media_type") or "tv"
+                        combined.append(item)
+        combined.sort(key=lambda x: x.get("popularity", 0) or 0, reverse=True)
+        return combined[:20]
+
     async def search_multi(self, query: str) -> List[Dict[str, Any]]:
         if not query:
             return []
@@ -112,6 +290,19 @@ class TmdbClient:
         if year:
             params["first_air_date_year"] = year
         data = await self._get("/search/tv", params=params)
+        return data.get("results", [])
+
+    async def alternative_titles(self, media_type: str, item_id: int) -> List[Dict[str, Any]]:
+        """
+        获取电影/剧集别名列表。
+        - movie: /movie/{id}/alternative_titles
+        - tv: /tv/{id}/alternative_titles
+        """
+        path = f"/{media_type}/{item_id}/alternative_titles"
+        data = await self._get(path, params={})
+
+        if media_type == "movie":
+            return data.get("titles", [])
         return data.get("results", [])
 
     async def details(
@@ -186,6 +377,13 @@ async def gather_sections(client: TmdbClient) -> Dict[str, List[Dict[str, Any]]]
     """
     获取首页各分区数据，支持缓存
     
+    分区配置（针对国内用户优化）：
+    1. anime_latest - 动漫 · 新番（日漫+中国漫画）
+    2. tv_latest - TV · 新作（华语+日韩新剧）
+    3. top_rated - 高分佳作
+    4. tv_popular - TV · 热播（国产剧集）
+    5. anime_popular - 动漫 · 热播（日漫+中国漫画）
+    
     缓存策略：
     - 缓存时间：300秒（5分钟）
     - 缓存键：home_sections
@@ -202,14 +400,15 @@ async def gather_sections(client: TmdbClient) -> Dict[str, List[Dict[str, Any]]]
     start_time = time.time()
     
     results = await asyncio.gather(
-        client.trending("all", "week"),
-        client.movies("popular"),
+        client.anime_latest(),
+        client.tv_latest(),
         client.movies("top_rated"),
-        client.movies("now_playing"),
+        client.tv_popular(),
+        client.anime_popular(),
         return_exceptions=True
     )
     
-    keys = ["trending", "popular", "top_rated", "now_playing"]
+    keys = ["anime_latest", "tv_latest", "top_rated", "tv_popular", "anime_popular"]
     data: Dict[str, List[Dict[str, Any]]] = {}
     
     for key, result in zip(keys, results):

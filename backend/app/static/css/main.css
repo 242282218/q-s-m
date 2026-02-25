@@ -673,6 +673,64 @@ select {
   color: var(--color-text-primary);
 }
 
+/* 高亮区块样式 */
+.section-highlight {
+  background: linear-gradient(180deg, rgba(229, 9, 20, 0.05) 0%, transparent 100%);
+  padding-top: var(--spacing-4);
+  margin-top: var(--spacing-2);
+}
+
+.section-header-highlight {
+  background: linear-gradient(90deg, rgba(229, 9, 20, 0.1) 0%, transparent 100%);
+  padding: var(--spacing-3) var(--spacing-4);
+  border-radius: var(--radius-lg);
+  border-left: 3px solid var(--color-brand-primary);
+}
+
+.section-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--spacing-1) var(--spacing-3);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--letter-spacing-wide);
+  margin-left: auto;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.anime-badge {
+  background: linear-gradient(135deg, #ff6b9d 0%, #c44569 100%);
+  color: var(--color-text-primary);
+  box-shadow: 0 0 12px rgba(255, 107, 157, 0.4);
+}
+
+.china-badge {
+  background: linear-gradient(135deg, #f39c12 0%, #e74c3c 100%);
+  color: var(--color-text-primary);
+  box-shadow: 0 0 12px rgba(243, 156, 18, 0.4);
+}
+
+/* 动漫区块特殊样式 */
+.posters-grid-anime .poster-card {
+  position: relative;
+}
+
+.posters-grid-anime .poster-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-xl);
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 107, 157, 0.2);
+  transition: box-shadow var(--transition-fast);
+}
+
+.posters-grid-anime .poster-card:hover::after {
+  box-shadow: inset 0 0 0 2px rgba(255, 107, 157, 0.5);
+}
+
 @media (min-width: 768px) {
   .section-header {
     padding: 0 var(--spacing-6);
@@ -762,6 +820,7 @@ select {
   transition: transform var(--transition-scale), box-shadow var(--transition-slow);
   cursor: pointer;
   border-radius: var(--radius-xl);
+  contain: layout style;
 }
 
 /* 海报媒体容器 */
@@ -1859,17 +1918,29 @@ select {
 /* ============================================
    状态标签
    ============================================ */
-.status-badge {
+.status-badges {
   position: absolute;
   top: var(--spacing-2);
   right: var(--spacing-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  z-index: 2;
+}
+
+.status-badge {
   padding: var(--spacing-1) var(--spacing-2);
   border-radius: var(--radius-sm);
   font-size: 10px;
   font-weight: var(--font-weight-bold);
   text-transform: uppercase;
   letter-spacing: var(--letter-spacing-wider);
-  z-index: 2;
+  white-space: nowrap;
+}
+
+.status-badge.saved {
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+  color: var(--color-text-primary);
 }
 
 .status-badge.transferred {
@@ -1881,6 +1952,11 @@ select {
 .status-badge.expired {
   background: linear-gradient(135deg, var(--color-error) 0%, var(--color-error-dark) 100%);
   color: var(--color-text-primary);
+}
+
+.status-badge.not-transferred {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.9) 0%, rgba(255, 152, 0, 0.9) 100%);
+  color: #1a1a1a;
 }
 
 /* ============================================
@@ -1951,7 +2027,8 @@ select {
    卡片操作按钮
    ============================================ */
 .delete-btn,
-.transfer-btn {
+.transfer-btn,
+.rename-btn {
   position: absolute;
   top: var(--spacing-2);
   width: 32px;
@@ -1981,8 +2058,23 @@ select {
   color: var(--color-bg-primary);
 }
 
+.rename-btn {
+  left: calc(var(--spacing-2) + 40px);
+  background: rgba(59, 130, 246, 0.9);
+  color: var(--color-text-primary);
+  opacity: 1;
+}
+
+.rename-btn.is-disabled {
+  background: rgba(115, 115, 115, 0.85);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
 .poster-card:hover .delete-btn,
-.poster-card:hover .transfer-btn {
+.poster-card:hover .transfer-btn,
+.poster-card:hover .rename-btn {
   opacity: 1;
 }
 
@@ -1996,8 +2088,14 @@ select {
   transform: scale(1.12);
 }
 
+.rename-btn:hover:not(:disabled) {
+  background: rgba(37, 99, 235, 0.95);
+  transform: scale(1.12);
+}
+
 .delete-btn:focus-visible,
-.transfer-btn:focus-visible {
+.transfer-btn:focus-visible,
+.rename-btn:focus-visible {
   outline: 2px solid var(--color-text-primary);
   outline-offset: 2px;
   opacity: 1;
@@ -2405,6 +2503,144 @@ select {
 }
 
 /* ============================================
+   重命名日志模态框
+   ============================================ */
+.rename-log-modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-4);
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: var(--z-index-modal);
+}
+
+.rename-log-dialog {
+  width: min(900px, 100%);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  background: linear-gradient(160deg, rgba(24, 24, 24, 0.98) 0%, rgba(16, 16, 16, 0.98) 100%);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-2xl);
+  padding: var(--spacing-5);
+}
+
+.rename-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+}
+
+.rename-log-title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+}
+
+.rename-log-close {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border-default);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text-primary);
+  font-size: 18px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rename-log-close:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.rename-progress-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.rename-progress-track {
+  width: 100%;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.rename-progress-fill {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, #1f9d55 0%, #3ecf8e 100%);
+  transition: width var(--transition-base);
+}
+
+.rename-progress-text {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.rename-log-lines {
+  flex: 1;
+  min-height: 240px;
+  max-height: 52vh;
+  overflow-y: auto;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  background: rgba(0, 0, 0, 0.3);
+  padding: var(--spacing-3);
+  font-family: var(--font-family-mono);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.rename-log-line {
+  margin-bottom: var(--spacing-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.rename-log-line.level-info {
+  color: #cbd5e1;
+}
+
+.rename-log-line.level-warning {
+  color: #f59e0b;
+}
+
+.rename-log-line.level-error {
+  color: #f87171;
+}
+
+.rename-log-summary {
+  min-height: 24px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.rename-log-summary.done {
+  color: #d1fae5;
+}
+
+.rename-log-summary.has-error {
+  color: #fecaca;
+}
+
+.rename-log-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ============================================
    响应式优化
    ============================================ */
 @media (max-width: 767px) {
@@ -2442,6 +2678,20 @@ select {
 
   .home-link span {
     display: none;
+  }
+
+  .rename-log-dialog {
+    max-height: 94vh;
+    padding: var(--spacing-4);
+  }
+
+  .rename-log-title {
+    font-size: var(--font-size-base);
+  }
+
+  .rename-log-lines {
+    min-height: 200px;
+    max-height: 48vh;
   }
 }
 
@@ -2491,7 +2741,9 @@ select {
   .pagination,
   .btn,
   .delete-btn,
-  .transfer-btn {
+  .transfer-btn,
+  .rename-btn,
+  .rename-log-modal {
     display: none !important;
   }
 

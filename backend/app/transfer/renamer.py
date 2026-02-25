@@ -4,8 +4,11 @@
 """
 import re
 import os
-from typing import Optional, Tuple, List
+import unicodedata
+from typing import Optional, Tuple, List, Dict
 from dataclasses import dataclass
+
+from app.core.config import get_settings
 
 
 @dataclass
@@ -29,44 +32,58 @@ class Renamer:
     - documentary: 纪录片
     """
     
-    # 视频文件扩展名
     VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.ts', '.rmvb'}
     
-    # 集数匹配正则表达式 (按优先级排序)
     EPISODE_PATTERNS = [
-        # S01E01 格式
         r'[Ss](\d{1,2})[Ee](\d{1,3})',
-        # 第01集 格式
         r'第(\d{1,3})[集话話]',
-        # EP01 格式
         r'[Ee][Pp]?(\d{1,3})',
-        # [01] 格式
         r'\[(\d{2,3})\]',
-        # - 01 格式 (末尾)
         r'[-_]\s*(\d{2,3})(?:\s|$|\[)',
-        # E01 格式
         r'[Ee](\d{1,3})(?:\s|$|\[)',
-        # 01话/01集 格式
         r'(\d{1,3})[话話集]',
     ]
     
-    # 季数匹配正则表达式
     SEASON_PATTERNS = [
         r'[Ss](\d{1,2})',
         r'[Ss]eason\s*(\d{1,2})',
         r'第(\d{1,2})[季部]',
+        r'第([一二三四五六七八九十]{1,3})[季部]',
     ]
-    
-    # 分类到目录的映射
-    CATEGORY_DIRS = {
-        'movie': '/收藏TV/Movies',
-        'tv': '/收藏TV/TV Shows',
-        'anime': '/收藏TV/Anime',
-        'documentary': '/收藏TV/Documentary',
+
+    GARBLED_REPLACEMENTS = {
+        "鏀惰棌TV": "影视收藏",
+        "收藏TV": "影视收藏",
+        "Movies": "电影",
+        "TV Shows": "电视剧",
+        "Anime": "动漫",
+        "Documentary": "纪录片",
+    }
+
+    CHINESE_NUMERAL_MAP = {
+        "零": 0,
+        "一": 1,
+        "二": 2,
+        "三": 3,
+        "四": 4,
+        "五": 5,
+        "六": 6,
+        "七": 7,
+        "八": 8,
+        "九": 9,
     }
 
     def __init__(self):
         pass
+
+    def _get_category_dirs(self) -> Dict[str, str]:
+        settings = get_settings()
+        return {
+            'movie': settings.base_movie_dir,
+            'tv': settings.base_tv_dir,
+            'anime': settings.base_anime_dir,
+            'documentary': settings.base_documentary_dir,
+        }
 
     def extract_episode_info(self, filename: str) -> Tuple[Optional[int], Optional[int]]:
         """
@@ -85,8 +102,10 @@ class Renamer:
         for pattern in self.SEASON_PATTERNS:
             match = re.search(pattern, filename, re.IGNORECASE)
             if match:
-                season = int(match.group(1))
-                break
+                parsed = self._parse_numeric_token(match.group(1))
+                if parsed is not None:
+                    season = parsed
+                    break
         
         # 提取集数
         for pattern in self.EPISODE_PATTERNS:
@@ -96,19 +115,49 @@ class Renamer:
                 if 'Ss' in pattern or 'Ee' in pattern.lower()[:2]:
                     groups = match.groups()
                     if len(groups) == 2:
-                        season = int(groups[0])
-                        episode = int(groups[1])
+                        parsed_season = self._parse_numeric_token(groups[0])
+                        parsed_episode = self._parse_numeric_token(groups[1])
+                        if parsed_season is not None:
+                            season = parsed_season
+                        if parsed_episode is not None:
+                            episode = parsed_episode
                     else:
-                        episode = int(groups[0])
+                        parsed_episode = self._parse_numeric_token(groups[0])
+                        if parsed_episode is not None:
+                            episode = parsed_episode
                 else:
-                    episode = int(match.group(1))
-                break
+                    parsed_episode = self._parse_numeric_token(match.group(1))
+                    if parsed_episode is not None:
+                        episode = parsed_episode
+                if episode is not None:
+                    break
         
         # 默认季数为 1
         if episode is not None and season is None:
             season = 1
         
         return season, episode
+
+    def _parse_numeric_token(self, token: str) -> Optional[int]:
+        """解析阿拉伯数字或中文数字（如 第一季 / 第十二季）。"""
+        if not token:
+            return None
+        token = token.strip()
+        if token.isdigit():
+            return int(token)
+
+        if all(ch in self.CHINESE_NUMERAL_MAP or ch == "十" for ch in token):
+            if token == "十":
+                return 10
+            if "十" not in token:
+                return self.CHINESE_NUMERAL_MAP.get(token)
+
+            left, right = token.split("十", 1)
+            tens = 1 if left == "" else self.CHINESE_NUMERAL_MAP.get(left, 0)
+            ones = 0 if right == "" else self.CHINESE_NUMERAL_MAP.get(right, 0)
+            return tens * 10 + ones
+
+        return None
 
     def get_file_extension(self, filename: str) -> str:
         """获取文件扩展名"""
@@ -130,14 +179,118 @@ class Renamer:
         Returns:
             清理后的名称
         """
-        # Windows 非法字符
-        illegal_chars = r'[<>:"/\\|?*]'
+        # Windows 非法字符 + 夸克网盘 API 不支持的字符（英文方括号和中文方括号）
+        # 注意：移除字符后不留空隙
+        illegal_chars = r'[<>:"/\\|?*\[\]【】]'
         name = re.sub(illegal_chars, '', name)
         # 多个空格替换为单个
         name = re.sub(r'\s+', ' ', name)
         # 去除首尾空格
         name = name.strip()
         return name
+
+    def sanitize_for_emby(
+        self,
+        name: str,
+        *,
+        ascii_only: bool = False,
+        keep_brackets: bool = False,
+    ) -> str:
+        """
+        按 Emby v1.6 规范清理名称。
+
+        处理规则：
+        - ':' '/' '\\' '|' -> '-'
+        - '?' '*' '"' '<' '>' -> 删除
+        - 去除首尾空格与尾部 '.'
+        - 可选转为 ASCII（去除重音）
+        """
+        if not name:
+            return ""
+
+        text = name
+        # Normalize common mojibake tokens before regular sanitization.
+        for bad, good in self.GARBLED_REPLACEMENTS.items():
+            text = text.replace(bad, good)
+        replacements = {
+            ":": "-",
+            "/": "-",
+            "\\": "-",
+            "|": "-",
+            "?": "",
+            "*": "",
+            "\"": "",
+            "<": "",
+            ">": "",
+        }
+        for src, target in replacements.items():
+            text = text.replace(src, target)
+
+        if not keep_brackets:
+            text = text.replace("[", "").replace("]", "").replace("【", "").replace("】", "")
+
+        text = re.sub(r"\s+", " ", text).strip()
+        text = text.rstrip(" .")
+        text = re.sub(r"-{2,}", "-", text)
+
+        if ascii_only:
+            text = unicodedata.normalize("NFKD", text)
+            text = text.encode("ascii", "ignore").decode("ascii")
+            text = re.sub(r"\s+", " ", text).strip()
+            text = text.rstrip(" .")
+
+        return text
+
+    def build_media_root_name(
+        self,
+        title: str,
+        year: Optional[int],
+        tmdb_id: Optional[int] = None,
+    ) -> str:
+        """构建媒体根目录名：Title (Year) [tmdbid=xxxx]"""
+        safe_title = self.sanitize_for_emby(title, ascii_only=False)
+        if not safe_title:
+            safe_title = self.sanitize_for_emby(title, ascii_only=True)
+        if not safe_title:
+            safe_title = "Unknown Title"
+        if year:
+            base = f"{safe_title} ({year})"
+        else:
+            base = safe_title
+        if tmdb_id:
+            return f"{base} [tmdbid={tmdb_id}]"
+        return base
+
+    def build_season_folder_name(self, season: int) -> str:
+        """构建季目录名：Season XX"""
+        return f"Season {season:02d}"
+
+    def build_movie_filename(self, title: str, year: Optional[int], ext: str) -> str:
+        """构建电影文件名：Title (Year).ext"""
+        safe_title = self.sanitize_for_emby(title, ascii_only=False)
+        if not safe_title:
+            safe_title = self.sanitize_for_emby(title, ascii_only=True)
+        if not safe_title:
+            safe_title = "Unknown Title"
+        prefix = f"{safe_title} ({year})" if year else safe_title
+        return f"{prefix}{ext}"
+
+    def build_episode_filename(
+        self,
+        title: str,
+        year: Optional[int],
+        season: int,
+        episode: int,
+        ext: str,
+    ) -> str:
+        """构建剧集文件名：Show (Year) - SxxExx.ext"""
+        safe_title = self.sanitize_for_emby(title, ascii_only=False)
+        if not safe_title:
+            safe_title = self.sanitize_for_emby(title, ascii_only=True)
+        if not safe_title:
+            safe_title = "Unknown Title"
+        prefix = f"{safe_title} ({year})" if year else safe_title
+        return f"{prefix} - S{season:02d}E{episode:02d}{ext}"
 
     def generate_movie_path(
         self,
@@ -170,7 +323,7 @@ class Renamer:
             folder_name = title
             new_name = f"{title}{ext}"
         
-        base_dir = self.CATEGORY_DIRS.get(category, self.CATEGORY_DIRS['movie'])
+        base_dir = self._get_category_dirs().get(category, self._get_category_dirs()['movie'])
         new_path = f"{base_dir}/{folder_name}/{new_name}"
         
         return RenameResult(
@@ -191,7 +344,7 @@ class Renamer:
         """
         生成电视剧的重命名路径
         
-        格式: /收藏TV/TV Shows/{Title} ({Year})/Season {S}/{Title} - S{xx}E{xx}.ext
+        格式: /收藏TV/TV Shows/{Title} ({Year})/第{S}季/{Title} 第{S}季第{E}集 SxxEyy.ext
         
         Args:
             title: 剧名
@@ -220,15 +373,16 @@ class Renamer:
         else:
             show_folder = title
         
-        season_folder = f"Season {season}"
+        season_folder = f"第{season:02d}季"
         
         if episode is not None:
-            new_name = f"{title} - S{season:02d}E{episode:02d}{ext}"
+            # 保留 SxxEyy 标记，确保 Emby 能稳定识别集信息。
+            new_name = f"{title} 第{season:02d}季第{episode:02d}集 S{season:02d}E{episode:02d}{ext}"
         else:
             # 无法提取集数，保留原文件名
             new_name = original_filename
         
-        base_dir = self.CATEGORY_DIRS.get(category, self.CATEGORY_DIRS['tv'])
+        base_dir = self._get_category_dirs().get(category, self._get_category_dirs()['tv'])
         new_path = f"{base_dir}/{show_folder}/{season_folder}/{new_name}"
         
         return RenameResult(

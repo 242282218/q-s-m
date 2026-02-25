@@ -25,7 +25,7 @@ async def home(request: Request) -> HTMLResponse:
     try:
         sections_raw = await gather_sections(tmdb_client)
     except Exception:
-        sections_raw = {key: [] for key in ["trending", "popular", "top_rated", "now_playing"]}
+        sections_raw = {key: [] for key in ["anime_latest", "tv_latest", "top_rated", "tv_popular", "anime_popular"]}
 
     sections = {
         key: [adapt_poster(item, tmdb_client) for item in value if item.get("id")]
@@ -33,14 +33,24 @@ async def home(request: Request) -> HTMLResponse:
     }
     
     hero_item = None
-    trending_items = sections.get("trending", [])
-    if trending_items:
+    tv_popular_items = sections.get("tv_popular", [])
+    tv_latest_items = sections.get("tv_latest", [])
+    top_items = sections.get("top_rated", [])
+    anime_items = sections.get("anime_popular", [])
+    
+    hero_candidates = []
+    if tv_popular_items:
+        hero_candidates.extend(tv_popular_items[:3])
+    if tv_latest_items:
+        hero_candidates.extend(tv_latest_items[:2])
+    if top_items:
+        hero_candidates.extend(top_items[:2])
+    if anime_items:
+        hero_candidates.extend(anime_items[:2])
+    
+    if hero_candidates:
         import random
-        hero_raw = random.choice(trending_items[:5])
-        hero_item = adapt_poster(
-            {"id": hero_raw["id"], "media_type": hero_raw["media_type"]},
-            tmdb_client
-        )
+        hero_raw = random.choice(hero_candidates)
         try:
             detail_data = await tmdb_client.details(hero_raw["media_type"], hero_raw["id"])
             hero_item = adapt_detail(detail_data, tmdb_client)

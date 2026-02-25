@@ -1,1 +1,15 @@
-[]
+[
+  "backend/tests/test_emby_naming.py::test_build_episode_filename",
+  "backend/tests/test_emby_naming.py::test_extract_episode_info_with_chinese_season",
+  "backend/tests/test_emby_naming.py::test_pick_romanized_title_prefers_romaji",
+  "backend/tests/test_emby_naming.py::test_resolve_media_category_detects_anime",
+  "backend/tests/test_emby_naming.py::test_resolve_tmdb_naming_info_fallback_from_wrong_tmdb_id",
+  "backend/tests/test_emby_naming.py::test_sanitize_for_emby_special_chars",
+  "backend/tests/test_emby_rename_cn.py::test_normalize_title_candidate_strips_prefix",
+  "backend/tests/test_emby_rename_cn.py::test_resolve_final_title_prefers_chinese_candidate",
+  "backend/tests/test_emby_rename_cn.py::test_tv_rename_uses_chinese_episode_and_emby_token",
+  "backend/tests/test_optimizations.py::test_collection_js_syntax",
+  "backend/tests/test_optimizations.py::test_css_optimizations",
+  "backend/tests/test_optimizations.py::test_dummy",
+  "backend/tests/test_rename_saved_tree.py::test_rename_saved_tree_tv_recursive"
+]

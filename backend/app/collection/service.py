@@ -265,7 +265,6 @@ class CollectionService:
             return False, "无效的状态值"
         
         try:
-            # 优化: 使用 update() 直接更新，减少一次查询
             result = self.db.query(Collection).filter(
                 Collection.id == collection_id
             ).update({"status": status})
@@ -285,3 +284,63 @@ class CollectionService:
             self.db.rollback()
             logger.error(f"状态更新失败 - 未知错误: id={collection_id}, error={e}", exc_info=True)
             return False, "状态更新失败: 系统错误"
+
+    def check_by_link(self, share_url: str) -> Tuple[bool, Optional[int], Optional[int]]:
+        """
+        检查分享链接是否已收藏
+        
+        Args:
+            share_url: 分享链接
+            
+        Returns:
+            (collected, id, status)
+        """
+        result = self.db.query(Collection.id, Collection.status).filter(
+            Collection.quark_share_url == share_url
+        ).first()
+        
+        if result:
+            return True, result[0], result[1]
+        return False, None, None
+
+    def check_by_links(self, share_urls: List[str]) -> List[dict]:
+        """
+        批量检查分享链接是否已收藏
+        
+        Args:
+            share_urls: 分享链接列表
+            
+        Returns:
+            包含每个链接状态的字典列表
+        """
+        if not share_urls:
+            return []
+        
+        results = self.db.query(
+            Collection.quark_share_url,
+            Collection.id,
+            Collection.status
+        ).filter(
+            Collection.quark_share_url.in_(share_urls)
+        ).all()
+        
+        link_map = {r[0]: {"id": r[1], "status": r[2]} for r in results}
+        
+        output = []
+        for url in share_urls:
+            if url in link_map:
+                output.append({
+                    "link": url,
+                    "collected": True,
+                    "id": link_map[url]["id"],
+                    "status": link_map[url]["status"],
+                })
+            else:
+                output.append({
+                    "link": url,
+                    "collected": False,
+                    "id": None,
+                    "status": None,
+                })
+        
+        return output

@@ -124,6 +124,9 @@ async function searchQuarkResources(retryCount = 0) {
             empty.style.display = 'none';
             list.style.display = 'block';
 
+            const resourceLinks = data.resources.map(r => r.link);
+            const collectionStatuses = await checkLinksCollectionStatus(resourceLinks);
+
             let html = '<div class="quark-resources-scroll">';
 
             data.resources.forEach((resource, index) => {
@@ -137,8 +140,13 @@ async function searchQuarkResources(retryCount = 0) {
                     </div>
                 ` : '';
 
+                const linkStatus = collectionStatuses[resource.link] || { collected: false };
+                const collectedClass = linkStatus.collected ? 'btn-success' : '';
+                const collectedText = linkStatus.collected ? '✅ 已收藏' : '⭐ 收藏';
+                const collectedDisabled = linkStatus.collected ? 'disabled' : '';
+
                 html += `
-                    <div class="quark-resource-card">
+                    <div class="quark-resource-card" data-link="${escapeHtml(resource.link)}">
                         <div class="resource-header">
                             <h4 class="resource-title">${index + 1}. ${escapeHtml(resource.name)}</h4>
                             <div class="resource-badges">
@@ -153,10 +161,10 @@ async function searchQuarkResources(retryCount = 0) {
                         </div>
                         <div class="resource-actions">
                             <a href="${resource.link}" target="_blank" rel="noopener noreferrer" class="btn btn-primary">打开链接</a>
-                            <button onclick="collectResource('${escapeJs(resource.link)}', '${escapeJs(resource.name)}', this)" id="collect-btn-${index}" class="btn btn-collect">⭐ 收藏</button>
+                            <button onclick="collectResource('${escapeJs(resource.link)}', '${escapeJs(resource.name)}', this)" id="collect-btn-${index}" class="btn btn-collect ${collectedClass}" ${collectedDisabled}>${collectedText}</button>
                         </div>
                         <div class="resource-actions">
-                            <button onclick="saveResource('${resource.link}', this)" class="btn btn-transfer">保存到网盘</button>
+                            <button onclick="saveResource('${resource.link}', '${escapeJs(resource.name)}', this)" class="btn btn-transfer">保存到网盘</button>
                         </div>
                         <div id="save-status-${index}" class="resource-status"></div>
                     </div>
@@ -184,6 +192,49 @@ async function searchQuarkResources(retryCount = 0) {
             <button onclick="searchQuarkResources()" class="btn btn-retry">重试</button>
         `;
         list.style.display = 'none';
+    }
+}
+
+/**
+ * 批量检查链接收藏状态
+ * 
+ * @param {string[]} links - 链接数组
+ * @returns {Promise<Object>} 链接状态映射
+ */
+async function checkLinksCollectionStatus(links) {
+    if (!links || links.length === 0) {
+        return {};
+    }
+    
+    try {
+        const response = await fetch('/api/collection/check-links', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ links: links })
+        });
+        
+        if (!response.ok) {
+            console.error('[checkLinksCollectionStatus] HTTP 错误:', response.status);
+            return {};
+        }
+        
+        const data = await response.json();
+        const statusMap = {};
+        
+        for (const result of data.results) {
+            statusMap[result.link] = {
+                collected: result.collected,
+                id: result.id,
+                status: result.status
+            };
+        }
+        
+        return statusMap;
+    } catch (error) {
+        console.error('[checkLinksCollectionStatus] 检查失败:', error);
+        return {};
     }
 }
 
@@ -222,10 +273,11 @@ function getCardTitle(card) {
  * 保存资源到网盘
  * 
  * @param {string} link - 资源链接
+ * @param {string} resourceName - 资源名称
  * @param {HTMLButtonElement} button - 触发按钮
  * @returns {Promise<void>}
  */
-async function saveResource(link, button) {
+async function saveResource(link, resourceName, button) {
     if (!link || !button) {
         console.error('[saveResource] 参数无效');
         return;
@@ -245,6 +297,7 @@ async function saveResource(link, button) {
     
     const folderName = normalizeFolderName(getCardTitle(card));
     const statusDiv = card.querySelector('[id^="save-status-"]');
+    const collectBtn = card.querySelector('.btn-collect');
     
     if (statusDiv) {
         statusDiv.innerHTML = '<span class="warning-text">正在保存...</span>';
@@ -256,7 +309,11 @@ async function saveResource(link, button) {
             to_dir_fid: '0',
             media_type: window.mediaType,
             title: window.itemTitle,
-            year: window.itemYear || null
+            year: window.itemYear || null,
+            tmdb_id: window.itemId,
+            poster_path: window.itemPosterPath,
+            backdrop_path: window.itemBackdropPath,
+            resource_name: resourceName
         };
         if (folderName) {
             payload.to_dir_name = folderName;
@@ -280,6 +337,17 @@ async function saveResource(link, button) {
             button.innerHTML = '保存成功';
             button.classList.remove('btn-loading');
             button.classList.add('btn-success');
+            
+            if (result.collection_created && collectBtn) {
+                collectBtn.innerHTML = '✅ 已收藏';
+                collectBtn.classList.add('btn-success');
+                collectBtn.disabled = true;
+            } else if (result.collection_id && collectBtn) {
+                collectBtn.innerHTML = '✅ 已收藏';
+                collectBtn.classList.add('btn-success');
+                collectBtn.disabled = true;
+            }
+            
             if (statusDiv) {
                 statusDiv.innerHTML = `<span class="success-text">${result.message || '保存成功'}</span>`;
             }

@@ -13,6 +13,9 @@ from .schemas import (
     CollectionCheckResponse,
     CollectionDeleteResponse,
     CollectionItem,
+    CollectionCheckLinkResponse,
+    CollectionCheckLinksRequest,
+    CollectionCheckLinksResponse,
 )
 from .service import CollectionService
 
@@ -109,3 +112,40 @@ def delete_collection(
     service = CollectionService(db)
     success, message = service.delete(collection_id)
     return CollectionDeleteResponse(success=success, message=message)
+
+
+@router.get("/check-link", response_model=CollectionCheckLinkResponse, summary="检查链接是否已收藏")
+def check_link_collection(
+    link: str = Query(..., description="分享链接"),
+    db: Session = Depends(get_db),
+):
+    """
+    检查指定分享链接是否已收藏
+    
+    返回收藏状态和收藏 ID、状态
+    """
+    service = CollectionService(db)
+    collected, id, status = service.check_by_link(link)
+    return CollectionCheckLinkResponse(collected=collected, id=id, status=status)
+
+
+@router.post("/check-links", response_model=CollectionCheckLinksResponse, summary="批量检查链接收藏状态")
+def check_links_collection(
+    request: CollectionCheckLinksRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    批量检查多个分享链接的收藏状态
+    
+    返回每个链接的收藏状态、收藏 ID 和转存状态
+    """
+    service = CollectionService(db)
+    results = service.check_by_links(request.links)
+    return CollectionCheckLinksResponse(
+        results=[{
+            "link": r["link"],
+            "collected": r["collected"],
+            "id": r["id"],
+            "status": r["status"],
+        } for r in results]
+    )

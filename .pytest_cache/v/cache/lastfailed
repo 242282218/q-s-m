@@ -1,3 +1,5 @@
 {
-  "backend/tests/test_dummy.py": true
+  "backend/tests/test_dummy.py": true,
+  "backend/tests/test_optimizations.py::test_collection_js_syntax": true,
+  "backend/tests/test_optimizations.py::test_css_optimizations": true
 }

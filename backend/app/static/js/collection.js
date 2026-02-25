@@ -20,6 +20,8 @@ const API_CONFIG = {
 let currentPage = 1;
 const limit = 20;
 let totalItems = 0;
+let renameAbortController = null;
+let renameInProgress = false;
 
 /** 图片加载配置 */
 const IMAGE_CONFIG = {
@@ -127,24 +129,36 @@ function createCardElement(item, imageSize) {
     const card = document.createElement('div');
     card.className = 'poster-card';
     card.dataset.id = item.id;
+    card.dataset.title = item.title || '';
+    const statusNum = Number(item.status ?? 0);
+    card.dataset.status = String(statusNum);
     
-    // 状态标签
     let statusBadgeHtml = '';
-    if (item.status === 1) {
-        statusBadgeHtml = '<span class="status-badge transferred">已转存</span>';
-    } else if (item.status === 2) {
-        statusBadgeHtml = '<span class="status-badge expired">已失效</span>';
+    const savedBadge = '<span class="status-badge saved">已收藏</span>';
+    
+    let transferBadgeHtml = '';
+    if (statusNum === 1) {
+        transferBadgeHtml = '<span class="status-badge transferred">已转存</span>';
+    } else if (statusNum === 2) {
+        transferBadgeHtml = '<span class="status-badge expired">已失效</span>';
+    } else {
+        transferBadgeHtml = '<span class="status-badge not-transferred">未转存</span>';
     }
     
-    // 缺失海报标记
+    statusBadgeHtml = `<div class="status-badges">${savedBadge}${transferBadgeHtml}</div>`;
+    
     const missingPosterClass = !item.poster_path ? 'missing-poster' : '';
     const missingPosterData = !item.poster_path 
         ? `data-tmdb-id="${item.tmdb_id}" data-media-type="${item.media_type}"` 
         : '';
+    const renameDisabled = statusNum !== 1;
+    const renameDisabledAttr = renameDisabled ? 'disabled aria-disabled="true"' : '';
+    const renameDisabledClass = renameDisabled ? ' is-disabled' : '';
     
     card.innerHTML = `
         <button class="delete-btn" data-action="delete" data-id="${item.id}" title="删除收藏" aria-label="删除收藏">×</button>
         <button class="transfer-btn" data-action="transfer" data-id="${item.id}" title="转存到网盘" aria-label="转存到网盘">📥</button>
+        <button class="rename-btn${renameDisabledClass}" data-action="rename" data-id="${item.id}" title="重命名" aria-label="重命名" ${renameDisabledAttr}>✏️</button>
         <a href="/${item.media_type}/${item.tmdb_id}">
             <div class="poster-media">
                 <img 
@@ -330,6 +344,250 @@ async function transferCollection(id, button) {
     }
 }
 
+function getRenameModalElements() {
+    return {
+        modal: document.getElementById('rename-log-modal'),
+        title: document.getElementById('rename-log-title'),
+        progressFill: document.getElementById('rename-progress-fill'),
+        progressText: document.getElementById('rename-progress-text'),
+        lines: document.getElementById('rename-log-lines'),
+        summary: document.getElementById('rename-log-summary'),
+        closeTop: document.getElementById('rename-log-close-top'),
+        closeBottom: document.getElementById('rename-log-close-bottom')
+    };
+}
+
+function openRenameModal(resourceTitle) {
+    const { modal, title, progressFill, progressText, lines, summary } = getRenameModalElements();
+    if (!modal || !title || !progressFill || !progressText || !lines || !summary) {
+        console.error('[openRenameModal] 模态框 DOM 未就绪');
+        return;
+    }
+
+    title.textContent = `✏️ 重命名进度 - ${resourceTitle || '未知资源'}`;
+    progressFill.style.width = '0%';
+    progressText.textContent = '0% (0/0)';
+    lines.innerHTML = '';
+    summary.textContent = '';
+    summary.classList.remove('done', 'has-error');
+
+    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeRenameModal(force = false) {
+    const { modal } = getRenameModalElements();
+    if (!modal) return;
+
+    if (!force && renameInProgress) {
+        const shouldAbort = confirm('重命名正在进行，关闭将中断任务，确定继续吗？');
+        if (!shouldAbort) return;
+        renameAbortController?.abort();
+    }
+
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+function updateRenameProgress(current, total, percentage) {
+    const { progressFill, progressText } = getRenameModalElements();
+    if (!progressFill || !progressText) return;
+
+    const safeCurrent = Number.isFinite(current) ? current : 0;
+    const safeTotal = Number.isFinite(total) ? total : 0;
+    const safePercentage = Number.isFinite(percentage)
+        ? Math.max(0, Math.min(100, percentage))
+        : (safeTotal > 0 ? Math.round((safeCurrent / safeTotal) * 100) : 0);
+
+    progressFill.style.width = `${safePercentage}%`;
+    progressText.textContent = `${safePercentage}% (${safeCurrent}/${safeTotal})`;
+}
+
+function appendRenameLog(message, level = 'info') {
+    const { lines } = getRenameModalElements();
+    if (!lines) return;
+
+    const logLine = document.createElement('div');
+    logLine.className = `rename-log-line level-${level}`;
+    logLine.textContent = `[${level.toUpperCase()}] ${message || ''}`;
+    lines.appendChild(logLine);
+    lines.scrollTop = lines.scrollHeight;
+}
+
+function updateRenameSummary(success, skipped, failed) {
+    const { summary } = getRenameModalElements();
+    if (!summary) return;
+
+    const safeSuccess = Number.isFinite(success) ? success : 0;
+    const safeSkipped = Number.isFinite(skipped) ? skipped : 0;
+    const safeFailed = Number.isFinite(failed) ? failed : 0;
+
+    summary.textContent = `完成汇总：成功 ${safeSuccess} 个，跳过 ${safeSkipped} 个，失败 ${safeFailed} 个`;
+    summary.classList.add('done');
+    summary.classList.toggle('has-error', safeFailed > 0);
+}
+
+function parseSseData(chunk) {
+    const lines = chunk.split(/\r?\n/);
+    let payload = '';
+
+    lines.forEach((line) => {
+        if (line.startsWith('data:')) {
+            payload += line.slice(5).trim();
+        }
+    });
+
+    if (!payload) return null;
+
+    try {
+        return JSON.parse(payload);
+    } catch (error) {
+        console.error('[parseSseData] 解析失败:', error, payload);
+        return null;
+    }
+}
+
+function handleRenameEvent(eventData) {
+    if (!eventData || typeof eventData !== 'object') return false;
+
+    const type = eventData.type || 'log';
+    const level = eventData.level || 'info';
+    const current = Number(eventData.current ?? 0);
+    const total = Number(eventData.total ?? 0);
+    const percentage = Number(eventData.percentage ?? 0);
+    const message = eventData.message || '';
+
+    if (type === 'log') {
+        appendRenameLog(message, level);
+        if (total > 0) {
+            updateRenameProgress(current, total, percentage);
+        }
+        return false;
+    }
+
+    if (type === 'progress') {
+        updateRenameProgress(current, total, percentage);
+        return false;
+    }
+
+    if (type === 'complete') {
+        updateRenameProgress(total, total, 100);
+        appendRenameLog(message || '重命名完成', 'info');
+        updateRenameSummary(eventData.success, eventData.skipped, eventData.failed);
+        showToast('重命名完成', 'success');
+        return true;
+    }
+
+    if (type === 'error') {
+        appendRenameLog(message || '重命名失败', 'error');
+        showToast(message || '重命名失败', 'error');
+        return true;
+    }
+
+    return false;
+}
+
+function initRenameModal() {
+    const { modal, closeTop, closeBottom } = getRenameModalElements();
+    if (!modal || !closeTop || !closeBottom) return;
+
+    closeTop.addEventListener('click', () => closeRenameModal(false));
+    closeBottom.addEventListener('click', () => closeRenameModal(false));
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            closeRenameModal(false);
+        }
+    });
+}
+
+async function renameCollection(id, title, button) {
+    if (!id || !button) {
+        console.error('[renameCollection] 参数无效');
+        return;
+    }
+
+    if (renameInProgress) {
+        showToast('已有重命名任务正在执行', 'info');
+        return;
+    }
+
+    const originalText = button.innerHTML;
+    button.innerHTML = '<span class="loading-spinner" style="width:16px;height:16px;border-width:2px;margin:0;"></span>';
+    button.disabled = true;
+
+    renameInProgress = true;
+    renameAbortController = new AbortController();
+    let receivedComplete = false;
+
+    openRenameModal(title);
+    appendRenameLog(`开始重命名: ${title || '未知资源'}`, 'info');
+
+    try {
+        const response = await fetch('/api/transfer/rename', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ collection_id: id }),
+            signal: renameAbortController.signal
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP 错误: ${response.status}`);
+        }
+
+        if (!response.body) {
+            throw new Error('浏览器不支持流式响应');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const chunks = buffer.split(/\r?\n\r?\n/);
+            buffer = chunks.pop() || '';
+
+            chunks.forEach((chunk) => {
+                const eventData = parseSseData(chunk);
+                if (!eventData) return;
+                if (handleRenameEvent(eventData)) {
+                    receivedComplete = true;
+                }
+            });
+        }
+
+        const finalChunk = buffer.trim();
+        if (finalChunk) {
+            const eventData = parseSseData(finalChunk);
+            if (eventData && handleRenameEvent(eventData)) {
+                receivedComplete = true;
+            }
+        }
+
+        if (!receivedComplete) {
+            appendRenameLog('重命名流已结束，但未收到完成事件', 'warning');
+        }
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            appendRenameLog('重命名任务已中断', 'warning');
+            showToast('重命名任务已中断', 'info');
+        } else {
+            console.error('[renameCollection] 请求失败:', error);
+            appendRenameLog(`重命名失败: ${error.message}`, 'error');
+            showToast('重命名请求失败', 'error');
+        }
+    } finally {
+        renameInProgress = false;
+        renameAbortController = null;
+        button.innerHTML = originalText;
+        button.disabled = false;
+        loadCollections(currentPage);
+    }
+}
+
 /**
  * 获取缺失的海报
  * 优化: 使用 Intersection Observer 实现按需加载
@@ -483,6 +741,10 @@ function initEventDelegation() {
             deleteCollection(id);
         } else if (action === 'transfer') {
             transferCollection(id, button);
+        } else if (action === 'rename') {
+            const card = button.closest('.poster-card');
+            const resourceTitle = card?.dataset.title || '';
+            renameCollection(id, resourceTitle, button);
         }
     });
 }
@@ -508,6 +770,7 @@ document.getElementById('next-page')?.addEventListener('click', () => {
  */
 document.addEventListener('DOMContentLoaded', () => {
     initEventDelegation();
+    initRenameModal();
     loadCollections(1);
 });
 

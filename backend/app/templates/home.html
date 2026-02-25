@@ -53,26 +53,31 @@
   </section>
   {% endif %}
 
-  {% set section_titles = {
-    "trending": "本周趋势",
-    "popular": "热门电影",
-    "top_rated": "高分佳作",
-    "now_playing": "正在上映"
-  } %}
-  {% set section_icons = {
-    "trending": "🔥",
-    "popular": "⭐",
-    "top_rated": "🏆",
-    "now_playing": "🎬"
+  {% set section_config = {
+    "anime_latest": {"title": "动漫 · 新番", "icon": "✨", "highlight": true},
+    "tv_latest": {"title": "TV · 新作", "icon": "📺", "highlight": true},
+    "top_rated": {"title": "高分佳作", "icon": "🏆", "highlight": false},
+    "tv_popular": {"title": "TV · 热播", "icon": "🎬", "highlight": true},
+    "anime_popular": {"title": "动漫 · 热播", "icon": "🎌", "highlight": true}
   } %}
 
   {% for key, posters in sections.items() %}
-    <section class="section" aria-labelledby="section-{{ key }}">
-      <div class="section-header">
-        <span class="section-icon" aria-hidden="true">{{ section_icons.get(key, "🎞️") }}</span>
-        <h2 class="section-title" id="section-{{ key }}">{{ section_titles.get(key, key) }}</h2>
+    {% set config = section_config.get(key, {"title": key, "icon": "🎞️", "highlight": false}) %}
+    <section class="section {% if config.highlight %}section-highlight{% endif %}" aria-labelledby="section-{{ key }}">
+      <div class="section-header {% if config.highlight %}section-header-highlight{% endif %}">
+        <span class="section-icon" aria-hidden="true">{{ config.icon }}</span>
+        <h2 class="section-title" id="section-{{ key }}">{{ config.title }}</h2>
+        {% if key == 'anime_latest' %}
+        <span class="section-badge anime-badge">热门推荐</span>
+        {% endif %}
+        {% if key == 'tv_latest' %}
+        <span class="section-badge china-badge">热门推荐</span>
+        {% endif %}
+        {% if key == 'tv_popular' %}
+        <span class="section-badge china-badge">热播推荐</span>
+        {% endif %}
       </div>
-      <div class="posters-grid" role="list">
+      <div class="posters-grid {% if key.startswith('anime') %}posters-grid-anime{% endif %}" role="list">
         {% if posters %}
           {% for poster in posters %}
             {% include "partials/poster_card.html" %}
