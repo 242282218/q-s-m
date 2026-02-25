@@ -2,82 +2,110 @@
 
 {% block content %}
 <div class="page">
-  {% if hero_item %}
-  <section class="hero-section" aria-label="精选推荐">
-    <div class="hero-background">
-      {% if hero_item.backdrop_url %}
-      <img src="{{ hero_item.backdrop_url }}" alt="{{ hero_item.title }}" loading="eager">
-      {% elif hero_item.poster_url %}
-      <img src="{{ hero_item.poster_url }}" alt="{{ hero_item.title }}" loading="eager">
-      {% endif %}
-      <div class="hero-gradient" aria-hidden="true"></div>
-      <div class="hero-vignette" aria-hidden="true"></div>
+  {% if hero_items %}
+  <section class="hero-section" aria-label="精选推荐" data-carousel>
+    <div class="hero-carousel">
+      {% for item in hero_items %}
+      <div class="hero-slide {% if loop.first %}active{% endif %}" data-slide-index="{{ loop.index0 }}">
+        <div class="hero-background">
+          {% if item.backdrop_url %}
+          <img src="{{ item.backdrop_url }}" alt="{{ item.title }}" loading="{% if loop.first %}eager{% else %}lazy{% endif %}" data-carousel-image>
+          {% elif item.poster_url %}
+          <img src="{{ item.poster_url }}" alt="{{ item.title }}" loading="{% if loop.first %}eager{% else %}lazy{% endif %}" data-carousel-image>
+          {% endif %}
+          <div class="hero-gradient" aria-hidden="true"></div>
+          <div class="hero-vignette" aria-hidden="true"></div>
+        </div>
+        <div class="hero-content">
+          {% if item.vote and item.vote >= 7 %}
+          <span class="hero-badge">98% 匹配</span>
+          {% endif %}
+          <h1 class="hero-title">{{ item.title }}</h1>
+          <div class="hero-meta">
+            {% if item.year %}<span class="hero-meta-item">{{ item.year }}</span>{% endif %}
+            {% if item.vote %}
+            <span class="hero-meta-divider" aria-hidden="true"></span>
+            <span class="hero-meta-item rating">⭐ {{ "%.1f"|format(item.vote) }}</span>
+            {% endif %}
+            {% if item.runtime %}
+            <span class="hero-meta-divider" aria-hidden="true"></span>
+            <span class="hero-meta-item">{{ item.runtime }} 分钟</span>
+            {% endif %}
+          </div>
+          {% if item.genres %}
+          <div class="hero-tags">
+            {% for g in item.genres[:4] %}
+            <span class="hero-tag">{{ g }}</span>
+            {% endfor %}
+          </div>
+          {% endif %}
+          {% if item.overview %}
+          <p class="hero-overview">{{ item.overview }}</p>
+          {% endif %}
+          <div class="hero-actions">
+            <a href="/{{ item.media_type }}/{{ item.id }}" class="hero-btn hero-btn-primary">
+              <span class="hero-btn-icon">▶</span>
+              <span>查看详情</span>
+            </a>
+            <a href="/{{ item.media_type }}/{{ item.id }}" class="hero-btn hero-btn-secondary">
+              <span class="hero-btn-icon">ℹ</span>
+              <span>更多信息</span>
+            </a>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
     </div>
-    <div class="hero-content">
-      {% if hero_item.vote and hero_item.vote >= 7 %}
-      <span class="hero-badge">98% 匹配</span>
-      {% endif %}
-      <h1 class="hero-title">{{ hero_item.title }}</h1>
-      <div class="hero-meta">
-        {% if hero_item.year %}<span class="hero-meta-item">{{ hero_item.year }}</span>{% endif %}
-        {% if hero_item.vote %}
-        <span class="hero-meta-divider" aria-hidden="true"></span>
-        <span class="hero-meta-item rating">⭐ {{ "%.1f"|format(hero_item.vote) }}</span>
-        {% endif %}
-        {% if hero_item.runtime %}
-        <span class="hero-meta-divider" aria-hidden="true"></span>
-        <span class="hero-meta-item">{{ hero_item.runtime }} 分钟</span>
-        {% endif %}
-      </div>
-      {% if hero_item.genres %}
-      <div class="hero-tags">
-        {% for g in hero_item.genres[:4] %}
-        <span class="hero-tag">{{ g }}</span>
-        {% endfor %}
-      </div>
-      {% endif %}
-      {% if hero_item.overview %}
-      <p class="hero-overview">{{ hero_item.overview }}</p>
-      {% endif %}
-      <div class="hero-actions">
-        <a href="/{{ hero_item.media_type }}/{{ hero_item.id }}" class="hero-btn hero-btn-primary">
-          <span class="hero-btn-icon">▶</span>
-          <span>查看详情</span>
-        </a>
-        <a href="/{{ hero_item.media_type }}/{{ hero_item.id }}" class="hero-btn hero-btn-secondary">
-          <span class="hero-btn-icon">ℹ</span>
-          <span>更多信息</span>
-        </a>
-      </div>
+
+    <!-- 轮播导航控制 -->
+    <div class="hero-carousel-controls">
+      <button class="hero-carousel-btn hero-carousel-prev" aria-label="上一张" data-carousel-prev>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
+      <button class="hero-carousel-btn hero-carousel-next" aria-label="下一张" data-carousel-next>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      </button>
+    </div>
+
+    <!-- 轮播指示器 -->
+    <div class="hero-carousel-indicators" role="tablist" aria-label="轮播指示器">
+      {% for item in hero_items %}
+      <button class="hero-indicator {% if loop.first %}active{% endif %}" 
+              role="tab" 
+              aria-label="切换到第 {{ loop.index }} 张" 
+              aria-selected="{% if loop.first %}true{% else %}false{% endif %}"
+              data-carousel-indicator="{{ loop.index0 }}">
+        <span class="hero-indicator-progress"></span>
+      </button>
+      {% endfor %}
     </div>
   </section>
   {% endif %}
 
   {% set section_config = {
-    "anime_latest": {"title": "动漫 · 新番", "icon": "✨", "highlight": true},
-    "tv_latest": {"title": "TV · 新作", "icon": "📺", "highlight": true},
-    "top_rated": {"title": "高分佳作", "icon": "🏆", "highlight": false},
-    "tv_popular": {"title": "TV · 热播", "icon": "🎬", "highlight": true},
-    "anime_popular": {"title": "动漫 · 热播", "icon": "🎌", "highlight": true}
+    "anime_latest": {"title": "动漫新番", "tag": "新"},
+    "tv_latest": {"title": "TV新作", "tag": "新"},
+    "top_rated": {"title": "高分佳作", "tag": null},
+    "tv_popular": {"title": "热播剧集", "tag": "热"},
+    "anime_popular": {"title": "热播动漫", "tag": "热"}
   } %}
 
   {% for key, posters in sections.items() %}
-    {% set config = section_config.get(key, {"title": key, "icon": "🎞️", "highlight": false}) %}
-    <section class="section {% if config.highlight %}section-highlight{% endif %}" aria-labelledby="section-{{ key }}">
-      <div class="section-header {% if config.highlight %}section-header-highlight{% endif %}">
-        <span class="section-icon" aria-hidden="true">{{ config.icon }}</span>
-        <h2 class="section-title" id="section-{{ key }}">{{ config.title }}</h2>
-        {% if key == 'anime_latest' %}
-        <span class="section-badge anime-badge">热门推荐</span>
-        {% endif %}
-        {% if key == 'tv_latest' %}
-        <span class="section-badge china-badge">热门推荐</span>
-        {% endif %}
-        {% if key == 'tv_popular' %}
-        <span class="section-badge china-badge">热播推荐</span>
-        {% endif %}
+    {% set config = section_config.get(key, {"title": key, "tag": null}) %}
+    <section class="content-row" aria-labelledby="section-{{ key }}">
+      <div class="row-header">
+        <h2 class="row-title" id="section-{{ key }}">
+          {{ config.title }}
+          {% if config.tag %}
+          <span class="row-tag">{{ config.tag }}</span>
+          {% endif %}
+        </h2>
       </div>
-      <div class="posters-grid {% if key.startswith('anime') %}posters-grid-anime{% endif %}" role="list">
+      <div class="posters-row" role="list">
         {% if posters %}
           {% for poster in posters %}
             {% include "partials/poster_card.html" %}
@@ -92,4 +120,570 @@
     </section>
   {% endfor %}
 </div>
+{% endblock %}
+
+{% block head %}
+<style>
+/* ============================================
+   Hero Carousel - 高质量图片轮播组件
+   ============================================ */
+
+/* 减少页面整体间距 */
+.page {
+  gap: var(--spacing-6);
+}
+
+/* ============================================
+   Netflix 风格内容行
+   ============================================ */
+.content-row {
+  padding: var(--spacing-2) 0;
+}
+
+.row-header {
+  padding: var(--spacing-3) var(--spacing-4);
+  display: flex;
+  align-items: center;
+}
+
+.row-title {
+  margin: 0;
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--letter-spacing-tight);
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.row-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: var(--color-brand-primary);
+  color: var(--color-text-primary);
+  border-radius: 3px;
+  animation: tag-pulse 2s ease-in-out infinite;
+}
+
+@keyframes tag-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* 横向滚动海报行 */
+.posters-row {
+  display: flex;
+  overflow-x: auto;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-4);
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.posters-row::-webkit-scrollbar {
+  display: none;
+}
+
+.posters-row .poster-card {
+  flex-shrink: 0;
+  width: 160px;
+}
+
+.posters-row .poster-media {
+  aspect-ratio: 2 / 3;
+}
+
+@media (min-width: 640px) {
+  .posters-row .poster-card {
+    width: 180px;
+  }
+}
+
+@media (min-width: 768px) {
+  .row-header {
+    padding: var(--spacing-4) var(--spacing-6);
+  }
+  
+  .row-title {
+    font-size: var(--font-size-2xl);
+  }
+  
+  .posters-row {
+    gap: var(--spacing-3);
+    padding: var(--spacing-3) var(--spacing-6);
+  }
+  
+  .posters-row .poster-card {
+    width: 200px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .row-header {
+    padding: var(--spacing-4) var(--spacing-12);
+  }
+  
+  .row-title {
+    font-size: var(--font-size-2xl);
+  }
+  
+  .posters-row {
+    gap: var(--spacing-4);
+    padding: var(--spacing-4) var(--spacing-12);
+  }
+  
+  .posters-row .poster-card {
+    width: 220px;
+  }
+}
+
+.hero-section[data-carousel] {
+  position: relative;
+  width: 100%;
+  min-height: 70vh;
+  max-height: 85vh;
+  margin-top: calc(-1 * var(--spacing-6));
+  margin-bottom: var(--spacing-4);
+  overflow: hidden;
+}
+
+.hero-carousel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 70vh;
+  max-height: 85vh;
+}
+
+.hero-slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1),
+              visibility 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 1;
+}
+
+.hero-slide.active {
+  opacity: 1;
+  visibility: visible;
+  z-index: 2;
+}
+
+/* 图片缩放动画 */
+.hero-slide .hero-background img {
+  transform: scale(1.05);
+  transition: transform 6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.hero-slide.active .hero-background img {
+  transform: scale(1);
+}
+
+/* 内容入场动画 */
+.hero-slide .hero-content {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.3s,
+              transform 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.3s;
+}
+
+.hero-slide.active .hero-content {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* 轮播控制按钮 */
+.hero-carousel-controls {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  transform: translateY(-50%);
+  display: flex;
+  justify-content: space-between;
+  padding: 0 var(--spacing-4);
+  z-index: 10;
+  pointer-events: none;
+}
+
+.hero-carousel-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+  pointer-events: auto;
+  opacity: 0;
+}
+
+.hero-section:hover .hero-carousel-btn {
+  opacity: 1;
+}
+
+.hero-carousel-btn:hover {
+  background: rgba(0, 0, 0, 0.6);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: scale(1.1);
+}
+
+.hero-carousel-btn:active {
+  transform: scale(0.95);
+}
+
+.hero-carousel-btn svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* 轮播指示器 */
+.hero-carousel-indicators {
+  position: absolute;
+  bottom: var(--spacing-6);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: var(--spacing-2);
+  z-index: 10;
+  padding: var(--spacing-2) var(--spacing-3);
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(8px);
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.hero-indicator {
+  position: relative;
+  width: 32px;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.3);
+  border: none;
+  cursor: pointer;
+  overflow: hidden;
+  transition: all var(--transition-fast);
+}
+
+.hero-indicator:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.hero-indicator.active {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.hero-indicator-progress {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 0%;
+  background: var(--color-brand-primary);
+  border-radius: var(--radius-full);
+  transition: width 0.1s linear;
+}
+
+.hero-carousel:hover .hero-indicator.active .hero-indicator-progress {
+  animation-play-state: paused;
+}
+
+@keyframes carousel-progress {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+/* 响应式设计 */
+@media (max-width: 767px) {
+  .hero-section[data-carousel] {
+    min-height: 60vh;
+    max-height: 75vh;
+  }
+
+  .hero-carousel {
+    min-height: 60vh;
+    max-height: 75vh;
+  }
+
+  .hero-carousel-btn {
+    width: 40px;
+    height: 40px;
+    opacity: 1;
+  }
+
+  .hero-carousel-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .hero-carousel-indicators {
+    bottom: var(--spacing-4);
+    padding: var(--spacing-1) var(--spacing-2);
+  }
+
+  .hero-indicator {
+    width: 24px;
+    height: 3px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .hero-carousel-controls {
+    padding: 0 var(--spacing-8);
+  }
+
+  .hero-carousel-btn {
+    width: 56px;
+    height: 56px;
+  }
+
+  .hero-carousel-btn svg {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+/* 减少动画偏好支持 */
+@media (prefers-reduced-motion: reduce) {
+  .hero-slide,
+  .hero-slide .hero-background img,
+  .hero-slide .hero-content {
+    transition: none;
+  }
+
+  .hero-indicator-progress {
+    animation: none;
+  }
+}
+</style>
+
+<script>
+(function() {
+  'use strict';
+
+  class HeroCarousel {
+    constructor(container) {
+      this.container = container;
+      this.slides = container.querySelectorAll('[data-slide-index]');
+      this.indicators = container.querySelectorAll('[data-carousel-indicator]');
+      this.prevBtn = container.querySelector('[data-carousel-prev]');
+      this.nextBtn = container.querySelector('[data-carousel-next]');
+      this.autoplayBtn = container.querySelector('[data-carousel-autoplay]');
+      
+      this.currentIndex = 0;
+      this.totalSlides = this.slides.length;
+      this.autoplayInterval = null;
+      this.minDelay = 2000; // 最小2秒
+      this.maxDelay = 3500; // 最大3.5秒
+      this.currentDelay = this.getRandomDelay();
+      this.isAutoplay = true;
+      this.progressAnimation = null;
+      
+      this.init();
+    }
+
+    init() {
+      if (this.totalSlides <= 1) return;
+      
+      this.bindEvents();
+      this.startAutoplay();
+      this.lazyLoadImages();
+    }
+
+    bindEvents() {
+      // 导航按钮
+      if (this.prevBtn) {
+        this.prevBtn.addEventListener('click', () => this.prev());
+      }
+      if (this.nextBtn) {
+        this.nextBtn.addEventListener('click', () => this.next());
+      }
+
+      // 指示器
+      this.indicators.forEach((indicator, index) => {
+        indicator.addEventListener('click', () => this.goTo(index));
+      });
+
+      // 自动播放控制
+      if (this.autoplayBtn) {
+        this.autoplayBtn.addEventListener('click', () => this.toggleAutoplay());
+      }
+
+      // 鼠标悬停暂停
+      this.container.addEventListener('mouseenter', () => this.pauseAutoplay());
+      this.container.addEventListener('mouseleave', () => {
+        if (this.isAutoplay) this.startAutoplay();
+      });
+
+      // 触摸滑动支持
+      this.bindTouchEvents();
+
+      // 键盘导航
+      this.container.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft') this.prev();
+        if (e.key === 'ArrowRight') this.next();
+      });
+
+      // 页面可见性变化
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          this.pauseAutoplay();
+        } else if (this.isAutoplay) {
+          this.startAutoplay();
+        }
+      });
+    }
+
+    bindTouchEvents() {
+      let startX = 0;
+      let startY = 0;
+      let isDragging = false;
+
+      this.container.addEventListener('touchstart', (e) => {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        isDragging = true;
+        this.pauseAutoplay();
+      }, { passive: true });
+
+      this.container.addEventListener('touchmove', (e) => {
+        if (!isDragging) return;
+      }, { passive: true });
+
+      this.container.addEventListener('touchend', (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+
+        const endX = e.changedTouches[0].clientX;
+        const endY = e.changedTouches[0].clientY;
+        const diffX = startX - endX;
+        const diffY = startY - endY;
+
+        // 水平滑动距离大于垂直滑动，且滑动距离超过50px
+        if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 50) {
+          if (diffX > 0) {
+            this.next();
+          } else {
+            this.prev();
+          }
+        }
+
+        if (this.isAutoplay) this.startAutoplay();
+      }, { passive: true });
+    }
+
+    goTo(index) {
+      if (index === this.currentIndex || index < 0 || index >= this.totalSlides) return;
+
+      // 移除当前活动状态
+      this.slides[this.currentIndex].classList.remove('active');
+      this.indicators[this.currentIndex].classList.remove('active');
+      this.indicators[this.currentIndex].setAttribute('aria-selected', 'false');
+
+      // 设置新的活动状态
+      this.currentIndex = index;
+      this.slides[this.currentIndex].classList.add('active');
+      this.indicators[this.currentIndex].classList.add('active');
+      this.indicators[this.currentIndex].setAttribute('aria-selected', 'true');
+
+      // 重置并启动进度动画
+      this.resetProgressAnimation();
+
+      // 懒加载新图片
+      this.lazyLoadImage(this.currentIndex);
+    }
+
+    next() {
+      const nextIndex = (this.currentIndex + 1) % this.totalSlides;
+      this.goTo(nextIndex);
+    }
+
+    prev() {
+      const prevIndex = (this.currentIndex - 1 + this.totalSlides) % this.totalSlides;
+      this.goTo(prevIndex);
+    }
+
+    getRandomDelay() {
+      return Math.floor(Math.random() * (this.maxDelay - this.minDelay + 1)) + this.minDelay;
+    }
+
+    startAutoplay() {
+      this.pauseAutoplay();
+      this.currentDelay = this.getRandomDelay();
+      this.autoplayInterval = setInterval(() => {
+        this.next();
+      }, this.currentDelay);
+      this.resetProgressAnimation();
+    }
+
+    pauseAutoplay() {
+      if (this.autoplayInterval) {
+        clearInterval(this.autoplayInterval);
+        this.autoplayInterval = null;
+      }
+    }
+
+    resetProgressAnimation() {
+      this.indicators.forEach((indicator, index) => {
+        const progress = indicator.querySelector('.hero-indicator-progress');
+        if (progress) {
+          progress.style.animation = 'none';
+          progress.offsetHeight;
+          if (index === this.currentIndex && this.isAutoplay) {
+            progress.style.animation = `carousel-progress ${this.currentDelay}ms linear forwards`;
+          }
+        }
+      });
+    }
+
+    lazyLoadImages() {
+      // 预加载当前、前一张和后一张图片
+      const indicesToLoad = [
+        this.currentIndex,
+        (this.currentIndex + 1) % this.totalSlides,
+        (this.currentIndex - 1 + this.totalSlides) % this.totalSlides
+      ];
+
+      indicesToLoad.forEach(index => this.lazyLoadImage(index));
+    }
+
+    lazyLoadImage(index) {
+      const slide = this.slides[index];
+      if (!slide) return;
+
+      const img = slide.querySelector('[data-carousel-image]');
+      if (img && img.dataset.src) {
+        img.src = img.dataset.src;
+        img.removeAttribute('data-src');
+      }
+    }
+  }
+
+  // 初始化所有轮播
+  document.addEventListener('DOMContentLoaded', () => {
+    const carousels = document.querySelectorAll('[data-carousel]');
+    carousels.forEach(carousel => {
+      new HeroCarousel(carousel);
+    });
+  });
+})();
+</script>
 {% endblock %}

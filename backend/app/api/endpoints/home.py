@@ -32,7 +32,6 @@ async def home(request: Request) -> HTMLResponse:
         for key, value in sections_raw.items()
     }
     
-    hero_item = None
     tv_popular_items = sections.get("tv_popular", [])
     tv_latest_items = sections.get("tv_latest", [])
     top_items = sections.get("top_rated", [])
@@ -48,21 +47,25 @@ async def home(request: Request) -> HTMLResponse:
     if anime_items:
         hero_candidates.extend(anime_items[:2])
     
+    hero_items = []
     if hero_candidates:
         import random
-        hero_raw = random.choice(hero_candidates)
-        try:
-            detail_data = await tmdb_client.details(hero_raw["media_type"], hero_raw["id"])
-            hero_item = adapt_detail(detail_data, tmdb_client)
-        except Exception:
-            hero_item = hero_raw
+        selected_candidates = random.sample(hero_candidates, min(5, len(hero_candidates)))
+        for hero_raw in selected_candidates:
+            try:
+                detail_data = await tmdb_client.details(hero_raw["media_type"], hero_raw["id"])
+                hero_item = adapt_detail(detail_data, tmdb_client)
+                hero_items.append(hero_item)
+            except Exception:
+                hero_items.append(hero_raw)
     
     return templates.TemplateResponse(
         request,
         "home.html",
         {
             "sections": sections,
-            "hero_item": hero_item,
+            "hero_items": hero_items,
+            "hero_item": hero_items[0] if hero_items else None,
             "page_title": "Nitfix - 影视海报墙",
         },
     )
