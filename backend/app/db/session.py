@@ -30,13 +30,18 @@ class QueryStats:
     def __init__(self):
         self.query_count = 0
         self.total_time = 0.0
-        self.slow_queries = []
+        self.slow_queries: List[Dict[str, Any]] = []
     
     def record(self, duration: float, statement: str):
         self.query_count += 1
         self.total_time += duration
         if duration > 0.5:  # 记录慢查询 (>500ms)
-            self.slow_queries.append((duration, statement[:200]))
+            self.slow_queries.append(
+                {
+                    "duration": round(duration, 3),
+                    "statement": statement[:200],
+                }
+            )
             if len(self.slow_queries) > 100:
                 self.slow_queries.pop(0)
 

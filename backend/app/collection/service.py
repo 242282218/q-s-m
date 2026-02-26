@@ -7,7 +7,7 @@ Collection 业务逻辑服务
 import json
 import logging
 from typing import Optional, List, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc, func
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -84,7 +84,7 @@ class CollectionService:
             file_structure=file_structure_json,
             category=category,
             status=0,
-            saved_at=datetime.utcnow(),
+            saved_at=datetime.now(timezone.utc),
         )
         
         try:

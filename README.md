@@ -8,6 +8,7 @@
 - **TMDB 集成**: 自动获取电影/电视剧元数据（海报、简介、评分）。
 - **收藏管理**: 可视化管理待看列表。
 - **状态追踪**: 实时跟踪资源状态（已收藏、已转存、已失效）。
+- **Vue 3 前端**: 前端已迁移到 Vue 3 + Vite，后端仅提供 API 与 SPA 入口。
 
 ### 2. ⚡ 极速转存引擎
 - **自动化转存**: 从分享链接一键转存到夸克网盘。
@@ -56,6 +57,12 @@ DATABASE_URL=sqlite:///./qsm.db
 
 **运行服务**
 ```bash
+# 构建前端产物（首次或前端代码变更后）
+cd frontend
+npm install
+npm run build
+
+# 启动后端
 cd backend
 uvicorn app.main:app --host 0.0.0.0 --port 7809
 ```
@@ -140,16 +147,18 @@ docker system prune -a --volumes  # 清理所有未使用的资源
 ### 3. 访问应用
 
 部署完成后，通过以下地址访问：
-- 首页：http://your-server-ip:7809
-- 收藏页面：http://your-server-ip:7809/collection
+- 前端入口：http://your-server-ip:7809/
+- 收藏页面：http://your-server-ip:7809/collections
+- 搜索页面：http://your-server-ip:7809/search
+- 设置页面：http://your-server-ip:7809/settings
 - API 端点：http://your-server-ip:7809/api
 
 ## 📖 使用指南
 
-1. **浏览与收藏**: 访问首页，搜索电影/剧集，点击海报进入详情页。
-2. **添加资源**: 在详情页点击"收藏"，输入夸克分享链接（支持自动识别）。
-3. **我的收藏**: 点击顶部"我的收藏"查看已添加的资源。
-4. **转存资源**: 在收藏列表点击转存按钮，将资源保存到网盘。
+1. **搜索资源**: 进入搜索页，按 TMDB ID 或标题检索资源。
+2. **添加收藏**: 对检索结果执行“收藏”。
+3. **管理收藏**: 在收藏页查看/删除/转存/重命名/验证。
+4. **系统配置**: 在设置页修改后端关键参数。
 
 ## 🏗️ 项目结构
 ```
@@ -159,11 +168,12 @@ qsm/
 │   │   ├── collection/   # 收藏管理模块
 │   │   ├── db/          # 数据库模型
 │   │   ├── quark/       # 搜索与元数据
-│   │   ├── templates/   # 前端模板 (Jinja2)
+│   │   ├── api/         # REST API 与契约
 │   │   ├── transfer/    # 转存与重命名引擎
 │   │   └── main.py      # 应用入口
 │   ├── tests/           # 测试用例
 │   └── requirements.txt
+├── frontend/            # Vue 3 + Vite 前端
 ├── docs/                # 开发文档
 └── README.md
 ```

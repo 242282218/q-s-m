@@ -1,0 +1,2854 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "TMDB 海报墙",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "健康检查",
+        "description": "健康检查端点，用于容器健康监控",
+        "operationId": "health_check_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_HealthData_"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/metrics": {
+      "get": {
+        "summary": "性能指标",
+        "description": "获取应用性能指标",
+        "operationId": "get_metrics_api_metrics_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_MetricsData_"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/metrics/reset": {
+      "post": {
+        "summary": "重置性能指标",
+        "description": "重置性能统计",
+        "operationId": "reset_metrics_api_metrics_reset_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_MetricsResetData_"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tmdb/details": {
+      "get": {
+        "tags": [
+          "tmdb"
+        ],
+        "summary": "获取TMDB详情",
+        "description": "获取TMDB详情，用于获取海报等信息\n\n- **media_type**: 媒体类型 (movie 或 tv)\n- **tmdb_id**: TMDB ID",
+        "operationId": "get_tmdb_details_api_tmdb_details_get",
+        "parameters": [
+          {
+            "name": "media_type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Media Type"
+            }
+          },
+          {
+            "name": "tmdb_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tmdb Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_TmdbDetailsData_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings/update": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Update Settings",
+        "operationId": "update_settings_api_settings_update_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SettingsUpdateData_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/add": {
+      "post": {
+        "tags": [
+          "collection"
+        ],
+        "summary": "添加收藏",
+        "description": "添加收藏\n\n- **tmdb_id**: TMDB ID\n- **media_type**: 媒体类型 (movie 或 tv)\n- **title**: 标题\n- **share_url**: 夸克分享链接",
+        "operationId": "add_collection_api_collection_add_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionAddRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CollectionAddData_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/list": {
+      "get": {
+        "tags": [
+          "collection"
+        ],
+        "summary": "获取收藏列表",
+        "description": "获取收藏列表\n\n支持分页、排序和过滤",
+        "operationId": "list_collections_api_collection_list_get",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "页码",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "页码"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "每页数量",
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "每页数量"
+          },
+          {
+            "name": "sort_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "排序字段",
+              "default": "saved_at",
+              "title": "Sort By"
+            },
+            "description": "排序字段"
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "排序方向: asc 或 desc",
+              "default": "desc",
+              "title": "Order"
+            },
+            "description": "排序方向: asc 或 desc"
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "分类过滤",
+              "title": "Category"
+            },
+            "description": "分类过滤"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "状态过滤",
+              "title": "Status"
+            },
+            "description": "状态过滤"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CollectionListData_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/check/{tmdb_id}": {
+      "get": {
+        "tags": [
+          "collection"
+        ],
+        "summary": "检查是否已收藏",
+        "description": "检查指定 TMDB ID 是否已收藏",
+        "operationId": "check_collection_api_collection_check__tmdb_id__get",
+        "parameters": [
+          {
+            "name": "tmdb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "TMDB ID",
+              "title": "Tmdb Id"
+            },
+            "description": "TMDB ID"
+          },
+          {
+            "name": "media_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "媒体类型",
+              "default": "movie",
+              "title": "Media Type"
+            },
+            "description": "媒体类型"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CollectionCheckData_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/{collection_id}": {
+      "delete": {
+        "tags": [
+          "collection"
+        ],
+        "summary": "删除收藏",
+        "description": "删除指定的收藏",
+        "operationId": "delete_collection_api_collection__collection_id__delete",
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "收藏 ID",
+              "title": "Collection Id"
+            },
+            "description": "收藏 ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CollectionDeleteData_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/check-link": {
+      "get": {
+        "tags": [
+          "collection"
+        ],
+        "summary": "检查链接是否已收藏",
+        "description": "检查指定分享链接是否已收藏\n\n返回收藏状态和收藏 ID、状态",
+        "operationId": "check_link_collection_api_collection_check_link_get",
+        "parameters": [
+          {
+            "name": "link",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "分享链接",
+              "title": "Link"
+            },
+            "description": "分享链接"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CollectionCheckLinkData_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/check-links": {
+      "post": {
+        "tags": [
+          "collection"
+        ],
+        "summary": "批量检查链接收藏状态",
+        "description": "批量检查多个分享链接的收藏状态\n\n返回每个链接的收藏状态、收藏 ID 和转存状态",
+        "operationId": "check_links_collection_api_collection_check_links_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionCheckLinksRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CollectionCheckLinksData_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/verify": {
+      "post": {
+        "tags": [
+          "collection"
+        ],
+        "summary": "验证收藏网盘状态（SSE）",
+        "description": "验证收藏对应网盘目录是否存在，并同步修正收藏状态。",
+        "operationId": "verify_collections_api_collection_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/CollectionVerifyRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "SSE stream. Each event payload is SseEnvelope JSON string prefixed with data: ",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/SseEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/collection/verify/{collection_id}": {
+      "post": {
+        "tags": [
+          "collection"
+        ],
+        "summary": "验证单个收藏网盘状态",
+        "operationId": "verify_single_collection_api_collection_verify__collection_id__post",
+        "parameters": [
+          {
+            "name": "collection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "收藏 ID",
+              "title": "Collection Id"
+            },
+            "description": "收藏 ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_CollectionVerifySingleData_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/transfer/validate": {
+      "post": {
+        "tags": [
+          "transfer"
+        ],
+        "summary": "验证分享链接",
+        "description": "验证夸克分享链接是否有效\n\n返回链接中的文件列表",
+        "operationId": "validate_link_api_transfer_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateLinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_ValidateLinkData_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/transfer/exec": {
+      "post": {
+        "tags": [
+          "transfer"
+        ],
+        "summary": "执行转存",
+        "description": "执行转存操作\n\n- **collection_id**: 收藏 ID\n- **target_folder**: 目标目录 (可选，默认根据分类自动确定)\n- **auto_rename**: 是否自动重命名 (默认 False)",
+        "operationId": "transfer_exec_api_transfer_exec_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferExecRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_TransferExecData_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/transfer/rename": {
+      "post": {
+        "tags": [
+          "transfer"
+        ],
+        "summary": "独立重命名（SSE）",
+        "operationId": "rename_collection_api_transfer_rename_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "SSE stream. Each event payload is SseEnvelope JSON string prefixed with data: ",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/SseEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/quark/search/tmdb/{tmdb_id}": {
+      "get": {
+        "tags": [
+          "quark"
+        ],
+        "summary": "通过TMDB ID搜索夸克资源",
+        "description": "通过TMDB ID搜索夸克资源",
+        "operationId": "search_by_tmdb_id_api_quark_search_tmdb__tmdb_id__get",
+        "parameters": [
+          {
+            "name": "tmdb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tmdb Id"
+            }
+          },
+          {
+            "name": "media_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "媒体类型，可选值：movie, tv",
+              "default": "movie",
+              "title": "Media Type"
+            },
+            "description": "媒体类型，可选值：movie, tv"
+          },
+          {
+            "name": "max_results",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "最大结果数量",
+              "default": 20,
+              "title": "Max Results"
+            },
+            "description": "最大结果数量"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SearchData_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/quark/search/title": {
+      "get": {
+        "tags": [
+          "quark"
+        ],
+        "summary": "通过标题搜索夸克资源",
+        "description": "通过标题搜索夸克资源",
+        "operationId": "search_by_title_api_quark_search_title_get",
+        "parameters": [
+          {
+            "name": "title",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "搜索标题",
+              "title": "Title"
+            },
+            "description": "搜索标题"
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "年份",
+              "title": "Year"
+            },
+            "description": "年份"
+          },
+          {
+            "name": "max_results",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "最大结果数量",
+              "default": 20,
+              "title": "Max Results"
+            },
+            "description": "最大结果数量"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_SearchData_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/quark/transfer": {
+      "post": {
+        "tags": [
+          "quark"
+        ],
+        "summary": "保存资源到网盘",
+        "description": "保存分享资源到网盘并执行 Emby v1.6 规范重命名。",
+        "operationId": "transfer_resource_api_quark_transfer_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse_QuarkTransferData_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiResponse_CollectionAddData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "Business code. 0 means success."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message."
+          },
+          "data": {
+            "$ref": "#/components/schemas/CollectionAddData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[CollectionAddData]"
+      },
+      "ApiResponse_CollectionCheckData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "Business code. 0 means success."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message."
+          },
+          "data": {
+            "$ref": "#/components/schemas/CollectionCheckData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[CollectionCheckData]"
+      },
+      "ApiResponse_CollectionCheckLinkData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "Business code. 0 means success."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message."
+          },
+          "data": {
+            "$ref": "#/components/schemas/CollectionCheckLinkData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[CollectionCheckLinkData]"
+      },
+      "ApiResponse_CollectionCheckLinksData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "Business code. 0 means success."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message."
+          },
+          "data": {
+            "$ref": "#/components/schemas/CollectionCheckLinksData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[CollectionCheckLinksData]"
+      },
+      "ApiResponse_CollectionDeleteData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "Business code. 0 means success."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message."
+          },
+          "data": {
+            "$ref": "#/components/schemas/CollectionDeleteData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[CollectionDeleteData]"
+      },
+      "ApiResponse_CollectionListData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "Business code. 0 means success."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message."
+          },
+          "data": {
+            "$ref": "#/components/schemas/CollectionListData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[CollectionListData]"
+      },
+      "ApiResponse_CollectionVerifySingleData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "Business code. 0 means success."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message."
+          },
+          "data": {
+            "$ref": "#/components/schemas/CollectionVerifySingleData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[CollectionVerifySingleData]"
+      },
+      "ApiResponse_HealthData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "Business code. 0 means success."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message."
+          },
+          "data": {
+            "$ref": "#/components/schemas/HealthData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[HealthData]"
+      },
+      "ApiResponse_MetricsData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "Business code. 0 means success."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message."
+          },
+          "data": {
+            "$ref": "#/components/schemas/MetricsData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[MetricsData]"
+      },
+      "ApiResponse_MetricsResetData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "Business code. 0 means success."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message."
+          },
+          "data": {
+            "$ref": "#/components/schemas/MetricsResetData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[MetricsResetData]"
+      },
+      "ApiResponse_QuarkTransferData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "Business code. 0 means success."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message."
+          },
+          "data": {
+            "$ref": "#/components/schemas/QuarkTransferData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[QuarkTransferData]"
+      },
+      "ApiResponse_SearchData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "Business code. 0 means success."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message."
+          },
+          "data": {
+            "$ref": "#/components/schemas/SearchData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[SearchData]"
+      },
+      "ApiResponse_SettingsUpdateData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "Business code. 0 means success."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message."
+          },
+          "data": {
+            "$ref": "#/components/schemas/SettingsUpdateData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[SettingsUpdateData]"
+      },
+      "ApiResponse_TmdbDetailsData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "Business code. 0 means success."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message."
+          },
+          "data": {
+            "$ref": "#/components/schemas/TmdbDetailsData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[TmdbDetailsData]"
+      },
+      "ApiResponse_TransferExecData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "Business code. 0 means success."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message."
+          },
+          "data": {
+            "$ref": "#/components/schemas/TransferExecData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[TransferExecData]"
+      },
+      "ApiResponse_ValidateLinkData_": {
+        "properties": {
+          "code": {
+            "type": "integer",
+            "title": "Code",
+            "description": "Business code. 0 means success."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message."
+          },
+          "data": {
+            "$ref": "#/components/schemas/ValidateLinkData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "title": "ApiResponse[ValidateLinkData]"
+      },
+      "CollectionAddData": {
+        "properties": {
+          "created": {
+            "type": "boolean",
+            "title": "Created"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "created"
+        ],
+        "title": "CollectionAddData",
+        "description": "添加收藏数据"
+      },
+      "CollectionAddRequest": {
+        "properties": {
+          "tmdb_id": {
+            "type": "integer",
+            "title": "Tmdb Id",
+            "description": "TMDB ID"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type",
+            "description": "媒体类型: movie 或 tv"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "标题"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year",
+            "description": "年份"
+          },
+          "poster_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster Path",
+            "description": "海报路径"
+          },
+          "backdrop_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backdrop Path",
+            "description": "背景图路径"
+          },
+          "share_url": {
+            "type": "string",
+            "title": "Share Url",
+            "description": "夸克分享链接"
+          },
+          "share_pwd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Share Pwd",
+            "description": "分享密码"
+          },
+          "file_structure": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Structure",
+            "description": "文件结构 (JSON)"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category",
+            "description": "分类: movie, tv, anime, documentary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tmdb_id",
+          "media_type",
+          "title",
+          "share_url"
+        ],
+        "title": "CollectionAddRequest",
+        "description": "添加收藏的请求体",
+        "example": {
+          "media_type": "movie",
+          "poster_path": "/poster.jpg",
+          "share_url": "https://pan.quark.cn/s/xxxxx",
+          "title": "盗梦空间",
+          "tmdb_id": 27205,
+          "year": 2010
+        }
+      },
+      "CollectionCheckData": {
+        "properties": {
+          "collected": {
+            "type": "boolean",
+            "title": "Collected"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "collected"
+        ],
+        "title": "CollectionCheckData",
+        "description": "检查收藏状态数据"
+      },
+      "CollectionCheckLinkData": {
+        "properties": {
+          "collected": {
+            "type": "boolean",
+            "title": "Collected"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "collected"
+        ],
+        "title": "CollectionCheckLinkData",
+        "description": "检查链接收藏状态数据"
+      },
+      "CollectionCheckLinksData": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionLinkStatus"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results"
+        ],
+        "title": "CollectionCheckLinksData",
+        "description": "批量检查链接收藏状态数据"
+      },
+      "CollectionCheckLinksRequest": {
+        "properties": {
+          "links": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Links",
+            "description": "分享链接列表"
+          }
+        },
+        "type": "object",
+        "required": [
+          "links"
+        ],
+        "title": "CollectionCheckLinksRequest",
+        "description": "批量检查链接收藏状态请求"
+      },
+      "CollectionDeleteData": {
+        "properties": {
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deleted"
+        ],
+        "title": "CollectionDeleteData",
+        "description": "删除收藏数据"
+      },
+      "CollectionItem": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "tmdb_id": {
+            "type": "integer",
+            "title": "Tmdb Id"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          },
+          "poster_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster Path"
+          },
+          "backdrop_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backdrop Path"
+          },
+          "quark_share_url": {
+            "type": "string",
+            "title": "Quark Share Url"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "status": {
+            "type": "integer",
+            "title": "Status",
+            "default": 0
+          },
+          "saved_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Saved At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tmdb_id",
+          "media_type",
+          "title",
+          "quark_share_url",
+          "saved_at"
+        ],
+        "title": "CollectionItem",
+        "description": "收藏列表项"
+      },
+      "CollectionLinkStatus": {
+        "properties": {
+          "link": {
+            "type": "string",
+            "title": "Link"
+          },
+          "collected": {
+            "type": "boolean",
+            "title": "Collected"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "link",
+          "collected"
+        ],
+        "title": "CollectionLinkStatus",
+        "description": "单个链接的收藏状态"
+      },
+      "CollectionListData": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "pagination"
+        ],
+        "title": "CollectionListData",
+        "description": "收藏列表数据"
+      },
+      "CollectionVerifyRequest": {
+        "properties": {
+          "collection_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Ids",
+            "description": "可选，仅验证这些收藏 ID（为空时验证全部状态为 1/3 的收藏）"
+          }
+        },
+        "type": "object",
+        "title": "CollectionVerifyRequest",
+        "description": "批量验证收藏网盘状态请求"
+      },
+      "CollectionVerifyResult": {
+        "properties": {
+          "collection_id": {
+            "type": "integer",
+            "title": "Collection Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "previous_status": {
+            "type": "integer",
+            "title": "Previous Status"
+          },
+          "current_status": {
+            "type": "integer",
+            "title": "Current Status"
+          },
+          "exists": {
+            "type": "boolean",
+            "title": "Exists"
+          },
+          "checked_path": {
+            "type": "string",
+            "title": "Checked Path"
+          },
+          "path_source": {
+            "type": "string",
+            "title": "Path Source"
+          }
+        },
+        "type": "object",
+        "required": [
+          "collection_id",
+          "title",
+          "previous_status",
+          "current_status",
+          "exists",
+          "checked_path",
+          "path_source"
+        ],
+        "title": "CollectionVerifyResult",
+        "description": "收藏网盘状态验证结果"
+      },
+      "CollectionVerifySingleData": {
+        "properties": {
+          "result": {
+            "$ref": "#/components/schemas/CollectionVerifyResult"
+          }
+        },
+        "type": "object",
+        "required": [
+          "result"
+        ],
+        "title": "CollectionVerifySingleData",
+        "description": "单条收藏网盘状态验证数据"
+      },
+      "DatabaseMetrics": {
+        "properties": {
+          "total_queries": {
+            "type": "integer",
+            "title": "Total Queries"
+          },
+          "total_time": {
+            "type": "number",
+            "title": "Total Time"
+          },
+          "avg_time": {
+            "type": "number",
+            "title": "Avg Time"
+          },
+          "slow_queries_count": {
+            "type": "integer",
+            "title": "Slow Queries Count"
+          },
+          "recent_slow_queries": {
+            "items": {
+              "$ref": "#/components/schemas/SlowQuery"
+            },
+            "type": "array",
+            "title": "Recent Slow Queries"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_queries",
+          "total_time",
+          "avg_time",
+          "slow_queries_count",
+          "recent_slow_queries"
+        ],
+        "title": "DatabaseMetrics"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthData": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "service": {
+            "type": "string",
+            "title": "Service"
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp",
+            "description": "ISO-8601 timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "service",
+          "timestamp"
+        ],
+        "title": "HealthData"
+      },
+      "MediaDto": {
+        "properties": {
+          "tmdb_id": {
+            "type": "integer",
+            "title": "Tmdb Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "original_title": {
+            "type": "string",
+            "title": "Original Title"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "overview": {
+            "type": "string",
+            "title": "Overview"
+          },
+          "poster_path": {
+            "type": "string",
+            "title": "Poster Path"
+          },
+          "backdrop_path": {
+            "type": "string",
+            "title": "Backdrop Path"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tmdb_id",
+          "title",
+          "original_title",
+          "year",
+          "rating",
+          "overview",
+          "poster_path",
+          "backdrop_path",
+          "media_type"
+        ],
+        "title": "MediaDto",
+        "description": "媒体信息DTO"
+      },
+      "MetricsData": {
+        "properties": {
+          "requests": {
+            "$ref": "#/components/schemas/RequestMetrics"
+          },
+          "database": {
+            "$ref": "#/components/schemas/DatabaseMetrics"
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp",
+            "description": "ISO-8601 timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "requests",
+          "database",
+          "timestamp"
+        ],
+        "title": "MetricsData"
+      },
+      "MetricsResetData": {
+        "properties": {
+          "reset": {
+            "type": "boolean",
+            "title": "Reset"
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp",
+            "description": "ISO-8601 timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reset",
+          "timestamp"
+        ],
+        "title": "MetricsResetData"
+      },
+      "Pagination": {
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page Size"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total"
+          },
+          "total_pages": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total Pages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "page",
+          "page_size",
+          "total",
+          "total_pages"
+        ],
+        "title": "Pagination"
+      },
+      "QuarkTransferData": {
+        "properties": {
+          "saved_files": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Saved Files"
+          },
+          "task_id": {
+            "type": "string",
+            "title": "Task Id"
+          },
+          "collection_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collection Id"
+          },
+          "collection_created": {
+            "type": "boolean",
+            "title": "Collection Created",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "saved_files",
+          "task_id"
+        ],
+        "title": "QuarkTransferData"
+      },
+      "RenameRequest": {
+        "properties": {
+          "collection_id": {
+            "type": "integer",
+            "title": "Collection Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "collection_id"
+        ],
+        "title": "RenameRequest",
+        "description": "独立重命名请求"
+      },
+      "RequestMetrics": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "avg_time": {
+            "type": "number",
+            "title": "Avg Time"
+          },
+          "slow_requests_count": {
+            "type": "integer",
+            "title": "Slow Requests Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "avg_time",
+          "slow_requests_count"
+        ],
+        "title": "RequestMetrics"
+      },
+      "ResourceDto": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "link": {
+            "type": "string",
+            "title": "Link"
+          },
+          "overall_score": {
+            "type": "number",
+            "title": "Overall Score"
+          },
+          "quality_level": {
+            "type": "string",
+            "title": "Quality Level"
+          },
+          "resolution": {
+            "type": "string",
+            "title": "Resolution"
+          },
+          "codec": {
+            "type": "string",
+            "title": "Codec"
+          },
+          "is_best": {
+            "type": "boolean",
+            "title": "Is Best"
+          },
+          "normalized_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Name"
+          },
+          "Conf": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conf"
+          },
+          "Qual": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qual"
+          },
+          "alpha": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alpha"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "size_gb": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Gb"
+          },
+          "C_text": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "C Text"
+          },
+          "C_intent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "C Intent"
+          },
+          "C_plaus": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "C Plaus"
+          },
+          "P": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P"
+          },
+          "R": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "R"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "link",
+          "overall_score",
+          "quality_level",
+          "resolution",
+          "codec",
+          "is_best"
+        ],
+        "title": "ResourceDto",
+        "description": "资源DTO"
+      },
+      "SearchData": {
+        "properties": {
+          "media": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MediaDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resources": {
+            "items": {
+              "$ref": "#/components/schemas/ResourceDto"
+            },
+            "type": "array",
+            "title": "Resources"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "query_time": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query Time"
+          }
+        },
+        "type": "object",
+        "required": [
+          "resources",
+          "total"
+        ],
+        "title": "SearchData"
+      },
+      "SettingsUpdate": {
+        "properties": {
+          "LOG_LEVEL": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Log Level"
+          },
+          "TMDB_API_KEY": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tmdb Api Key"
+          },
+          "HTTP_PROXY": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Http Proxy"
+          },
+          "QUARK_TRANSFER_COOKIE": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quark Transfer Cookie"
+          },
+          "TRANSFER_KEEP_EXTRAS": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfer Keep Extras"
+          },
+          "TRANSFER_KEEP_SUBTITLES": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfer Keep Subtitles"
+          },
+          "TRANSFER_DRY_RUN": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfer Dry Run"
+          },
+          "TRANSFER_CLEANUP_ENABLED": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfer Cleanup Enabled"
+          },
+          "TRANSFER_CLEANUP_DELETE_NON_VIDEO": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfer Cleanup Delete Non Video"
+          },
+          "TRANSFER_CLEANUP_DELETE_UNSELECTED_VIDEO": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfer Cleanup Delete Unselected Video"
+          },
+          "TRANSFER_CLEANUP_DELETE_EMPTY_DIRS": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transfer Cleanup Delete Empty Dirs"
+          }
+        },
+        "type": "object",
+        "title": "SettingsUpdate"
+      },
+      "SettingsUpdateData": {
+        "properties": {
+          "updated_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Updated Keys"
+          },
+          "restart_required": {
+            "type": "boolean",
+            "title": "Restart Required",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "updated_keys"
+        ],
+        "title": "SettingsUpdateData"
+      },
+      "SlowQuery": {
+        "properties": {
+          "duration": {
+            "type": "number",
+            "title": "Duration"
+          },
+          "statement": {
+            "type": "string",
+            "title": "Statement"
+          }
+        },
+        "type": "object",
+        "required": [
+          "duration",
+          "statement"
+        ],
+        "title": "SlowQuery"
+      },
+      "TmdbDetailsData": {
+        "properties": {
+          "poster_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster Path"
+          },
+          "backdrop_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backdrop Path"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "type": "object",
+        "title": "TmdbDetailsData"
+      },
+      "TransferExecData": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/TransferredFile"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "title": "TransferExecData",
+        "description": "执行转存数据"
+      },
+      "TransferExecRequest": {
+        "properties": {
+          "collection_id": {
+            "type": "integer",
+            "title": "Collection Id"
+          },
+          "target_folder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Folder"
+          },
+          "auto_rename": {
+            "type": "boolean",
+            "title": "Auto Rename",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "collection_id"
+        ],
+        "title": "TransferExecRequest",
+        "description": "执行转存请求"
+      },
+      "TransferFile": {
+        "properties": {
+          "fid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fid"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "default": 0
+          },
+          "is_dir": {
+            "type": "boolean",
+            "title": "Is Dir",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "TransferFile"
+      },
+      "TransferRequest": {
+        "properties": {
+          "link": {
+            "type": "string",
+            "title": "Link"
+          },
+          "to_dir_fid": {
+            "type": "string",
+            "title": "To Dir Fid",
+            "default": "0"
+          },
+          "to_dir_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Dir Name"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type",
+            "default": "movie"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          },
+          "tmdb_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tmdb Id"
+          },
+          "poster_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poster Path"
+          },
+          "backdrop_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backdrop Path"
+          },
+          "resource_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "link"
+        ],
+        "title": "TransferRequest",
+        "description": "转存请求"
+      },
+      "TransferredFile": {
+        "properties": {
+          "fid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fid"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "title": "TransferredFile"
+      },
+      "ValidateLinkData": {
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "title": "Valid"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/TransferFile"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "required": [
+          "valid"
+        ],
+        "title": "ValidateLinkData",
+        "description": "验证链接数据"
+      },
+      "ValidateLinkRequest": {
+        "properties": {
+          "share_url": {
+            "type": "string",
+            "title": "Share Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "share_url"
+        ],
+        "title": "ValidateLinkRequest",
+        "description": "验证链接请求"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "SseEventData": {
+        "type": "object",
+        "required": [
+          "type",
+          "current",
+          "total",
+          "percentage",
+          "message",
+          "level"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "current": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "percentage": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "level": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "SseEnvelope": {
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "data"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SseEventData"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,194 +1,124 @@
-from typing import Dict, List, Optional
-from pathlib import Path
+from __future__ import annotations
 
-from fastapi import APIRouter, Request, HTTPException
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
-import httpx
+import random
+from typing import Any
 
-from ...services.tmdb import TmdbClient, adapt_poster, gather_sections, adapt_detail, adapt_person
+from fastapi import APIRouter, Request
 
-router = APIRouter()
+from ...services.tmdb import TmdbClient, adapt_detail, adapt_poster, gather_sections
+from ..schemas.common import ApiResponse, ok, utc_now_iso
+from ..schemas.home import HomeData, HomeHeroItem, HomePosterItem, HomeSectionMeta
 
-TEMPLATES_DIR = Path(__file__).parent.parent.parent / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+router = APIRouter(prefix="/home", tags=["home"])
+
+SECTION_META: list[HomeSectionMeta] = [
+    HomeSectionMeta(key="anime_latest", title="动漫新番", tag="新"),
+    HomeSectionMeta(key="tv_latest", title="TV新作", tag="新"),
+    HomeSectionMeta(key="top_rated", title="高分佳作", tag=None),
+    HomeSectionMeta(key="tv_popular", title="热播剧集", tag="热"),
+    HomeSectionMeta(key="anime_popular", title="热播动漫", tag="热"),
+]
 
 
 def get_tmdb_client(request: Request) -> TmdbClient:
-    """从应用状态获取共享的 TmdbClient 实例"""
     return request.app.state.tmdb_client
 
 
-@router.get("/", response_class=HTMLResponse)
-async def home(request: Request) -> HTMLResponse:
+def parse_year(value: Any) -> int | None:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+def to_poster_item(raw: dict[str, Any]) -> HomePosterItem:
+    return HomePosterItem(
+        id=int(raw["id"]),
+        media_type=str(raw.get("media_type", "movie")),
+        title=str(raw.get("title") or ""),
+        subtitle=str(raw.get("subtitle") or ""),
+        overview=str(raw.get("overview") or ""),
+        genres=[int(g) for g in (raw.get("genres") or []) if isinstance(g, int)],
+        tone=str(raw.get("tone") or "neutral"),
+        poster_url=raw.get("poster_url"),
+        backdrop_url=raw.get("backdrop_url"),
+    )
+
+
+def to_hero_item(raw: dict[str, Any]) -> HomeHeroItem:
+    return HomeHeroItem(
+        id=int(raw["id"]),
+        media_type=str(raw.get("media_type", "movie")),
+        title=str(raw.get("title") or ""),
+        year=parse_year(raw.get("year")),
+        genres=[str(g) for g in (raw.get("genres") or []) if isinstance(g, str)],
+        runtime=int(raw["runtime"]) if isinstance(raw.get("runtime"), int) else None,
+        vote=float(raw["vote"]) if isinstance(raw.get("vote"), (int, float)) else None,
+        tagline=str(raw.get("tagline") or ""),
+        overview=str(raw.get("overview") or ""),
+        poster_url=raw.get("poster_url"),
+        backdrop_url=raw.get("backdrop_url"),
+    )
+
+
+@router.get("", summary="获取首页数据", response_model=ApiResponse[HomeData])
+async def get_home_feed(request: Request) -> ApiResponse[HomeData]:
     tmdb_client = get_tmdb_client(request)
+    section_keys = [meta.key for meta in SECTION_META]
+
     try:
         sections_raw = await gather_sections(tmdb_client)
     except Exception:
-        sections_raw = {key: [] for key in ["anime_latest", "tv_latest", "top_rated", "tv_popular", "anime_popular"]}
+        sections_raw = {key: [] for key in section_keys}
 
-    sections = {
-        key: [adapt_poster(item, tmdb_client) for item in value if item.get("id")]
-        for key, value in sections_raw.items()
-    }
-    
-    tv_popular_items = sections.get("tv_popular", [])
-    tv_latest_items = sections.get("tv_latest", [])
-    top_items = sections.get("top_rated", [])
-    anime_items = sections.get("anime_popular", [])
-    
-    hero_candidates = []
-    if tv_popular_items:
-        hero_candidates.extend(tv_popular_items[:3])
-    if tv_latest_items:
-        hero_candidates.extend(tv_latest_items[:2])
-    if top_items:
-        hero_candidates.extend(top_items[:2])
-    if anime_items:
-        hero_candidates.extend(anime_items[:2])
-    
-    hero_items = []
+    sections: dict[str, list[HomePosterItem]] = {}
+    for key in section_keys:
+        section_items = sections_raw.get(key) or []
+        posters: list[HomePosterItem] = []
+        for item in section_items:
+            if not item.get("id"):
+                continue
+            adapted = adapt_poster(item, tmdb_client)
+            posters.append(to_poster_item(adapted))
+        sections[key] = posters
+
+    hero_candidates: list[HomePosterItem] = []
+    hero_candidates.extend(sections.get("tv_popular", [])[:3])
+    hero_candidates.extend(sections.get("tv_latest", [])[:2])
+    hero_candidates.extend(sections.get("top_rated", [])[:2])
+    hero_candidates.extend(sections.get("anime_popular", [])[:2])
+
+    hero_items: list[HomeHeroItem] = []
     if hero_candidates:
-        import random
-        selected_candidates = random.sample(hero_candidates, min(5, len(hero_candidates)))
-        for hero_raw in selected_candidates:
+        selected = random.sample(hero_candidates, min(5, len(hero_candidates)))
+        for candidate in selected:
             try:
-                detail_data = await tmdb_client.details(hero_raw["media_type"], hero_raw["id"])
-                hero_item = adapt_detail(detail_data, tmdb_client)
-                hero_items.append(hero_item)
+                detail_data = await tmdb_client.details(candidate.media_type, candidate.id)
+                hero_items.append(to_hero_item(adapt_detail(detail_data, tmdb_client)))
             except Exception:
-                hero_items.append(hero_raw)
-    
-    return templates.TemplateResponse(
-        request,
-        "home.html",
-        {
-            "sections": sections,
-            "hero_items": hero_items,
-            "hero_item": hero_items[0] if hero_items else None,
-            "page_title": "Nitfix - 影视海报墙",
-        },
+                hero_items.append(
+                    HomeHeroItem(
+                        id=candidate.id,
+                        media_type=candidate.media_type,
+                        title=candidate.title,
+                        year=parse_year(candidate.subtitle[:4]),
+                        genres=[],
+                        runtime=None,
+                        vote=None,
+                        tagline="",
+                        overview=candidate.overview,
+                        poster_url=candidate.poster_url,
+                        backdrop_url=candidate.backdrop_url,
+                    )
+                )
+
+    return ok(
+        HomeData(
+            hero_items=hero_items,
+            sections=sections,
+            section_order=SECTION_META,
+            generated_at=utc_now_iso(),
+        )
     )
 
-
-@router.get("/collection", response_class=HTMLResponse)
-async def collection_page(request: Request) -> HTMLResponse:
-    """我的收藏页面"""
-    return templates.TemplateResponse(
-        request,
-        "collection.html",
-        {
-            "page_title": "我的收藏",
-        },
-    )
-
-
-@router.get("/search", response_class=HTMLResponse)
-async def search(request: Request, q: Optional[str] = "") -> HTMLResponse:
-    tmdb_client = get_tmdb_client(request)
-    posters: List[Dict] = []
-    if q:
-        try:
-            results = await tmdb_client.search_multi(q)
-        except httpx.HTTPError:
-            results = []
-        
-        posters = [
-            adapt_poster(item, tmdb_client)
-            for item in results
-            if item.get("id") and (item.get("media_type") in ("movie", "tv"))
-        ]
-    
-    return templates.TemplateResponse(
-        request,
-        "search.html",
-        {
-            "query": q or "",
-            "posters": posters,
-            "page_title": f"搜索：{q}" if q else "搜索",
-        },
-    )
-
-
-@router.get("/person/{person_id}", response_class=HTMLResponse)
-async def person_detail(request: Request, person_id: int) -> HTMLResponse:
-    tmdb_client = get_tmdb_client(request)
-    try:
-        data = await tmdb_client.person(person_id)
-        if not data.get("biography") or not data.get("profile_path"):
-            try:
-                data_en = await tmdb_client.person(person_id, language_override="en-US")
-                data["biography"] = data.get("biography") or data_en.get("biography")
-                data["profile_path"] = data.get("profile_path") or data_en.get("profile_path")
-                data["combined_credits"] = data.get("combined_credits") or data_en.get("combined_credits")
-            except httpx.HTTPError:
-                pass
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=exc.response.status_code, detail="TMDB error") from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail="TMDB unavailable") from exc
-
-    combined = data.get("combined_credits") or {}
-    credits_cast = combined.get("cast") or []
-    credits_crew = combined.get("crew") or []
-    credits = credits_cast + credits_crew
-    if not credits and combined:
-        credits = credits_cast or credits_crew
-    person_data = adapt_person(data, tmdb_client, credits)
-    
-    return templates.TemplateResponse(
-        request,
-        "person.html",
-        {
-            "person": person_data,
-            "page_title": person_data.get("name", ""),
-        },
-    )
-
-
-@router.get("/{media_type}/{item_id}", response_class=HTMLResponse)
-async def detail(request: Request, media_type: str, item_id: int) -> HTMLResponse:
-    if media_type not in ("movie", "tv"):
-        raise HTTPException(status_code=404, detail="Unsupported media type")
-    
-    tmdb_client = get_tmdb_client(request)
-    try:
-        data = await tmdb_client.details(media_type, item_id)
-        need_fallback = False
-        videos_has = (data.get("videos") or {}).get("results")
-        rec_has = (data.get("recommendations") or {}).get("results")
-        sim_has = (data.get("similar") or {}).get("results")
-        if not videos_has or not rec_has:
-            need_fallback = True
-        if need_fallback:
-            try:
-                data_en = await tmdb_client.details(media_type, item_id, language_override="en-US")
-                if not videos_has:
-                    data["videos"] = data_en.get("videos") or {}
-                if not rec_has:
-                    data["recommendations"] = data_en.get("recommendations") or {}
-                if not sim_has:
-                    data["similar"] = data_en.get("similar") or {}
-            except httpx.HTTPError:
-                pass
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=exc.response.status_code, detail="TMDB error") from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail="TMDB unavailable") from exc
-
-    detail_data = adapt_detail(data, tmdb_client)
-    rec_posters = [
-        adapt_poster(rec, tmdb_client) for rec in detail_data.get("recommendations", []) if rec.get("id")
-    ][:12]
-    video_previews = rec_posters[:2]
-    
-    return templates.TemplateResponse(
-        request,
-        "detail.html",
-        {
-            "item": detail_data,
-            "recommendations": rec_posters,
-            "video_previews": video_previews,
-            "page_title": detail_data.get("title", ""),
-        },
-    )

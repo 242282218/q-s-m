@@ -6,9 +6,11 @@ from fastapi import APIRouter, Query, Request, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.schemas.common import ApiResponse, business_error, ok
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.quark.core.transfer_client import QuarkTransferClient
+from app.quark.schemas.search import MediaDto, ResourceDto, SearchResponse
 from app.quark.services.search_service import SearchService
 from app.services.tmdb import TmdbClient
 from app.transfer.emby import (
@@ -27,7 +29,34 @@ router = APIRouter(prefix="/quark", tags=["quark"])
 logger = logging.getLogger(__name__)
 
 
-@router.get("/search/tmdb/{tmdb_id}", summary="通过TMDB ID搜索夸克资源")
+class SearchData(BaseModel):
+    media: Optional[MediaDto] = None
+    resources: list[ResourceDto]
+    total: int
+    query_time: Optional[float] = None
+
+
+class QuarkTransferData(BaseModel):
+    saved_files: list[str]
+    task_id: str
+    collection_id: Optional[int] = None
+    collection_created: bool = False
+
+
+def as_search_data(result: SearchResponse) -> SearchData:
+    return SearchData(
+        media=result.media,
+        resources=result.resources,
+        total=result.total,
+        query_time=result.query_time,
+    )
+
+
+@router.get(
+    "/search/tmdb/{tmdb_id}",
+    summary="通过TMDB ID搜索夸克资源",
+    response_model=ApiResponse[SearchData],
+)
 async def search_by_tmdb_id(
     request: Request,
     tmdb_id: int,
@@ -44,10 +73,17 @@ async def search_by_tmdb_id(
 
     result = await service.search_by_tmdb_id(tmdb_id, max_results, media_type)
     logger.info(f"API returned: total={result.total}, resources={len(result.resources)}")
-    return result
+    payload = as_search_data(result)
+    if result.success:
+        return ok(payload, message=result.message or "OK")
+    return business_error(payload, message=result.message or "搜索失败", code=1)
 
 
-@router.get("/search/title", summary="通过标题搜索夸克资源")
+@router.get(
+    "/search/title",
+    summary="通过标题搜索夸克资源",
+    response_model=ApiResponse[SearchData],
+)
 async def search_by_title(
     request: Request,
     title: str = Query(..., description="搜索标题"),
@@ -59,7 +95,11 @@ async def search_by_title(
     """
     quark_client = getattr(request.app.state, "quark_client", None)
     service = SearchService(quark_client=quark_client)
-    return await service.search_by_title(title, year, max_results)
+    result = await service.search_by_title(title, year, max_results)
+    payload = as_search_data(result)
+    if result.success:
+        return ok(payload, message=result.message or "OK")
+    return business_error(payload, message=result.message or "搜索失败", code=1)
 
 
 def contains_chinese(text: str) -> bool:
@@ -123,7 +163,7 @@ def resolve_final_title(req: TransferRequest, tmdb_title: Optional[str]) -> Opti
     return None
 
 
-@router.post("/transfer", summary="保存资源到网盘")
+@router.post("/transfer", summary="保存资源到网盘", response_model=ApiResponse[QuarkTransferData])
 async def transfer_resource(
     request: Request,
     req: TransferRequest,
@@ -181,14 +221,16 @@ async def transfer_resource(
 
         media_root_fid = await client.get_fid_by_path(media_root_path)
         if not media_root_fid:
-            return {
-                "success": False,
-                "message": f"创建目标目录失败: {media_root_path}",
-                "saved_files": [],
-                "task_id": "",
-                "collection_id": None,
-                "collection_created": False,
-            }
+            return business_error(
+                QuarkTransferData(
+                    saved_files=[],
+                    task_id="",
+                    collection_id=None,
+                    collection_created=False,
+                ),
+                message=f"创建目标目录失败: {media_root_path}",
+                code=1,
+            )
 
         success, message, transferred_items, task_id = await transfer_share_to_target_fid(
             client=client,
@@ -197,14 +239,16 @@ async def transfer_resource(
             flatten_single_root=True,
         )
         if not success:
-            return {
-                "success": False,
-                "message": message,
-                "saved_files": [],
-                "task_id": task_id,
-                "collection_id": None,
-                "collection_created": False,
-            }
+            return business_error(
+                QuarkTransferData(
+                    saved_files=[],
+                    task_id=task_id,
+                    collection_id=None,
+                    collection_created=False,
+                ),
+                message=message,
+                code=1,
+            )
 
         task_done = await wait_for_transfer_task(client, task_id, max_retries=60, interval_seconds=1.0)
         if not task_done:
@@ -288,24 +332,27 @@ async def transfer_resource(
         if not task_done:
             status_msg += "（任务仍在后台执行）"
 
-        return {
-            "success": True,
-            "message": status_msg,
-            "saved_files": [item.get("fid") for item in transferred_items if item.get("fid")],
-            "task_id": task_id,
-            "collection_id": collection_id,
-            "collection_created": collection_created,
-        }
+        return ok(
+            QuarkTransferData(
+                saved_files=[item.get("fid") for item in transferred_items if item.get("fid")],
+                task_id=task_id,
+                collection_id=collection_id,
+                collection_created=collection_created,
+            ),
+            message=status_msg,
+        )
     except Exception as e:
         logger.error(f"Transfer error: {str(e)}", exc_info=True)
-        return {
-            "success": False,
-            "message": f"转存异常: {str(e)}",
-            "saved_files": [],
-            "task_id": "",
-            "collection_id": None,
-            "collection_created": False,
-        }
+        return business_error(
+            QuarkTransferData(
+                saved_files=[],
+                task_id="",
+                collection_id=None,
+                collection_created=False,
+            ),
+            message=f"转存异常: {str(e)}",
+            code=500,
+        )
     finally:
         if close_tmdb_client:
             await tmdb_client.close()

@@ -5,6 +5,8 @@ from datetime import datetime
 from typing import Optional, List, Any
 from pydantic import BaseModel, Field
 
+from ..api.schemas.common import Pagination
+
 
 # ==================== Request Schemas ====================
 
@@ -34,13 +36,12 @@ class CollectionAddRequest(BaseModel):
         }
 
 
-# ==================== Response Schemas ====================
+# ==================== Data Schemas ====================
 
-class CollectionAddResponse(BaseModel):
-    """添加收藏的响应"""
-    success: bool
+class CollectionAddData(BaseModel):
+    """添加收藏数据"""
+    created: bool
     id: Optional[int] = None
-    message: str
 
 
 class CollectionItem(BaseModel):
@@ -61,28 +62,25 @@ class CollectionItem(BaseModel):
         from_attributes = True  # 支持 ORM 模型转换
 
 
-class CollectionListResponse(BaseModel):
-    """收藏列表响应"""
-    total: int
-    page: int
-    limit: int
+class CollectionListData(BaseModel):
+    """收藏列表数据"""
     items: List[CollectionItem]
+    pagination: Pagination
 
 
-class CollectionCheckResponse(BaseModel):
-    """检查收藏状态响应"""
+class CollectionCheckData(BaseModel):
+    """检查收藏状态数据"""
     collected: bool
     id: Optional[int] = None
 
 
-class CollectionDeleteResponse(BaseModel):
-    """删除收藏响应"""
-    success: bool
-    message: str
+class CollectionDeleteData(BaseModel):
+    """删除收藏数据"""
+    deleted: bool
 
 
-class CollectionCheckLinkResponse(BaseModel):
-    """检查链接收藏状态响应"""
+class CollectionCheckLinkData(BaseModel):
+    """检查链接收藏状态数据"""
     collected: bool
     id: Optional[int] = None
     status: Optional[int] = None
@@ -101,8 +99,8 @@ class CollectionLinkStatus(BaseModel):
     status: Optional[int] = None
 
 
-class CollectionCheckLinksResponse(BaseModel):
-    """批量检查链接收藏状态响应"""
+class CollectionCheckLinksData(BaseModel):
+    """批量检查链接收藏状态数据"""
     results: List[CollectionLinkStatus]
 
 
@@ -125,7 +123,6 @@ class CollectionVerifyResult(BaseModel):
     path_source: str
 
 
-class CollectionVerifySingleResponse(BaseModel):
-    """单条收藏网盘状态验证响应"""
-    success: bool
+class CollectionVerifySingleData(BaseModel):
+    """单条收藏网盘状态验证数据"""
     result: CollectionVerifyResult

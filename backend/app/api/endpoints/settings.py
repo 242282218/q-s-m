@@ -1,29 +1,14 @@
-from pathlib import Path
 from typing import Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from ...core.config import Settings, get_settings
+from ..schemas.common import ApiResponse, ok
+from ..schemas.system import SettingsUpdateData
 
-router = APIRouter()
 api_router = APIRouter()
 
-TEMPLATES_DIR = Path(__file__).parent.parent.parent / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-
 KEEP_SENTINEL = "__KEEP__"
-
-
-def mask_secret(value: Optional[str], *, keep_start: int = 3, keep_end: int = 2) -> str:
-    if not value:
-        return ""
-    text = str(value)
-    if len(text) <= keep_start + keep_end:
-        return "*" * max(6, len(text))
-    return f"{text[:keep_start]}***{text[-keep_end:]}"
 
 
 def update_env_file(updates: Dict[str, str]) -> None:
@@ -81,25 +66,8 @@ class SettingsUpdate(BaseModel):
     TRANSFER_CLEANUP_DELETE_EMPTY_DIRS: Optional[bool] = None
 
 
-@router.get("/settings", response_class=HTMLResponse)
-async def settings_page(request: Request, settings: Settings = Depends(get_settings)):
-    return templates.TemplateResponse(
-        request,
-        "settings.html",
-        {
-            "page_title": "系统设置",
-            "settings": settings,
-            "masked": {
-                "tmdb_api_key": mask_secret(settings.tmdb_api_key),
-                "quark_transfer_cookie": mask_secret(settings.quark_transfer_cookie),
-            },
-            "keep_sentinel": KEEP_SENTINEL,
-        },
-    )
-
-
-@api_router.post("/update")
-async def update_settings(update_data: SettingsUpdate):
+@api_router.post("/update", response_model=ApiResponse[SettingsUpdateData])
+async def update_settings(update_data: SettingsUpdate) -> ApiResponse[SettingsUpdateData]:
     updates: Dict[str, str] = {}
     data = update_data.model_dump(exclude_none=True)
 
@@ -114,10 +82,16 @@ async def update_settings(update_data: SettingsUpdate):
         updates[key] = text
 
     if not updates:
-        return {"success": True, "message": "没有需要更新的配置"}
+        return ok(
+            SettingsUpdateData(updated_keys=[], restart_required=False),
+            message="没有需要更新的配置",
+        )
 
     try:
         update_env_file(updates)
-        return {"success": True, "message": "配置已更新，请重启服务以确保所有更改生效"}
+        return ok(
+            SettingsUpdateData(updated_keys=sorted(updates.keys()), restart_required=True),
+            message="配置已更新，请重启服务以确保所有更改生效",
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"更新配置失败: {str(e)}")
