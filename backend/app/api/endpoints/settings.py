@@ -1,4 +1,6 @@
+from pathlib import Path
 from typing import Dict, Optional
+import re
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -11,8 +13,73 @@ api_router = APIRouter()
 KEEP_SENTINEL = "__KEEP__"
 
 
+def validate_env_key(key: str) -> bool:
+    """
+    验证环境变量键是否安全
+    
+    防止注入攻击：
+    - 只允许字母、数字、下划线
+    - 不允许换行符、特殊字符
+    
+    Args:
+        key: 环境变量键
+        
+    Returns:
+        是否有效
+    """
+    if not key or not isinstance(key, str):
+        return False
+    
+    # 只允许字母、数字、下划线
+    pattern = r'^[A-Za-z0-9_]+$'
+    return bool(re.match(pattern, key))
+
+
+def validate_env_value(value: str) -> bool:
+    """
+    验证环境变量值是否安全
+    
+    防止注入攻击：
+    - 不允许换行符
+    - 不允许命令注入字符
+    
+    Args:
+        value: 环境变量值
+        
+    Returns:
+        是否有效
+    """
+    if not isinstance(value, str):
+        return False
+    
+    # 不允许换行符和命令注入字符
+    forbidden_chars = ['\n', '\r', '\0', '`', '$', '|', '&', ';', '<', '>']
+    return not any(char in value for char in forbidden_chars)
+
+
 def update_env_file(updates: Dict[str, str]) -> None:
+    """
+    更新 .env 文件
+    
+    安全措施：
+    - 验证所有键和值
+    - 防止注入攻击
+    - 原子性写入
+    
+    Args:
+        updates: 要更新的键值对
+        
+    Raises:
+        ValueError: 如果键或值无效
+    """
     env_path = Path(__file__).parent.parent.parent.parent / ".env"
+
+    # 验证所有输入
+    for key, value in updates.items():
+        if not validate_env_key(key):
+            raise ValueError(f"无效的环境变量键: {key}")
+        if not validate_env_value(value):
+            raise ValueError(f"无效的环境变量值: {value}")
 
     lines = []
     if env_path.exists():

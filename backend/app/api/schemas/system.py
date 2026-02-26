@@ -3,10 +3,16 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+class HealthCheck(BaseModel):
+    status: str
+    message: str
+
+
 class HealthData(BaseModel):
     status: str
     service: str
     timestamp: str = Field(..., description="ISO-8601 timestamp")
+    checks: dict[str, HealthCheck] = Field(default_factory=dict)
 
 
 class RequestMetrics(BaseModel):

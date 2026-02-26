@@ -31,7 +31,7 @@ async function runSearch() {
       push(res.message || "搜索失败", "error");
       return;
     }
-    posters.value = res.data.posters;
+    posters.value = res.data.posters || [];
   } catch (error) {
     push(error instanceof Error ? error.message : "搜索失败", "error");
   } finally {

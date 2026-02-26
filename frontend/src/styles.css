@@ -403,7 +403,7 @@ select {
 .section {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-5);
+  gap: var(--spacing-3);
 }
 
 /* ============================================
@@ -417,7 +417,7 @@ select {
   display: flex;
   align-items: flex-end;
   margin-top: calc(-1 * var(--spacing-6));
-  margin-bottom: var(--spacing-8);
+  margin-bottom: var(--spacing-4);
   overflow: hidden;
 }
 
@@ -431,7 +431,7 @@ select {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center top;
+  object-position: center center;
 }
 
 .hero-gradient {
@@ -759,8 +759,9 @@ select {
   padding: 0 var(--spacing-4);
 }
 
-/* 横向滚动容器 */
-.posters-row {
+/* 横向滚动容器 - 基础样式，供 ScrollableRow 组件使用 */
+.posters-row,
+:deep(.scrollable-row-container) {
   display: flex;
   overflow-x: auto;
   gap: var(--spacing-3);
@@ -771,21 +772,25 @@ select {
   -ms-overflow-style: none;
 }
 
-.posters-row::-webkit-scrollbar {
+.posters-row::-webkit-scrollbar,
+:deep(.scrollable-row-container)::-webkit-scrollbar {
   display: none;
 }
 
-.posters-row .poster-card {
+.posters-row .poster-card,
+:deep(.scrollable-row-container) .poster-card {
   flex-shrink: 0;
   width: calc(50% - var(--spacing-2));
 }
 
-.posters-row.is-dragging {
+.posters-row.is-dragging,
+:deep(.scrollable-row-container.is-dragging) {
   scroll-behavior: auto;
   cursor: grabbing;
 }
 
-.posters-row.is-dragging .poster-card {
+.posters-row.is-dragging .poster-card,
+:deep(.scrollable-row-container.is-dragging) .poster-card {
   pointer-events: none;
 }
 
@@ -1078,7 +1083,8 @@ select {
   .skeleton-grid {
     grid-template-columns: repeat(3, 1fr);
   }
-  .posters-row .poster-card {
+  .posters-row .poster-card,
+  :deep(.scrollable-row-container) .poster-card {
     width: calc(33.333% - var(--spacing-2));
   }
 }
@@ -3168,12 +3174,12 @@ select {
 }
 
 .hero-carousel-btn {
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   border-radius: var(--radius-full);
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   color: var(--color-text-primary);
   cursor: pointer;
   display: flex;
@@ -3182,8 +3188,9 @@ select {
   transition: all var(--transition-fast);
   pointer-events: auto;
   opacity: 0;
-  font-size: 28px;
+  font-size: 24px;
   line-height: 1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .hero-section:hover .hero-carousel-btn {
@@ -3191,13 +3198,15 @@ select {
 }
 
 .hero-carousel-btn:hover {
-  background: rgba(0, 0, 0, 0.6);
-  border-color: rgba(255, 255, 255, 0.2);
-  transform: scale(1.1);
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
 }
 
 .hero-carousel-btn:active {
-  transform: scale(0.95);
+  transform: scale(0.96);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .hero-carousel-indicators {

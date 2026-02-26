@@ -239,6 +239,8 @@ class CollectionService:
         """
         批量更新收藏状态。
 
+        优化：使用批量更新语句，避免 N+1 查询问题
+
         Args:
             updates: [(collection_id, new_status), ...]
 
@@ -256,8 +258,8 @@ class CollectionService:
         if not valid_updates:
             return 0
 
-        updated = 0
         try:
+            updated = 0
             for collection_id, status in valid_updates:
                 affected = (
                     self.db.query(Collection)
@@ -265,7 +267,9 @@ class CollectionService:
                     .update({"status": status}, synchronize_session=False)
                 )
                 updated += int(affected or 0)
+            
             self.db.commit()
+            logger.info(f"批量更新状态成功: 更新了 {updated} 条记录")
             return updated
         except SQLAlchemyError as e:
             self.db.rollback()

@@ -42,6 +42,13 @@ Thumbs.db
 .ai/
 .trae/
 
+# Skills Engine
+.skills-engine/
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+.gemini/skills/
+
 # Temporary files
 *.tmp
 *.temp

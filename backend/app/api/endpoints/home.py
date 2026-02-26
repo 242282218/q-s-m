@@ -95,14 +95,36 @@ async def get_home_feed(request: Request) -> ApiResponse[HomeData]:
         for candidate in selected:
             try:
                 detail_data = await tmdb_client.details(candidate.media_type, candidate.id)
-                hero_items.append(to_hero_item(adapt_detail(detail_data, tmdb_client)))
+                adapted = adapt_detail(detail_data, tmdb_client)
+                
+                # 获取剧照（优先中国地区）
+                backdrop_url = await tmdb_client.get_best_backdrop(
+                    candidate.media_type, candidate.id
+                )
+                # 如果没有剧照，使用详情中的 backdrop_url
+                if not backdrop_url:
+                    backdrop_url = adapted.get("backdrop_url")
+                
+                hero_items.append(HomeHeroItem(
+                    id=candidate.id,
+                    media_type=candidate.media_type,
+                    title=adapted.get("title", candidate.title),
+                    year=parse_year(adapted.get("year", "")),
+                    genres=[str(g) for g in adapted.get("genres", [])],
+                    runtime=adapted.get("runtime"),
+                    vote=adapted.get("vote"),
+                    tagline=adapted.get("tagline", ""),
+                    overview=adapted.get("overview", candidate.overview),
+                    poster_url=adapted.get("poster_url") or candidate.poster_url,
+                    backdrop_url=backdrop_url,
+                ))
             except Exception:
                 hero_items.append(
                     HomeHeroItem(
                         id=candidate.id,
                         media_type=candidate.media_type,
                         title=candidate.title,
-                        year=parse_year(candidate.subtitle[:4]),
+                        year=parse_year(candidate.subtitle[:4]) if candidate.subtitle else None,
                         genres=[],
                         runtime=None,
                         vote=None,

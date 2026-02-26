@@ -153,13 +153,13 @@ export interface CollectionAddRequest {
   tmdb_id: number;
   media_type: string;
   title: string;
-  year?: number | null;
-  poster_path?: string | null;
-  backdrop_path?: string | null;
+  year: number | null;
+  poster_path: string | null;
+  backdrop_path: string | null;
   share_url: string;
-  share_pwd?: string | null;
-  file_structure?: unknown;
-  category?: string | null;
+  share_pwd: string | null;
+  file_structure: unknown;
+  category: string | null;
 }
 
 export interface CollectionAddData {
@@ -217,7 +217,7 @@ export interface CollectionCheckLinksData {
 }
 
 export interface CollectionVerifyRequest {
-  collection_ids?: number[] | null;
+  collection_ids: number[] | null;
 }
 
 export interface CollectionVerifyResult {
@@ -252,8 +252,8 @@ export interface ValidateLinkData {
 
 export interface TransferExecRequest {
   collection_id: number;
-  target_folder?: string | null;
-  auto_rename?: boolean;
+  target_folder: string | null;
+  auto_rename: boolean;
 }
 
 export interface TransferredFile {
@@ -292,17 +292,17 @@ export interface ResourceDto {
   resolution: string;
   codec: string;
   is_best: boolean;
-  normalized_name?: string | null;
-  Conf?: number | null;
-  Qual?: number | null;
-  alpha?: number | null;
-  tags?: string[] | null;
-  size_gb?: number | null;
-  C_text?: number | null;
-  C_intent?: number | null;
-  C_plaus?: number | null;
-  P?: number | null;
-  R?: number | null;
+  normalized_name: string | null;
+  conf: number | null;
+  qual: number | null;
+  alpha: number | null;
+  tags: string[] | null;
+  size_gb: number | null;
+  c_text: number | null;
+  c_intent: number | null;
+  c_plaus: number | null;
+  p: number | null;
+  r: number | null;
 }
 
 export interface SearchData {
@@ -353,15 +353,15 @@ export interface HomeData {
 
 export interface TransferRequest {
   link: string;
-  to_dir_fid?: string;
-  to_dir_name?: string | null;
-  media_type?: string;
-  title?: string | null;
-  year?: number | null;
-  tmdb_id?: number | null;
-  poster_path?: string | null;
-  backdrop_path?: string | null;
-  resource_name?: string | null;
+  to_dir_fid: string;
+  to_dir_name: string | null;
+  media_type: string;
+  title: string | null;
+  year: number | null;
+  tmdb_id: number | null;
+  poster_path: string | null;
+  backdrop_path: string | null;
+  resource_name: string | null;
 }
 
 export interface QuarkTransferData {

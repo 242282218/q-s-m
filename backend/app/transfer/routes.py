@@ -3,7 +3,7 @@ Transfer API 路由
 """
 import json
 from typing import Optional
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
@@ -87,7 +87,8 @@ async def validate_link(
 
 @router.post("/exec", response_model=ApiResponse[TransferExecData], summary="执行转存")
 async def transfer_exec(
-    request: TransferExecRequest,
+    request: Request,
+    body: TransferExecRequest,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
@@ -98,7 +99,8 @@ async def transfer_exec(
     - **target_folder**: 目标目录 (可选，默认根据分类自动确定)
     - **auto_rename**: 是否自动重命名 (默认 False)
     """
-    service = TransferService(db, cookie=settings.quark_transfer_cookie or "")
+    tmdb_client = getattr(request.app.state, "tmdb_client", None)
+    service = TransferService(db, cookie=settings.quark_transfer_cookie or "", tmdb_client=tmdb_client)
     try:
         success, message, files = await service.transfer_collection(
             collection_id=request.collection_id,
@@ -118,11 +120,13 @@ async def transfer_exec(
 
 @router.post("/rename", summary="独立重命名（SSE）")
 async def rename_collection(
-    request: RenameRequest,
+    request: Request,
+    body: RenameRequest,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    service = TransferService(db, cookie=settings.quark_transfer_cookie or "")
+    tmdb_client = getattr(request.app.state, "tmdb_client", None)
+    service = TransferService(db, cookie=settings.quark_transfer_cookie or "", tmdb_client=tmdb_client)
 
     def wrap_event(event: dict, code: int = 0) -> dict:
         return {
@@ -133,7 +137,7 @@ async def rename_collection(
 
     async def event_stream():
         try:
-            async for event in service.rename_collection(request.collection_id):
+            async for event in service.rename_collection(body.collection_id):
                 yield f"data: {json.dumps(wrap_event(event), ensure_ascii=False)}\n\n"
         except Exception as e:
             error_event = {

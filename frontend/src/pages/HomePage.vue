@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 
 import { getHomeFeed } from "@/api";
+import ScrollableRow from "@/components/ScrollableRow.vue";
+import { useCarousel } from "@/composables/useCarousel";
 import { useToast } from "@/composables/useToast";
 import type { HomeData, HomeHeroItem } from "@/types/api";
 
@@ -9,64 +11,52 @@ const { push } = useToast();
 
 const loading = ref(false);
 const feed = ref<HomeData | null>(null);
-const activeHeroIndex = ref(0);
-let autoplayTimer: number | null = null;
+const failedImages = ref<Map<string, number>>(new Map());
+const MAX_FAILED_IMAGES = 100;
+const FAILED_IMAGE_TTL = 5 * 60 * 1000; // 5分钟
 
-const activeHero = computed<HomeHeroItem | null>(() => {
-  const list = feed.value?.hero_items || [];
-  if (list.length === 0) {
-    return null;
-  }
-  return list[activeHeroIndex.value] || null;
+const heroItems = computed(() => feed.value?.hero_items || []);
+
+const {
+  activeIndex: activeHeroIndex,
+  activeItem: activeHero,
+  goTo,
+  next: nextHero,
+  prev: prevHero,
+  startAutoplay,
+  stopAutoplay,
+} = useCarousel<HomeHeroItem>({
+  items: heroItems,
+  autoplayInterval: 3500,
 });
+
+function handleImageError(event: Event) {
+  const img = event.target as HTMLImageElement;
+  if (img?.src) {
+    const now = Date.now();
+    
+    // 清理过期的失败记录
+    for (const [url, timestamp] of failedImages.value.entries()) {
+      if (now - timestamp > FAILED_IMAGE_TTL) {
+        failedImages.value.delete(url);
+      }
+    }
+    
+    // 添加新的失败记录
+    failedImages.value.set(img.src, now);
+    
+    // 如果超过最大数量，删除最旧的记录
+    if (failedImages.value.size > MAX_FAILED_IMAGES) {
+      const oldestUrl = failedImages.value.keys().next().value;
+      if (oldestUrl) {
+        failedImages.value.delete(oldestUrl);
+      }
+    }
+  }
+}
 
 function mediaLink(mediaType: string, id: number) {
   return `/${mediaType}/${id}`;
-}
-
-function stopAutoplay() {
-  if (autoplayTimer !== null) {
-    window.clearInterval(autoplayTimer);
-    autoplayTimer = null;
-  }
-}
-
-function goTo(index: number) {
-  const total = feed.value?.hero_items.length || 0;
-  if (total === 0) {
-    return;
-  }
-  if (index < 0 || index >= total) {
-    return;
-  }
-  activeHeroIndex.value = index;
-}
-
-function nextHero() {
-  const total = feed.value?.hero_items.length || 0;
-  if (total <= 1) {
-    return;
-  }
-  activeHeroIndex.value = (activeHeroIndex.value + 1) % total;
-}
-
-function prevHero() {
-  const total = feed.value?.hero_items.length || 0;
-  if (total <= 1) {
-    return;
-  }
-  activeHeroIndex.value = (activeHeroIndex.value - 1 + total) % total;
-}
-
-function startAutoplay() {
-  stopAutoplay();
-  const total = feed.value?.hero_items.length || 0;
-  if (total <= 1) {
-    return;
-  }
-  autoplayTimer = window.setInterval(() => {
-    nextHero();
-  }, 3500);
 }
 
 async function loadHomeFeed() {
@@ -78,7 +68,6 @@ async function loadHomeFeed() {
       return;
     }
     feed.value = res.data;
-    activeHeroIndex.value = 0;
     startAutoplay();
   } catch (error) {
     push(error instanceof Error ? error.message : "加载首页数据失败", "error");
@@ -108,17 +97,19 @@ onBeforeUnmount(() => {
         >
           <div class="hero-background">
             <img
-              v-if="hero.backdrop_url || hero.poster_url"
+              v-if="(hero.backdrop_url || hero.poster_url) && !failedImages.has(hero.backdrop_url || hero.poster_url || '')"
               :src="hero.backdrop_url || hero.poster_url || ''"
               :alt="hero.title"
               :loading="index === 0 ? 'eager' : 'lazy'"
+              @error="handleImageError"
             />
+            <div v-else class="hero-image-fallback" aria-hidden="true" />
             <div class="hero-gradient" aria-hidden="true" />
             <div class="hero-vignette" aria-hidden="true" />
           </div>
 
           <div class="hero-content">
-            <span v-if="hero.vote && hero.vote >= 7" class="hero-badge">98% 匹配</span>
+            <span v-if="hero.vote && hero.vote >= 7" class="hero-badge">{{ Math.round(hero.vote * 10) }}% 匹配</span>
             <h1 class="hero-title">{{ hero.title }}</h1>
             <div class="hero-meta">
               <span v-if="hero.year" class="hero-meta-item">{{ hero.year }}</span>
@@ -186,7 +177,7 @@ onBeforeUnmount(() => {
             </h2>
           </div>
 
-          <div class="posters-row" role="list">
+          <ScrollableRow :aria-label="section.title">
             <template v-if="(feed?.sections?.[section.key] || []).length > 0">
               <a
                 v-for="poster in feed?.sections?.[section.key] || []"
@@ -196,7 +187,13 @@ onBeforeUnmount(() => {
                 :href="mediaLink(poster.media_type, poster.id)"
               >
                 <div class="poster-media">
-                  <img v-if="poster.poster_url" :src="poster.poster_url" :alt="`${poster.title} 海报`" loading="lazy" />
+                  <img
+                    v-if="poster.poster_url && !failedImages.has(poster.poster_url)"
+                    :src="poster.poster_url"
+                    :alt="`${poster.title} 海报`"
+                    loading="lazy"
+                    @error="handleImageError"
+                  />
                   <div v-else class="poster-skeleton" aria-hidden="true" />
                   <div class="poster-gradient" aria-hidden="true" />
                 </div>
@@ -211,7 +208,7 @@ onBeforeUnmount(() => {
               <div class="empty-icon">😥</div>
               <div class="empty-text">暂无数据</div>
             </div>
-          </div>
+          </ScrollableRow>
         </section>
       </template>
     </template>

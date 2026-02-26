@@ -47,7 +47,8 @@ const close = () => {
       </div>
 
       <div ref="logRef" class="rename-log-lines">
-        <div v-for="(line, idx) in lines" :key="idx" class="rename-log-line" :class="`level-${line.level}`">
+        <div v-if="lines.length === 0" class="empty-logs">暂无日志</div>
+        <div v-else v-for="(line, idx) in lines" :key="idx" class="rename-log-line" :class="`level-${line.level}`">
           [{{ line.level.toUpperCase() }}] {{ line.text }}
         </div>
       </div>

@@ -40,9 +40,8 @@ class Settings(BaseSettings):
     cache_type: str = Field("memory", alias="CACHE_TYPE")
     redis_url: str = Field("redis://localhost:6379/0", alias="REDIS_URL")
     cache_ttl: int = Field(3600, alias="CACHE_TTL")
-    
-    quark_cookie: str = Field("", alias="QUARK_COOKIE")
-    quark_transfer_cookie: str = Field("", alias="QUARK_TRANSFER_COOKIE")
+
+    quark_transfer_cookie: str = Field(..., alias="QUARK_TRANSFER_COOKIE")
 
     transfer_keep_extras: bool = Field(False, alias="TRANSFER_KEEP_EXTRAS")
     transfer_keep_subtitles: bool = Field(False, alias="TRANSFER_KEEP_SUBTITLES")
@@ -56,6 +55,11 @@ class Settings(BaseSettings):
     base_tv_dir: str = Field("/影视收藏/电视剧", alias="BASE_TV_DIR")
     base_anime_dir: str = Field("/影视收藏/动漫", alias="BASE_ANIME_DIR")
     base_documentary_dir: str = Field("/影视收藏/纪录片", alias="BASE_DOCUMENTARY_DIR")
+
+    cors_origins: list[str] = Field(
+        ["http://localhost:5173", "http://127.0.0.1:5173"],
+        alias="CORS_ORIGINS"
+    )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

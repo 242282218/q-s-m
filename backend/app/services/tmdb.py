@@ -378,6 +378,70 @@ class TmdbClient:
             params["language"] = language_override
         return await self._get(f"/{media_type}/{item_id}", params=params)
 
+    async def get_images(
+        self,
+        media_type: str,
+        item_id: int,
+        include_image_language: str = "zh,cn,null,en",
+    ) -> Dict[str, Any]:
+        """
+        获取影片剧照，优先中国地区，美国兜底。
+        
+        Args:
+            media_type: movie 或 tv
+            item_id: TMDB ID
+            include_image_language: 语言优先级，默认 zh,cn,null,en
+        
+        Returns:
+            {"backdrops": [...], "posters": [...], "stills": [...]}
+        """
+        params = {"include_image_language": include_image_language}
+        return await self._get(f"/{media_type}/{item_id}/images", params=params)
+
+    async def get_best_backdrop(
+        self,
+        media_type: str,
+        item_id: int,
+        min_width: int = 1280,
+    ) -> Optional[str]:
+        """
+        获取最佳剧照（优先中国地区）。
+        
+        Returns:
+            剧照完整 URL 或 None
+        """
+        try:
+            data = await self.get_images(media_type, item_id, include_image_language="zh,cn,null,en")
+            backdrops = data.get("backdrops", [])
+            
+            if not backdrops:
+                # 尝试美国地区兜底
+                data = await self.get_images(media_type, item_id, include_image_language="en,null")
+                backdrops = data.get("backdrops", [])
+            
+            if not backdrops:
+                return None
+            
+            # 过滤符合最小宽度的剧照，按投票数排序
+            valid_backdrops = [
+                b for b in backdrops
+                if b.get("width", 0) >= min_width and b.get("file_path")
+            ]
+            
+            if not valid_backdrops:
+                # 如果没有符合宽度的，取第一个
+                if backdrops and backdrops[0].get("file_path"):
+                    return self.image_url(backdrops[0]["file_path"], "w1280")
+                return None
+            
+            # 按投票数排序
+            valid_backdrops.sort(key=lambda x: x.get("vote_count", 0), reverse=True)
+            return self.image_url(valid_backdrops[0]["file_path"], "w1280")
+            
+        except Exception as e:
+            logger.warning(f"获取剧照失败: {media_type}/{item_id}: {e}")
+            return None
+
     async def person(
         self, person_id: int, language_override: Optional[str] = None
     ) -> Dict[str, Any]:

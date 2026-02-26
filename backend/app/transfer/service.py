@@ -33,13 +33,14 @@ logger = logging.getLogger(__name__)
 class TransferService:
     """转存服务"""
 
-    def __init__(self, db: Session, cookie: str = ""):
+    def __init__(self, db: Session, cookie: str = "", tmdb_client: Optional["TmdbClient"] = None):
         self.db = db
         self._cookie = cookie
         self.renamer = Renamer()
         self.collection_service = CollectionService(db)
         self._quark_client: Optional[QuarkTransferClient] = None
         self._path_resolver: Optional[QuarkPathResolver] = None
+        self._tmdb_client = tmdb_client
 
     async def _get_client(self) -> QuarkTransferClient:
         if self._quark_client is None or self._quark_client.cookie != self._cookie:
@@ -135,14 +136,16 @@ class TransferService:
 
         settings = get_settings()
         client = await self._get_client()
-        tmdb_client = TmdbClient(
-            settings.tmdb_api_key,
-            api_base=settings.tmdb_api_base,
-            image_base=settings.tmdb_image_base,
-            language=settings.default_language,
-            proxy=settings.http_proxy,
-            timeout=8.0,
-        )
+        tmdb_client = self._tmdb_client
+        if tmdb_client is None:
+            tmdb_client = TmdbClient(
+                settings.tmdb_api_key,
+                api_base=settings.tmdb_api_base,
+                image_base=settings.tmdb_image_base,
+                language=settings.default_language,
+                proxy=settings.http_proxy,
+                timeout=8.0,
+            )
 
         try:
             keep_extras = bool(settings.transfer_keep_extras)
@@ -297,7 +300,8 @@ class TransferService:
             logger.error(f"转存失败 - 未知错误: id={collection_id}, error={e}", exc_info=True)
             return False, f"转存失败: {str(e)}", []
         finally:
-            await tmdb_client.close()
+            if self._tmdb_client is None:
+                await tmdb_client.close()
 
     async def rename_collection(self, collection_id: int) -> AsyncGenerator[Dict[str, Any], None]:
         logger.info(f"开始独立重命名: collection_id={collection_id}")
@@ -321,14 +325,16 @@ class TransferService:
 
         settings = get_settings()
         client = await self._get_client()
-        tmdb_client = TmdbClient(
-            settings.tmdb_api_key,
-            api_base=settings.tmdb_api_base,
-            image_base=settings.tmdb_image_base,
-            language=settings.default_language,
-            proxy=settings.http_proxy,
-            timeout=8.0,
-        )
+        tmdb_client = self._tmdb_client
+        if tmdb_client is None:
+            tmdb_client = TmdbClient(
+                settings.tmdb_api_key,
+                api_base=settings.tmdb_api_base,
+                image_base=settings.tmdb_image_base,
+                language=settings.default_language,
+                proxy=settings.http_proxy,
+                timeout=8.0,
+            )
 
         try:
             keep_extras = bool(settings.transfer_keep_extras)
@@ -469,7 +475,8 @@ class TransferService:
                 level="error",
             )
         finally:
-            await tmdb_client.close()
+            if self._tmdb_client is None:
+                await tmdb_client.close()
 
     def _get_target_folder(self, collection: Collection) -> str:
         """

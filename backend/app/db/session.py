@@ -11,7 +11,7 @@ from pathlib import Path
 from contextlib import contextmanager
 from typing import Generator, Optional, List, Any, Dict
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from sqlalchemy.pool import StaticPool, QueuePool
 from sqlalchemy.exc import SQLAlchemyError
@@ -55,7 +55,10 @@ if is_production:
     # 生产环境：使用 QueuePool 支持多线程
     engine = create_engine(
         DATABASE_URL,
-        connect_args={"check_same_thread": False},
+        connect_args={
+            "check_same_thread": False,
+            "timeout": 30,
+        },
         poolclass=QueuePool,
         pool_size=10,
         max_overflow=20,
@@ -67,10 +70,20 @@ else:
     # 开发环境：使用 StaticPool
     engine = create_engine(
         DATABASE_URL,
-        connect_args={"check_same_thread": False},
+        connect_args={
+            "check_same_thread": False,
+            "timeout": 30,
+        },
         poolclass=StaticPool,
         echo=False,
     )
+
+# 启用 WAL 模式以提升并发性能
+with engine.connect() as conn:
+    conn.execute(text("PRAGMA journal_mode=WAL"))
+    conn.execute(text("PRAGMA busy_timeout=30000"))
+    conn.commit()
+    logger.info("SQLite WAL mode enabled")
 
 # 添加查询性能监控
 @event.listens_for(engine, "before_cursor_execute")

@@ -19,6 +19,22 @@ const props = defineProps<{
 
 const { push } = useToast();
 
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  
+  return (...args: Parameters<T>) => {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+    timeout = setTimeout(() => {
+      func(...args);
+    }, wait);
+  };
+}
+
 const loading = ref(false);
 const item = ref<DetailItem | null>(null);
 const recommendations = ref<PosterCard[]>([]);
@@ -29,6 +45,7 @@ const resources = ref<ResourceDto[]>([]);
 const collectedMap = reactive<Record<string, boolean>>({});
 const savingMap = reactive<Record<string, boolean>>({});
 const statusMap = reactive<Record<string, { level: "success" | "error" | "info"; text: string }>>({});
+const isSearching = ref(false);
 
 const playingVideos = reactive<Record<string, boolean>>({});
 
@@ -87,9 +104,10 @@ async function loadLinkStatus(links: string[]) {
 }
 
 async function searchResources() {
-  if (!item.value) {
+  if (!item.value || isSearching.value) {
     return;
   }
+  isSearching.value = true;
   resourceLoading.value = true;
   resourceError.value = "";
   resources.value = [];
@@ -114,6 +132,7 @@ async function searchResources() {
     resourceError.value = error instanceof Error ? error.message : "资源搜索失败";
   } finally {
     resourceLoading.value = false;
+    isSearching.value = false;
   }
 }
 
@@ -143,7 +162,7 @@ async function loadDetailPage() {
   }
 }
 
-async function onCollect(resource: ResourceDto) {
+const debouncedCollect = debounce(async (resource: ResourceDto) => {
   const current = item.value;
   if (!current) {
     return;
@@ -174,9 +193,9 @@ async function onCollect(resource: ResourceDto) {
   } finally {
     delete savingMap[resource.link];
   }
-}
+}, 500);
 
-async function onSave(resource: ResourceDto) {
+const debouncedSave = debounce(async (resource: ResourceDto) => {
   const current = item.value;
   if (!current) {
     return;
@@ -208,6 +227,14 @@ async function onSave(resource: ResourceDto) {
   } finally {
     delete savingMap[resource.link];
   }
+}, 500);
+
+async function onCollect(resource: ResourceDto) {
+  debouncedCollect(resource);
+}
+
+async function onSave(resource: ResourceDto) {
+  debouncedSave(resource);
 }
 
 watch(

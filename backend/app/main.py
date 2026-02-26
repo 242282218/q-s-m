@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Callable
@@ -11,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.cors import CORSMiddleware
-
+from .middleware.rate_limit import rate_limit_middleware
 from .core.config import get_settings
 from .core.logging import setup_logging
 from .db.session import init_db, get_query_stats, reset_query_stats
@@ -20,6 +21,7 @@ from .api.schemas.common import ApiResponse, ok, utc_now_iso
 from .api.schemas.system import (
     DatabaseMetrics,
     HealthData,
+    HealthCheck,
     MetricsData,
     MetricsResetData,
     RequestMetrics,
@@ -72,10 +74,11 @@ async def lifespan(app: FastAPI):
     cache.start_cleanup()
     
     # 初始化性能统计
+    # 使用固定大小的队列防止内存泄漏
     app.state.request_stats = {
         "total_requests": 0,
         "total_time": 0.0,
-        "slow_requests": []
+        "slow_requests": deque(maxlen=100)
     }
     
     logger.info("Application started: HTTP clients and cache initialized")
@@ -113,11 +116,13 @@ app.add_middleware(
 # 添加 CORS 中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.middleware("http")(rate_limit_middleware)
 
 
 @app.middleware("http")
@@ -185,19 +190,58 @@ def frontend_index_response() -> FileResponse:
     return FileResponse(str(FRONTEND_INDEX_FILE))
 
 
-@app.get("/api/health", summary="健康检查", response_model=ApiResponse[HealthData])
-async def health_check() -> ApiResponse[HealthData]:
+@app.get("/api/v1/health", summary="健康检查", response_model=ApiResponse[HealthData])
+async def health_check(request: Request) -> ApiResponse[HealthData]:
     """健康检查端点，用于容器健康监控"""
+    checks = {}
+    overall_status = "ok"
+    
+    # 检查数据库连接
+    try:
+        from .db.session import engine
+        with engine.connect() as conn:
+            conn.execute("SELECT 1")
+        checks["database"] = HealthCheck(status="ok", message="Database connection successful")
+    except Exception as e:
+        checks["database"] = HealthCheck(status="error", message=f"Database connection failed: {str(e)}")
+        overall_status = "degraded"
+    
+    # 检查 TMDB 客户端
+    try:
+        tmdb_client = getattr(request.app.state, "tmdb_client", None)
+        if tmdb_client:
+            checks["tmdb"] = HealthCheck(status="ok", message="TMDB client initialized")
+        else:
+            checks["tmdb"] = HealthCheck(status="warning", message="TMDB client not initialized")
+            overall_status = "degraded"
+    except Exception as e:
+        checks["tmdb"] = HealthCheck(status="error", message=f"TMDB client error: {str(e)}")
+        overall_status = "degraded"
+    
+    # 检查缓存
+    try:
+        from .quark.core.cache import get_cache
+        cache = get_cache()
+        stats = await cache.get_stats()
+        if stats:
+            checks["cache"] = HealthCheck(status="ok", message=f"Cache operational: {stats['valid']}/{stats['total']} entries")
+        else:
+            checks["cache"] = HealthCheck(status="warning", message="Cache stats not available")
+    except Exception as e:
+        checks["cache"] = HealthCheck(status="error", message=f"Cache error: {str(e)}")
+        overall_status = "degraded"
+    
     return ok(
         HealthData(
-            status="ok",
+            status=overall_status,
             service="qsm-media-center",
             timestamp=utc_now_iso(),
+            checks=checks,
         )
     )
 
 
-@app.get("/api/metrics", summary="性能指标", response_model=ApiResponse[MetricsData])
+@app.get("/api/v1/metrics", summary="性能指标", response_model=ApiResponse[MetricsData])
 async def get_metrics() -> ApiResponse[MetricsData]:
     """获取应用性能指标"""
     stats = getattr(app.state, "request_stats", {})
@@ -220,7 +264,7 @@ async def get_metrics() -> ApiResponse[MetricsData]:
     )
 
 
-@app.post("/api/metrics/reset", summary="重置性能指标", response_model=ApiResponse[MetricsResetData])
+@app.post("/api/v1/metrics/reset", summary="重置性能指标", response_model=ApiResponse[MetricsResetData])
 async def reset_metrics() -> ApiResponse[MetricsResetData]:
     """重置性能统计"""
     if hasattr(app.state, "request_stats"):
@@ -236,8 +280,8 @@ async def reset_metrics() -> ApiResponse[MetricsResetData]:
     )
 
 
-# 注册路由
-app.include_router(api_router, prefix="/api")
+# 注册路由 - 添加版本控制
+app.include_router(api_router, prefix="/api/v1")
 
 
 @app.get("/", include_in_schema=False)
