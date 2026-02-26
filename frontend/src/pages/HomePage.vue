@@ -6,6 +6,11 @@ import ScrollableRow from "@/components/ScrollableRow.vue";
 import { useCarousel } from "@/composables/useCarousel";
 import { useToast } from "@/composables/useToast";
 import type { HomeData, HomeHeroItem } from "@/types/api";
+import IconVideoPlayer from "@/components/Icons/IconVideoPlayer.vue";
+import IconInfo from "@/components/Icons/IconInfo.vue";
+import IconStarRating from "@/components/Icons/IconStarRating.vue";
+import IconEmptyMovie from "@/components/Icons/IconEmptyMovie.vue";
+import IconEmptySad from "@/components/Icons/IconEmptySad.vue";
 
 const { push } = useToast();
 
@@ -114,7 +119,10 @@ onBeforeUnmount(() => {
             <div class="hero-meta">
               <span v-if="hero.year" class="hero-meta-item">{{ hero.year }}</span>
               <span v-if="hero.vote" class="hero-meta-divider" aria-hidden="true" />
-              <span v-if="hero.vote" class="hero-meta-item rating">⭐ {{ hero.vote.toFixed(1) }}</span>
+              <span v-if="hero.vote" class="hero-meta-item rating">
+                <IconStarRating class="hero-meta-icon" aria-hidden="true" />
+                {{ hero.vote.toFixed(1) }}
+              </span>
               <span v-if="hero.runtime" class="hero-meta-divider" aria-hidden="true" />
               <span v-if="hero.runtime" class="hero-meta-item">{{ hero.runtime }} 分钟</span>
             </div>
@@ -124,11 +132,11 @@ onBeforeUnmount(() => {
             <p v-if="hero.overview" class="hero-overview">{{ hero.overview }}</p>
             <div class="hero-actions">
               <a :href="mediaLink(hero.media_type, hero.id)" class="hero-btn hero-btn-primary">
-                <span class="hero-btn-icon">▶</span>
+                <IconVideoPlayer class="hero-btn-icon" aria-hidden="true" />
                 <span>查看详情</span>
               </a>
               <a :href="mediaLink(hero.media_type, hero.id)" class="hero-btn hero-btn-secondary">
-                <span class="hero-btn-icon">ⓘ</span>
+                <IconInfo class="hero-btn-icon" aria-hidden="true" />
                 <span>更多信息</span>
               </a>
             </div>
@@ -156,12 +164,44 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <div v-if="loading" class="loading">
-      <div class="loading-spinner" />
-      <span>加载中...</span>
+    <div v-if="loading" class="page">
+      <section class="hero-section" aria-labelledby="loading-hero">
+        <div class="hero-carousel">
+          <div class="hero-slide">
+            <div class="hero-background">
+              <div class="poster-skeleton" aria-hidden="true" />
+              <div class="hero-gradient" aria-hidden="true" />
+              <div class="hero-vignette" aria-hidden="true" />
+            </div>
+            <div class="hero-content">
+              <div class="hero-badge skeleton-text short" aria-hidden="true" />
+              <h1 class="hero-title skeleton-text medium" aria-hidden="true" />
+              <div class="hero-meta">
+                <span class="hero-meta-item skeleton-text short" aria-hidden="true" />
+                <span class="hero-meta-divider" aria-hidden="true" />
+                <span class="hero-meta-item skeleton-text short" aria-hidden="true" />
+              </div>
+              <div class="hero-tags">
+                <span class="hero-tag skeleton-text short" aria-hidden="true" />
+                <span class="hero-tag skeleton-text short" aria-hidden="true" />
+              </div>
+              <p class="hero-overview skeleton-text medium" aria-hidden="true" />
+              <div class="hero-actions">
+                <a class="hero-btn hero-btn-primary skeleton-text" aria-hidden="true" />
+                <a class="hero-btn hero-btn-secondary skeleton-text" aria-hidden="true" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="posters-grid skeleton-grid" aria-hidden="true">
+        <div v-for="i in 6" :key="i" class="skeleton-card" />
+      </div>
     </div>
+    
     <div v-else-if="!feed" class="empty" role="status">
-      <div class="empty-icon">📺</div>
+      <IconEmptyMovie class="empty-icon" aria-hidden="true" />
       <div class="empty-text">首页数据加载失败</div>
       <div class="empty-hint">请检查后端 TMDB 配置后重试</div>
       <button class="btn btn-primary" @click="loadHomeFeed">重新加载</button>
@@ -205,7 +245,7 @@ onBeforeUnmount(() => {
             </template>
 
             <div v-else class="empty" role="status">
-              <div class="empty-icon">😥</div>
+              <IconEmptySad class="empty-icon" aria-hidden="true" />
               <div class="empty-text">暂无数据</div>
             </div>
           </ScrollableRow>

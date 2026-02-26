@@ -32,7 +32,7 @@
 
 ### 2. 部署方式
 
-#### 2.1 传统部署
+#### 2.1 传统部署（开发模式）
 
 **安装依赖**
 ```bash
@@ -55,14 +55,29 @@ QUARK_COOKIE=your_quark_cookie_string
 DATABASE_URL=sqlite:///./qsm.db
 ```
 
-**运行服务**
+**开发模式启动（推荐）**
 ```bash
-# 构建前端产物（首次或前端代码变更后）
-cd frontend
-npm install
-npm run build
+# 启动后端（终端 1）
+cd backend
+python start_server.py
+# 或直接运行
+# uvicorn app.main:app --host 0.0.0.0 --port 7799 --reload
 
-# 启动后端
+# 启动前端（终端 2）
+cd frontend
+pnpm dev
+# 前端自动运行在 http://localhost:5173
+# 后端 API 自动代理到 http://localhost:7799
+```
+
+**生产模式启动**
+```bash
+# 构建前端产物
+cd frontend
+pnpm install
+pnpm build
+
+# 启动后端（前端静态文件由后端服务）
 cd backend
 uvicorn app.main:app --host 0.0.0.0 --port 7809
 ```
@@ -146,7 +161,14 @@ docker system prune -a --volumes  # 清理所有未使用的资源
 
 ### 3. 访问应用
 
-部署完成后，通过以下地址访问：
+**开发模式**
+- 前端界面：http://localhost:5173/
+- 后端 API：http://localhost:7799/
+- 收藏页面：http://localhost:5173/collections
+- 搜索页面：http://localhost:5173/search
+- 设置页面：http://localhost:5173/settings
+
+**生产模式（Docker/传统）**
 - 前端入口：http://your-server-ip:7809/
 - 收藏页面：http://your-server-ip:7809/collections
 - 搜索页面：http://your-server-ip:7809/search

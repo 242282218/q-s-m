@@ -2,6 +2,9 @@
 import { ref } from "vue";
 import { RouterLink, RouterView, useRouter } from "vue-router";
 import ToastHost from "./components/ToastHost.vue";
+import IconHome from "@/components/Icons/IconHome.vue";
+import IconStar from "@/components/Icons/IconStar.vue";
+import IconSettings from "@/components/Icons/IconSettings.vue";
 
 const router = useRouter();
 const searchQuery = ref("");
@@ -45,15 +48,15 @@ function submitSearch() {
 
         <nav class="main-nav" role="navigation" aria-label="主导航">
           <RouterLink to="/" class="nav-link">
-            <span>🏠</span>
+            <IconHome aria-hidden="true" />
             <span class="nav-text">首页</span>
           </RouterLink>
           <RouterLink to="/collections" class="nav-link">
-            <span>⭐</span>
+            <IconStar aria-hidden="true" />
             <span class="nav-text">收藏</span>
           </RouterLink>
           <RouterLink to="/settings" class="nav-link">
-            <span>⚙️</span>
+            <IconSettings aria-hidden="true" />
             <span class="nav-text">设置</span>
           </RouterLink>
         </nav>

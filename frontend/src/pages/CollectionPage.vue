@@ -424,9 +424,21 @@ onMounted(() => {
         <span class="collection-count" aria-live="polite">{{ totalText }}</span>
       </div>
 
-      <div v-if="loading" class="loading" role="status" aria-label="加载中">
-        <div class="loading-spinner" aria-hidden="true" />
-        <span>加载中...</span>
+      <div v-if="loading" class="page" role="status" aria-label="加载中">
+        <section class="section" aria-labelledby="loading-title">
+          <div class="section-header collection-header">
+            <h2 class="section-title" id="loading-title">我的收藏</h2>
+            <div class="collection-actions">
+              <button class="btn btn-secondary" disabled>刷新</button>
+              <button class="btn btn-primary collection-verify-btn" disabled>验证网盘状态</button>
+            </div>
+            <span class="collection-count">加载中...</span>
+          </div>
+
+          <div class="posters-grid skeleton-grid" aria-hidden="true">
+            <div v-for="i in 8" :key="i" class="skeleton-card" />
+          </div>
+        </section>
       </div>
 
       <div v-else-if="items.length === 0" class="empty" role="status">

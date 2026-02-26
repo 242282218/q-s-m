@@ -1,22 +1,62 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 
 import { searchTmdbPosters } from "@/api";
 import { useToast } from "@/composables/useToast";
 import type { PosterCard } from "@/types/api";
 
+const router = useRouter();
 const route = useRoute();
 const { push } = useToast();
 
 const loading = ref(false);
 const posters = ref<PosterCard[]>([]);
+const searchHistory = ref<string[]>([]);
 
 const query = computed(() => String(route.query.q || "").trim());
 const titleText = computed(() => (query.value ? `"${query.value}" 的搜索结果` : "搜索影视"));
 
 function mediaLink(mediaType: string, id: number) {
   return `/${mediaType}/${id}`;
+}
+
+function loadSearchHistory() {
+  try {
+    const history = localStorage.getItem("searchHistory");
+    if (history) {
+      searchHistory.value = JSON.parse(history);
+    }
+  } catch {
+    searchHistory.value = [];
+  }
+}
+
+function saveToHistory(query: string) {
+  if (!query) return;
+  const normalized = query.trim();
+  searchHistory.value = [normalized, ...searchHistory.value.filter(q => q !== normalized)].slice(0, 10);
+  try {
+    localStorage.setItem("searchHistory", JSON.stringify(searchHistory.value));
+  } catch {
+    // ignore
+  }
+}
+
+function clearHistory() {
+  searchHistory.value = [];
+  try {
+    localStorage.removeItem("searchHistory");
+  } catch {
+    // ignore
+  }
+}
+
+function useHistory(query: string) {
+  void router.push({
+    path: "/search",
+    query: { q: query },
+  });
 }
 
 async function runSearch() {
@@ -32,6 +72,7 @@ async function runSearch() {
       return;
     }
     posters.value = res.data.posters || [];
+    saveToHistory(query.value);
   } catch (error) {
     push(error instanceof Error ? error.message : "搜索失败", "error");
   } finally {
@@ -48,6 +89,11 @@ watch(
 
 onMounted(() => {
   void runSearch();
+  loadSearchHistory();
+});
+
+onUnmounted(() => {
+  // cleanup if needed
 });
 </script>
 
@@ -71,6 +117,34 @@ onMounted(() => {
           <div class="empty-icon">🔎</div>
           <div class="empty-text">请输入关键字开始搜索</div>
           <div class="empty-hint">支持搜索电影名称、演员、导演等</div>
+          
+          <div v-if="searchHistory.length > 0" class="search-history" role="region" aria-label="搜索历史">
+            <div class="history-header">
+              <span>历史记录</span>
+              <button class="clear-btn" @click="clearHistory">清除</button>
+            </div>
+            <div class="history-list">
+              <button
+                v-for="(item, index) in searchHistory"
+                :key="index"
+                class="history-item"
+                @click="useHistory(item)"
+              >
+                <span class="history-icon">_clock</span>
+                <span class="history-text">{{ item }}</span>
+              </button>
+            </div>
+          </div>
+          
+          <div class="quick-tags" role="region" aria-label="快捷标签">
+            <span class="tags-label">热门搜索：</span>
+            <div class="tags-list">
+              <button class="tag-item" @click="useHistory('电影')">电影</button>
+              <button class="tag-item" @click="useHistory('剧集')">剧集</button>
+              <button class="tag-item" @click="useHistory('科幻')">科幻</button>
+              <button class="tag-item" @click="useHistory('动作')">动作</button>
+            </div>
+          </div>
         </div>
       </template>
 

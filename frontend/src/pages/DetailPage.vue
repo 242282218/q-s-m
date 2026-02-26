@@ -11,6 +11,7 @@ import {
 } from "@/api";
 import { useToast } from "@/composables/useToast";
 import type { DetailItem, PosterCard, ResourceDto } from "@/types/api";
+import IconRecommendations from "@/components/Icons/IconRecommendations.vue";
 
 const props = defineProps<{
   mediaType: "movie" | "tv";
@@ -251,9 +252,59 @@ onMounted(() => {
 
 <template>
   <div class="page">
-    <div v-if="loading" class="loading" role="status">
-      <div class="loading-spinner" />
-      <span>加载详情中...</span>
+    <div v-if="loading" class="page" role="status" aria-label="加载中">
+      <section class="detail-hero" aria-labelledby="loading-hero" :style="heroStyle">
+        <div class="detail-shell">
+          <div class="detail-poster">
+            <div class="poster-skeleton" aria-hidden="true" />
+          </div>
+          <div class="detail-meta">
+            <h1 class="detail-title skeleton-text large" id="loading-hero" aria-hidden="true" />
+            <div class="detail-subtitle">
+              <span class="skeleton-text short" aria-hidden="true" />
+              <span class="skeleton-text short" aria-hidden="true" />
+              <span class="skeleton-text short" aria-hidden="true" />
+            </div>
+            <div class="detail-tags" role="list" aria-label="类型标签">
+              <span class="tag skeleton-text short" role="listitem" aria-hidden="true" />
+              <span class="tag skeleton-text short" role="listitem" aria-hidden="true" />
+            </div>
+            <p class="detail-tagline skeleton-text medium" aria-hidden="true" />
+            <p class="detail-overview skeleton-text long" aria-hidden="true" />
+          </div>
+        </div>
+      </section>
+
+      <section class="section detail-section" aria-labelledby="loading-resources">
+        <div class="section-header">
+          <span class="section-icon" aria-hidden="true">📦</span>
+          <h2 class="section-title" id="loading-resources">夸克网盘资源</h2>
+        </div>
+        <div class="section-body">
+          <div class="quark-resources-scroll" role="list" aria-live="polite">
+            <article v-for="i in 3" :key="i" class="quark-resource-card skeleton-card" role="listitem" aria-hidden="true">
+              <div class="resource-header">
+                <h4 class="resource-title skeleton-text medium" />
+                <div class="resource-badges">
+                  <span class="badge-best skeleton-text short" />
+                  <span class="badge-quality skeleton-text short" />
+                </div>
+              </div>
+              <div class="resource-tags">
+                <span class="resource-tag skeleton-text short" />
+              </div>
+              <div class="resource-score">
+                <span class="score-label skeleton-text short" />
+                <span class="score-value skeleton-text short" />
+              </div>
+              <div class="resource-actions">
+                <a class="btn btn-primary skeleton-text" />
+                <button class="btn btn-collect skeleton-text" />
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
     </div>
 
     <template v-else-if="item">
@@ -377,7 +428,7 @@ onMounted(() => {
 
       <section class="section detail-section" aria-labelledby="recommend-title">
         <div class="section-header">
-          <span class="section-icon" aria-hidden="true">📺</span>
+          <IconRecommendations class="section-icon" aria-hidden="true" />
           <h2 class="section-title" id="recommend-title">相关推荐</h2>
         </div>
         <div class="section-body">
@@ -402,7 +453,7 @@ onMounted(() => {
             </a>
           </div>
           <div v-else class="empty" role="status">
-            <div class="empty-icon">🎬</div>
+            <IconRecommendations class="empty-icon" aria-hidden="true" />
             <div class="empty-text">暂无相关推荐</div>
           </div>
         </div>

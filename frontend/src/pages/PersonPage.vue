@@ -4,6 +4,9 @@ import { computed, onMounted, ref, watch } from "vue";
 import { getPersonPageData } from "@/api";
 import { useToast } from "@/composables/useToast";
 import type { PersonData } from "@/types/api";
+import IconCredits from "@/components/Icons/IconCredits.vue";
+import IconDocument from "@/components/Icons/IconDocument.vue";
+import IconEmptyCredits from "@/components/Icons/IconEmptyCredits.vue";
 
 const props = defineProps<{
   personId: number;
@@ -61,9 +64,35 @@ onMounted(() => {
 
 <template>
   <div class="page">
-    <div v-if="loading" class="loading" role="status">
-      <div class="loading-spinner" />
-      <span>加载人物信息中...</span>
+    <div v-if="loading" class="page" role="status" aria-label="加载中">
+      <section class="person-hero" aria-labelledby="loading-person">
+        <div class="person-shell">
+          <div class="person-avatar">
+            <div class="poster-skeleton" aria-hidden="true" />
+          </div>
+          <div class="person-meta">
+            <h1 class="person-name skeleton-text large" id="loading-person" aria-hidden="true" />
+            <div class="person-sub">
+              <span class="skeleton-text short" aria-hidden="true" />
+              <span class="skeleton-text short" aria-hidden="true" />
+              <span class="skeleton-text short" aria-hidden="true" />
+            </div>
+            <p class="person-bio skeleton-text long" aria-hidden="true" />
+          </div>
+        </div>
+      </section>
+
+      <section class="section detail-section" aria-labelledby="loading-credits">
+        <div class="section-header">
+          <IconCredits class="section-icon" aria-hidden="true" />
+          <h2 class="section-title" id="loading-credits">代表作</h2>
+        </div>
+        <div class="section-body">
+          <div class="recommend-grid skeleton-grid" role="list" aria-live="polite">
+            <div v-for="i in 6" :key="i" class="skeleton-card" role="listitem" aria-hidden="true" />
+          </div>
+        </div>
+      </section>
     </div>
 
     <template v-else-if="person">
@@ -89,7 +118,7 @@ onMounted(() => {
 
       <section class="section detail-section" aria-labelledby="top-credits-title">
         <div class="section-header">
-          <span class="section-icon" aria-hidden="true">⭐</span>
+          <IconCredits class="section-icon" aria-hidden="true" />
           <h2 class="section-title" id="top-credits-title">代表作</h2>
         </div>
         <div class="section-body">
@@ -114,7 +143,7 @@ onMounted(() => {
             </a>
           </div>
           <div v-else class="empty" role="status">
-            <div class="empty-icon">🎬</div>
+            <IconEmptyCredits class="empty-icon" aria-hidden="true" />
             <div class="empty-text">暂无代表作</div>
           </div>
         </div>
@@ -122,7 +151,7 @@ onMounted(() => {
 
       <section class="section detail-section" aria-labelledby="all-credits-title">
         <div class="section-header">
-          <span class="section-icon" aria-hidden="true">📜</span>
+          <IconDocument class="section-icon" aria-hidden="true" />
           <h2 class="section-title" id="all-credits-title">全部作品</h2>
         </div>
         <div class="section-body">
@@ -163,7 +192,7 @@ onMounted(() => {
           </template>
 
           <div v-else class="empty" role="status">
-            <div class="empty-icon">📋</div>
+            <IconDocument class="empty-icon" aria-hidden="true" />
             <div class="empty-text">暂无作品记录</div>
           </div>
         </div>
@@ -171,7 +200,7 @@ onMounted(() => {
     </template>
 
     <div v-else class="empty" role="status">
-      <div class="empty-icon">👤</div>
+      <IconEmptyCredits class="empty-icon" aria-hidden="true" />
       <div class="empty-text">人物信息加载失败</div>
     </div>
   </div>
