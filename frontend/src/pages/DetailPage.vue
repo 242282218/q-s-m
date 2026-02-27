@@ -12,6 +12,14 @@ import {
 import { useToast } from "@/composables/useToast";
 import type { DetailItem, PosterCard, ResourceDto } from "@/types/api";
 import IconRecommendations from "@/components/Icons/IconRecommendations.vue";
+import IconPackage from "@/components/Icons/IconPackage.vue";
+import IconUsers from "@/components/Icons/IconUsers.vue";
+import IconVideo from "@/components/Icons/IconVideo.vue";
+import IconFilm from "@/components/Icons/IconFilm.vue";
+import IconUser from "@/components/Icons/IconUser.vue";
+import IconConfused from "@/components/Icons/IconConfused.vue";
+import IconDocument from "@/components/Icons/IconDocument.vue";
+import IconSearch from "@/components/Icons/IconSearch.vue";
 import { debounce } from "@/utils/debounce";
 
 const props = defineProps<{
@@ -262,7 +270,7 @@ onMounted(() => {
 
       <section class="section detail-section" aria-labelledby="loading-resources">
         <div class="section-header">
-          <span class="section-icon" aria-hidden="true">📦</span>
+          <IconPackage class="section-icon" aria-hidden="true" />
           <h2 class="section-title" id="loading-resources">夸克网盘资源</h2>
         </div>
         <div class="section-body">
@@ -319,7 +327,7 @@ onMounted(() => {
 
       <section class="section detail-section" aria-labelledby="quark-title">
         <div class="section-header">
-          <span class="section-icon" aria-hidden="true">📦</span>
+          <IconPackage class="section-icon" aria-hidden="true" />
           <h2 class="section-title" id="quark-title">夸克网盘资源</h2>
         </div>
         <div class="section-body">
@@ -328,7 +336,7 @@ onMounted(() => {
             <span>搜索资源中...</span>
           </div>
           <div v-else-if="resourceError" class="empty" role="status">
-            <div class="empty-icon">🔍</div>
+            <IconSearch class="empty-icon" aria-hidden="true" />
             <div class="empty-text">{{ resourceError }}</div>
             <button class="btn btn-secondary" @click="searchResources">重试</button>
           </div>
@@ -388,7 +396,7 @@ onMounted(() => {
 
       <section class="section detail-section" aria-labelledby="cast-title">
         <div class="section-header">
-          <span class="section-icon" aria-hidden="true">👥</span>
+          <IconUsers class="section-icon" aria-hidden="true" />
           <h2 class="section-title" id="cast-title">演员阵容</h2>
         </div>
         <div class="section-body">
@@ -405,7 +413,7 @@ onMounted(() => {
             </a>
           </div>
           <div v-else class="empty" role="status">
-            <div class="empty-icon">👤</div>
+            <IconUser class="empty-icon" aria-hidden="true" />
             <div class="empty-text">暂无演员信息</div>
           </div>
         </div>
@@ -446,13 +454,21 @@ onMounted(() => {
 
       <section class="section detail-section" aria-labelledby="video-title">
         <div class="section-header">
-          <span class="section-icon" aria-hidden="true">🎥</span>
+          <IconVideo class="section-icon" aria-hidden="true" />
           <h2 class="section-title" id="video-title">视频预览</h2>
         </div>
         <div class="section-body">
           <div v-if="item.videos.length" class="video-grid" role="list">
             <div v-for="video in item.videos.slice(0, 2)" :key="video.key" class="video-card" role="listitem">
-              <div class="video-thumbnail" role="button" tabindex="0" :aria-label="`播放视频: ${video.name}`" @click="onPlayVideo(video.key)">
+              <div
+                class="video-thumbnail"
+                role="button"
+                tabindex="0"
+                :aria-label="`播放视频: ${video.name}`"
+                @click="onPlayVideo(video.key)"
+                @keydown.enter="onPlayVideo(video.key)"
+                @keydown.space.prevent="onPlayVideo(video.key)"
+              >
                 <iframe
                   v-if="playingVideos[video.key]"
                   :src="`https://www.youtube.com/embed/${video.key}?autoplay=1&rel=0&modestbranding=1&playsinline=1`"
@@ -481,7 +497,7 @@ onMounted(() => {
             </div>
           </div>
           <div v-else class="empty" role="status">
-            <div class="empty-icon">🎞️</div>
+            <IconFilm class="empty-icon" aria-hidden="true" />
             <div class="empty-text">暂无视频资源</div>
           </div>
         </div>
@@ -489,7 +505,7 @@ onMounted(() => {
     </template>
 
     <div v-else class="empty" role="status">
-      <div class="empty-icon">📄</div>
+      <div class="empty-icon" aria-hidden="true">📄</div>
       <div class="empty-text">详情加载失败</div>
     </div>
   </div>

@@ -1,7 +1,7 @@
 import { createApp } from "vue";
 import { createRouter, createWebHistory } from "vue-router";
 import App from "./App.vue";
-import "./styles.css";
+import "./styles/index.css";
 import CollectionPage from "./pages/CollectionPage.vue";
 import DetailPage from "./pages/DetailPage.vue";
 import HomePage from "./pages/HomePage.vue";

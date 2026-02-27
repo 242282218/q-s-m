@@ -442,7 +442,7 @@ onMounted(() => {
       </div>
 
       <div v-else-if="items.length === 0" class="empty" role="status">
-        <div class="empty-icon">📌</div>
+        <div class="empty-icon" aria-hidden="true">📌</div>
         <div class="empty-text">暂无收藏</div>
         <div class="empty-hint">在影片详情页点击"收藏"按钮添加收藏</div>
         <a href="/" class="btn btn-primary">浏览影片</a>

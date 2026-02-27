@@ -5,6 +5,9 @@ import { useRoute, useRouter } from "vue-router";
 import { searchTmdbPosters } from "@/api";
 import { useToast } from "@/composables/useToast";
 import type { PosterCard } from "@/types/api";
+import IconSearch from "@/components/Icons/IconSearch.vue";
+import IconClock from "@/components/Icons/IconClock.vue";
+import IconConfused from "@/components/Icons/IconConfused.vue";
 
 const router = useRouter();
 const route = useRoute();
@@ -101,7 +104,7 @@ onUnmounted(() => {
   <div class="page">
     <section class="section" aria-labelledby="search-results-title">
       <div class="section-header">
-        <span class="section-icon" aria-hidden="true">🔍</span>
+        <IconSearch class="section-icon" aria-hidden="true" />
         <h2 class="section-title" id="search-results-title">
           {{ titleText }}
         </h2>
@@ -114,7 +117,7 @@ onUnmounted(() => {
 
       <template v-else-if="!query">
         <div class="empty" role="status">
-          <div class="empty-icon">🔎</div>
+          <IconSearch class="empty-icon" aria-hidden="true" />
           <div class="empty-text">请输入关键字开始搜索</div>
           <div class="empty-hint">支持搜索电影名称、演员、导演等</div>
           
@@ -130,7 +133,7 @@ onUnmounted(() => {
                 class="history-item"
                 @click="useHistory(item)"
               >
-                <span class="history-icon">_clock</span>
+                <IconClock class="history-icon" aria-hidden="true" />
                 <span class="history-text">{{ item }}</span>
               </button>
             </div>
@@ -179,7 +182,7 @@ onUnmounted(() => {
           </template>
 
           <div v-else class="empty" role="status">
-            <div class="empty-icon">😕</div>
+            <IconConfused class="empty-icon" aria-hidden="true" />
             <div class="empty-text">未找到相关结果</div>
             <div class="empty-hint">试试其他关键词，或检查拼写是否正确</div>
           </div>

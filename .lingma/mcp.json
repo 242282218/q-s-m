@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "wuying-agentbay-mcp-server": {
+      "type": "streamable_http",
+      "url": "https://mcp.api-inference.modelscope.net/1900dd1149494e/mcp",
+      "headers": {
+        "Authorization": "Bearer ms-a160efad-144c-4dc3-b97d-d6f94e5e48f0"
+      }
+    }
+  }
+}
