@@ -1,0 +1,244 @@
+/**
+ * QSM Person Page Styles
+ * 人物页样式 - Hero/Credits
+ */
+
+/* ============================================
+   Person Hero
+   ============================================ */
+.person-hero {
+  padding: var(--spacing-12) var(--spacing-4);
+  background: linear-gradient(
+    180deg,
+    var(--color-bg-secondary) 0%,
+    var(--color-bg-primary) 100%
+  );
+  position: relative;
+  margin-top: calc(-1 * var(--spacing-6));
+  min-height: 40vh;
+  display: flex;
+  align-items: center;
+}
+
+.person-shell {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--spacing-6);
+  align-items: start;
+  max-width: var(--container-2xl);
+  margin: 0 auto;
+  width: 100%;
+}
+
+.person-avatar {
+  display: flex;
+  justify-content: center;
+}
+
+.person-avatar img {
+  width: 100%;
+  max-width: 200px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--shadow-2xl);
+}
+
+.person-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.person-name {
+  margin: 0;
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-extrabold);
+  letter-spacing: var(--letter-spacing-tight);
+  line-height: var(--line-height-tight);
+}
+
+.person-sub {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.person-sub .dot {
+  color: var(--color-text-muted);
+}
+
+.person-bio {
+  margin: 0;
+  line-height: var(--line-height-relaxed);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
+  max-width: 700px;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ============================================
+   Credits List
+   ============================================ */
+.credits-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.credit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-3) var(--spacing-4);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.credit-row:hover {
+  background: var(--color-bg-tertiary);
+  border-color: var(--color-border-default);
+}
+
+.credit-title a {
+  color: var(--color-text-primary);
+  text-decoration: none;
+  font-weight: var(--font-weight-medium);
+  transition: color var(--transition-fast);
+}
+
+.credit-title a:hover {
+  color: var(--color-brand-primary);
+}
+
+.credit-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.credit-meta .dot {
+  color: var(--color-text-muted);
+}
+
+/* ============================================
+   Credits Collapse
+   ============================================ */
+.credits-collapse {
+  margin-top: var(--spacing-4);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-secondary);
+}
+
+.credits-collapse summary {
+  padding: var(--spacing-3) var(--spacing-4);
+  cursor: pointer;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-secondary);
+  transition: color var(--transition-fast);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.credits-collapse summary::-webkit-details-marker {
+  display: none;
+}
+
+.credits-collapse summary::before {
+  content: '▶';
+  font-size: var(--font-size-xs);
+  transition: transform var(--transition-fast);
+}
+
+.credits-collapse[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.credits-collapse summary:hover {
+  color: var(--color-text-primary);
+}
+
+.credits-collapse .credits-list {
+  padding: 0 var(--spacing-4) var(--spacing-4);
+}
+
+/* ============================================
+   Skeleton Variants
+   ============================================ */
+.skeleton-text.large {
+  height: 32px;
+  width: 60%;
+}
+
+.skeleton-text.long {
+  height: 14px;
+  width: 100%;
+}
+
+/* ============================================
+   Responsive
+   ============================================ */
+@media (min-width: 768px) {
+  .person-hero {
+    padding: var(--spacing-16) var(--spacing-6);
+  }
+
+  .person-shell {
+    grid-template-columns: 200px 1fr;
+    gap: var(--spacing-8);
+  }
+
+  .person-avatar img {
+    max-width: 200px;
+  }
+
+  .person-name {
+    font-size: var(--font-size-3xl);
+  }
+
+  .person-bio {
+    -webkit-line-clamp: 6;
+  }
+}
+
+@media (min-width: 1024px) {
+  .person-shell {
+    grid-template-columns: 240px 1fr;
+  }
+
+  .person-avatar img {
+    max-width: 240px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .person-hero {
+    padding: var(--spacing-20) var(--spacing-12);
+  }
+
+  .person-shell {
+    grid-template-columns: 280px 1fr;
+    gap: var(--spacing-10);
+  }
+
+  .person-avatar img {
+    max-width: 280px;
+  }
+
+  .person-name {
+    font-size: var(--font-size-4xl);
+  }
+}
