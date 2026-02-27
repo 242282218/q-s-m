@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from "vue";
+import IconChevronLeft from "@/components/Icons/IconChevronLeft.vue";
+import IconChevronRight from "@/components/Icons/IconChevronRight.vue";
 
 interface Props {
   ariaLabel?: string;
@@ -12,7 +14,7 @@ const scrollLeft = ref(0);
 const maxScrollLeft = ref(0);
 const canScrollLeft = computed(() => scrollLeft.value > 0);
 const canScrollRight = computed(() => scrollLeft.value < maxScrollLeft.value - 1);
-let animationFrameId: number | null = null;
+const animationFrameId = ref<number | null>(null);
 
 function getComputedStyleValue(property: string): number {
   const value = getComputedStyle(document.documentElement).getPropertyValue(property);
@@ -25,9 +27,9 @@ function smoothScrollTo(targetScrollLeft: number) {
   if (!container) return;
 
   // 取消之前的动画
-  if (animationFrameId !== null) {
-    cancelAnimationFrame(animationFrameId);
-    animationFrameId = null;
+  if (animationFrameId.value !== null) {
+    cancelAnimationFrame(animationFrameId.value);
+    animationFrameId.value = null;
   }
 
   const startScrollLeft = container.scrollLeft;
@@ -50,13 +52,13 @@ function smoothScrollTo(targetScrollLeft: number) {
     }
 
     if (progress < 1) {
-      animationFrameId = requestAnimationFrame(animate);
+      animationFrameId.value = requestAnimationFrame(animate);
     } else {
-      animationFrameId = null;
+      animationFrameId.value = null;
     }
   }
 
-  animationFrameId = requestAnimationFrame(animate);
+  animationFrameId.value = requestAnimationFrame(animate);
 }
 
 function scrollRight() {
@@ -132,9 +134,9 @@ onUnmounted(() => {
   resizeObserver?.disconnect();
   
   // 清理动画帧
-  if (animationFrameId !== null) {
-    cancelAnimationFrame(animationFrameId);
-    animationFrameId = null;
+  if (animationFrameId.value !== null) {
+    cancelAnimationFrame(animationFrameId.value);
+    animationFrameId.value = null;
   }
 });
 </script>
@@ -150,9 +152,7 @@ onUnmounted(() => {
       :aria-label="`向左滑动${ariaLabel ? ' ' + ariaLabel : ''}`"
       @click="scrollToLeft"
     >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <path d="M15 18l-6-6 6-6" />
-      </svg>
+      <IconChevronLeft />
     </button>
 
     <!-- 内容区域 -->
@@ -169,9 +169,7 @@ onUnmounted(() => {
       :aria-label="`向右滑动${ariaLabel ? ' ' + ariaLabel : ''}`"
       @click="scrollRight"
     >
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <path d="M9 18l6-6-6-6" />
-      </svg>
+      <IconChevronRight />
     </button>
   </div>
 </template>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { CollectionItem } from "@/types/api";
+import { cn } from "@/utils/classnames";
 
 const props = defineProps<{
   visible: boolean;
@@ -137,8 +138,7 @@ function handleRename() {
               </button>
 
               <button
-                class="action-btn"
-                :class="{ disabled: !canRename }"
+                :class="cn('action-btn', !canRename && 'disabled')"
                 :disabled="isBusy || !canRename"
                 @click="handleRename"
               >

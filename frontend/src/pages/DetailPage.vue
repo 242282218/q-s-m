@@ -12,6 +12,7 @@ import {
 import { useToast } from "@/composables/useToast";
 import type { DetailItem, PosterCard, ResourceDto } from "@/types/api";
 import IconRecommendations from "@/components/Icons/IconRecommendations.vue";
+import { debounce } from "@/utils/debounce";
 
 const props = defineProps<{
   mediaType: "movie" | "tv";
@@ -19,22 +20,6 @@ const props = defineProps<{
 }>();
 
 const { push } = useToast();
-
-function debounce<T extends (...args: any[]) => any>(
-  func: T,
-  wait: number
-): (...args: Parameters<T>) => void {
-  let timeout: ReturnType<typeof setTimeout> | null = null;
-  
-  return (...args: Parameters<T>) => {
-    if (timeout) {
-      clearTimeout(timeout);
-    }
-    timeout = setTimeout(() => {
-      func(...args);
-    }, wait);
-  };
-}
 
 const loading = ref(false);
 const item = ref<DetailItem | null>(null);
