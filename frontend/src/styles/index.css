@@ -1,0 +1,25 @@
+/**
+ * QSM Design System - Style Index
+ * 样式入口文件 - 按层级导入样式
+ * 
+ * 层级结构：
+ * 1. tokens.css - 设计变量（颜色/字体/间距/阴影/动效）
+ * 2. base.css - 基础层（重置/排版/通用元素）
+ * 3. components.css - 组件层（btn/card/form/modal/nav）
+ * 4. pages/*.css - 页面层（特定页面样式）
+ */
+
+/* 1. 设计变量层 */
+@import './tokens.css';
+
+/* 2. 基础层 */
+@import './base.css';
+
+/* 3. 组件层 */
+@import './components.css';
+
+/* 4. 页面层 */
+@import './pages/home.css';
+@import './pages/detail.css';
+@import './pages/person.css';
+@import './pages/search.css';

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block head %}
+<script src="/static/js/collection.js" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <section class="section" aria-labelledby="collection-title">
+    <div class="section-header collection-header">
+      <span class="section-icon" aria-hidden="true">⭐</span>
+      <h2 class="section-title" id="collection-title">我的收藏</h2>
+      <div class="collection-actions">
+        <button type="button" class="btn btn-secondary collection-verify-btn" id="verify-collections-btn">
+          🔍 验证网盘状态
+        </button>
+      </div>
+      <span class="collection-count" id="collection-count" aria-live="polite"></span>
+    </div>
+
+    <div id="collection-container">
+      <!-- 骨架屏加载状态 -->
+      <div class="skeleton-grid" id="collection-skeleton" style="display: none;" aria-hidden="true">
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+        <div class="skeleton-card"></div>
+      </div>
+
+      <!-- 加载中状态 -->
+      <div class="loading" id="collection-loading" role="status" aria-label="加载中">
+        <div class="loading-spinner" aria-hidden="true"></div>
+        <span>加载中...</span>
+      </div>
+
+      <!-- 空状态 -->
+      <div class="empty" id="collection-empty" style="display: none;" role="status">
+        <div class="empty-icon">📦</div>
+        <div class="empty-text">暂无收藏</div>
+        <div class="empty-hint">在影片详情页点击"收藏"按钮添加收藏</div>
+        <a href="/" class="btn btn-primary">浏览影片</a>
+      </div>
+
+      <!-- 收藏网格 -->
+      <div class="posters-grid" id="collection-grid" style="display: none;" role="list"></div>
+
+      <!-- 分页 -->
+      <div class="pagination" id="collection-pagination" style="display: none;" aria-label="分页导航">
+        <button class="btn-page" id="prev-page" disabled aria-label="上一页">上一页</button>
+        <span class="page-info" id="page-info" aria-live="polite"></span>
+        <button class="btn-page" id="next-page" aria-label="下一页">下一页</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div id="rename-log-modal" class="rename-log-modal" style="display: none;" aria-hidden="true">
+  <div class="rename-log-dialog" role="dialog" aria-modal="true" aria-labelledby="rename-log-title">
+    <div class="rename-log-header">
+      <h3 class="rename-log-title" id="rename-log-title">✏️ 重命名进度</h3>
+      <button
+        type="button"
+        class="rename-log-close"
+        id="rename-log-close-top"
+        aria-label="关闭重命名日志"
+      >×</button>
+    </div>
+
+    <div class="rename-progress-wrapper">
+      <div class="rename-progress-track">
+        <div id="rename-progress-fill" class="rename-progress-fill"></div>
+      </div>
+      <div id="rename-progress-text" class="rename-progress-text">0% (0/0)</div>
+    </div>
+
+    <div id="rename-log-lines" class="rename-log-lines" aria-live="polite"></div>
+    <div id="rename-log-summary" class="rename-log-summary"></div>
+
+    <div class="rename-log-actions">
+      <button type="button" class="btn btn-primary" id="rename-log-close-bottom">关闭</button>
+    </div>
+  </div>
+</div>
+{% endblock %}

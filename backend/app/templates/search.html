@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page">
+  <section class="section" aria-labelledby="search-results-title">
+    <div class="section-header">
+      <span class="section-icon" aria-hidden="true">🔍</span>
+      <h2 class="section-title" id="search-results-title">
+        {% if query %}
+          "{{ query }}" 的搜索结果
+        {% else %}
+          搜索影视
+        {% endif %}
+      </h2>
+    </div>
+
+    {% if not query %}
+      <div class="empty" role="status">
+        <div class="empty-icon">🔎</div>
+        <div class="empty-text">请输入关键字开始搜索</div>
+        <div class="empty-hint">支持搜索电影名称、演员、导演等</div>
+      </div>
+    {% else %}
+      <div class="posters-grid" role="list">
+        {% if posters %}
+          {% for poster in posters %}
+            {% include "partials/poster_card.html" %}
+          {% endfor %}
+        {% else %}
+          <div class="empty" role="status">
+            <div class="empty-icon">😕</div>
+            <div class="empty-text">未找到相关结果</div>
+            <div class="empty-hint">试试其他关键词，或检查拼写是否正确</div>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
