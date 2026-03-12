@@ -3,6 +3,11 @@ FROM node:22-alpine AS frontend-builder
 
 WORKDIR /build/frontend
 
+ARG VITE_API_BASE=/api/v1
+ARG VITE_API_KEY=
+ENV VITE_API_BASE=$VITE_API_BASE
+ENV VITE_API_KEY=$VITE_API_KEY
+
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
