@@ -1,13 +1,14 @@
 from pathlib import Path
 from typing import Dict, Optional
 import re
+from tempfile import NamedTemporaryFile
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from ..schemas.common import ApiResponse, ok
-from ..schemas.system import SettingsUpdateData
-from ...core.config import get_settings
+from ..schemas.system import SettingsCurrentData, SettingsUpdateData
+from ...core.config import get_settings, resolve_runtime_env_path
 from ...core.auth import verify_api_key
 
 api_router = APIRouter()
@@ -59,6 +60,33 @@ def validate_env_value(value: str) -> bool:
     return not any(char in value for char in forbidden_chars)
 
 
+def mask_sensitive_value(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    if len(value) <= 6:
+        return "*" * len(value)
+    return f"{value[:3]}***{value[-3:]}"
+
+
+def write_env_file_atomically(env_path: Path, lines: list[str]) -> None:
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path: Path | None = None
+    try:
+        with NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=env_path.parent,
+            delete=False,
+            newline="",
+        ) as temp_file:
+            temp_path = Path(temp_file.name)
+            temp_file.writelines(lines)
+        temp_path.replace(env_path)
+    finally:
+        if temp_path is not None and temp_path.exists():
+            temp_path.unlink(missing_ok=True)
+
+
 def update_env_file(updates: Dict[str, str]) -> None:
     """
     更新 .env 文件
@@ -74,7 +102,7 @@ def update_env_file(updates: Dict[str, str]) -> None:
     Raises:
         ValueError: 如果键或值无效
     """
-    env_path = Path(__file__).parent.parent.parent.parent / ".env"
+    env_path = resolve_runtime_env_path()
 
     # 验证所有输入
     for key, value in updates.items():
@@ -115,14 +143,14 @@ def update_env_file(updates: Dict[str, str]) -> None:
         if key not in updated_keys:
             new_lines.append(f"{key}={value}\n")
 
-    with open(env_path, "w", encoding="utf-8") as f:
-        f.writelines(new_lines)
+    write_env_file_atomically(env_path, new_lines)
 
     get_settings.cache_clear()
 
 
 class SettingsUpdate(BaseModel):
     LOG_LEVEL: Optional[str] = None
+    API_KEY: Optional[str] = None
     TMDB_API_KEY: Optional[str] = None
     HTTP_PROXY: Optional[str] = None
     QUARK_TRANSFER_COOKIE: Optional[str] = None
@@ -133,6 +161,32 @@ class SettingsUpdate(BaseModel):
     TRANSFER_CLEANUP_DELETE_NON_VIDEO: Optional[bool] = None
     TRANSFER_CLEANUP_DELETE_UNSELECTED_VIDEO: Optional[bool] = None
     TRANSFER_CLEANUP_DELETE_EMPTY_DIRS: Optional[bool] = None
+
+
+@api_router.get("", response_model=ApiResponse[SettingsCurrentData])
+async def get_current_settings(
+    _: None = Depends(verify_api_key),
+) -> ApiResponse[SettingsCurrentData]:
+    settings = get_settings()
+    return ok(
+        SettingsCurrentData(
+            LOG_LEVEL=settings.log_level,
+            HTTP_PROXY=settings.http_proxy,
+            TRANSFER_KEEP_EXTRAS=settings.transfer_keep_extras,
+            TRANSFER_KEEP_SUBTITLES=settings.transfer_keep_subtitles,
+            TRANSFER_DRY_RUN=settings.transfer_dry_run,
+            TRANSFER_CLEANUP_ENABLED=settings.transfer_cleanup_enabled,
+            TRANSFER_CLEANUP_DELETE_NON_VIDEO=settings.transfer_cleanup_delete_non_video,
+            TRANSFER_CLEANUP_DELETE_UNSELECTED_VIDEO=settings.transfer_cleanup_delete_unselected_video,
+            TRANSFER_CLEANUP_DELETE_EMPTY_DIRS=settings.transfer_cleanup_delete_empty_dirs,
+            API_KEY_CONFIGURED=bool(settings.api_key),
+            API_KEY_MASKED=mask_sensitive_value(settings.api_key),
+            TMDB_API_KEY_CONFIGURED=bool(settings.tmdb_api_key),
+            TMDB_API_KEY_MASKED=mask_sensitive_value(settings.tmdb_api_key),
+            QUARK_TRANSFER_COOKIE_CONFIGURED=bool(settings.quark_transfer_cookie),
+            QUARK_TRANSFER_COOKIE_MASKED=mask_sensitive_value(settings.quark_transfer_cookie),
+        )
+    )
 
 
 @api_router.post("/update", response_model=ApiResponse[SettingsUpdateData])

@@ -56,3 +56,21 @@ class SettingsUpdateData(BaseModel):
     updated_keys: list[str]
     restart_required: bool = True
 
+
+class SettingsCurrentData(BaseModel):
+    LOG_LEVEL: str
+    HTTP_PROXY: str | None = None
+    TRANSFER_KEEP_EXTRAS: bool
+    TRANSFER_KEEP_SUBTITLES: bool
+    TRANSFER_DRY_RUN: bool
+    TRANSFER_CLEANUP_ENABLED: bool
+    TRANSFER_CLEANUP_DELETE_NON_VIDEO: bool
+    TRANSFER_CLEANUP_DELETE_UNSELECTED_VIDEO: bool
+    TRANSFER_CLEANUP_DELETE_EMPTY_DIRS: bool
+    API_KEY_CONFIGURED: bool
+    API_KEY_MASKED: str | None = None
+    TMDB_API_KEY_CONFIGURED: bool
+    TMDB_API_KEY_MASKED: str | None = None
+    QUARK_TRANSFER_COOKIE_CONFIGURED: bool
+    QUARK_TRANSFER_COOKIE_MASKED: str | None = None
+

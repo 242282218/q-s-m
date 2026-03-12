@@ -24,6 +24,7 @@ import type {
   QuarkTransferData,
   RenameRequest,
   SearchData,
+  SettingsCurrentData,
   SettingsUpdate,
   SettingsUpdateData,
   SseEnvelope,
@@ -110,6 +111,20 @@ export function getMetrics() {
 }
 
 /**
+ * 获取当前生效的系统设置（敏感字段仅返回掩码）
+ * @returns 当前设置快照
+ */
+export function getSettings() {
+  return request<SettingsCurrentData>('/settings');
+}
+
+export function getSettingsWithApiKey(apiKey: string) {
+  return request<SettingsCurrentData>('/settings', {
+    headers: { 'X-API-Key': apiKey },
+  });
+}
+
+/**
  * 获取首页推荐数据
  * @returns 包含轮播图和内容分区的首页数据
  */
@@ -187,6 +202,14 @@ export function verifySingleCollection(id: number) {
 export function updateSettings(payload: SettingsUpdate) {
   return request<SettingsUpdateData>('/settings/update', {
     method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateSettingsWithApiKey(payload: SettingsUpdate, apiKey: string) {
+  return request<SettingsUpdateData>('/settings/update', {
+    method: 'POST',
+    headers: { 'X-API-Key': apiKey },
     body: JSON.stringify(payload),
   });
 }

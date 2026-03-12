@@ -6,19 +6,28 @@ import os
 import json
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    DotEnvSettingsSource,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 logger = logging.getLogger(__name__)
 
-try:
-    from dotenv import load_dotenv
-    env_path = Path(__file__).parent.parent.parent / ".env"
-    if env_path.exists():
-        load_dotenv(env_path)
-except ImportError:
-    logger.debug("dotenv 模块未安装，跳过 .env 文件加载")
-except Exception as e:
-    logger.warning(f"加载 .env 文件失败: {e}")
+APP_ROOT = Path(__file__).resolve().parents[2]
+RUNTIME_ENV_FILE_VAR = "QSM_RUNTIME_ENV_FILE"
+
+
+def resolve_default_env_path() -> Path:
+    return APP_ROOT / ".env"
+
+
+def resolve_runtime_env_path() -> Path:
+    runtime_env = os.getenv(RUNTIME_ENV_FILE_VAR)
+    if runtime_env:
+        return Path(runtime_env).expanduser()
+    return APP_ROOT / "data" / "settings.env"
 
 
 class Settings(BaseSettings):
@@ -69,7 +78,34 @@ class Settings(BaseSettings):
         alias="CORS_ORIGINS"
     )
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file_encoding="utf-8", extra="ignore")
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        default_env_settings = DotEnvSettingsSource(
+            settings_cls,
+            env_file=resolve_default_env_path(),
+            env_file_encoding="utf-8",
+        )
+        runtime_env_settings = DotEnvSettingsSource(
+            settings_cls,
+            env_file=resolve_runtime_env_path(),
+            env_file_encoding="utf-8",
+        )
+        return (
+            init_settings,
+            runtime_env_settings,
+            env_settings,
+            default_env_settings,
+            file_secret_settings,
+        )
 
     @field_validator("cors_origins", mode="before")
     @classmethod

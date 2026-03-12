@@ -142,6 +142,7 @@ export interface TmdbSearchData {
 
 export interface SettingsUpdate {
   LOG_LEVEL?: string;
+  API_KEY?: string;
   TMDB_API_KEY?: string;
   HTTP_PROXY?: string;
   QUARK_TRANSFER_COOKIE?: string;
@@ -157,6 +158,24 @@ export interface SettingsUpdate {
 export interface SettingsUpdateData {
   updated_keys: string[];
   restart_required: boolean;
+}
+
+export interface SettingsCurrentData {
+  LOG_LEVEL: string;
+  HTTP_PROXY: string | null;
+  TRANSFER_KEEP_EXTRAS: boolean;
+  TRANSFER_KEEP_SUBTITLES: boolean;
+  TRANSFER_DRY_RUN: boolean;
+  TRANSFER_CLEANUP_ENABLED: boolean;
+  TRANSFER_CLEANUP_DELETE_NON_VIDEO: boolean;
+  TRANSFER_CLEANUP_DELETE_UNSELECTED_VIDEO: boolean;
+  TRANSFER_CLEANUP_DELETE_EMPTY_DIRS: boolean;
+  API_KEY_CONFIGURED: boolean;
+  API_KEY_MASKED: string | null;
+  TMDB_API_KEY_CONFIGURED: boolean;
+  TMDB_API_KEY_MASKED: string | null;
+  QUARK_TRANSFER_COOKIE_CONFIGURED: boolean;
+  QUARK_TRANSFER_COOKIE_MASKED: string | null;
 }
 
 export interface CollectionAddRequest {

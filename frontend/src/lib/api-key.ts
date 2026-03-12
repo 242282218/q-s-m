@@ -17,12 +17,44 @@ function readStoredApiKey(): string | null {
   }
 }
 
+export function setConfiguredApiKey(value: string | null | undefined): void {
+  const normalized = normalizeApiKey(value);
+
+  try {
+    if (!normalized) {
+      globalThis.localStorage?.removeItem(API_KEY_STORAGE_KEY);
+      return;
+    }
+
+    globalThis.localStorage?.setItem(API_KEY_STORAGE_KEY, normalized);
+  } catch {
+    // Ignore storage failures and keep runtime behavior non-fatal.
+  }
+}
+
 export function getConfiguredApiKey(): string | null {
   return readStoredApiKey() ?? normalizeApiKey(import.meta.env.VITE_API_KEY);
 }
 
+export function getApiKeyCandidates(explicitApiKey?: string | null): string[] {
+  const candidates: string[] = [];
+
+  for (const candidate of [getConfiguredApiKey(), normalizeApiKey(explicitApiKey)]) {
+    if (!candidate || candidates.includes(candidate)) {
+      continue;
+    }
+    candidates.push(candidate);
+  }
+
+  return candidates;
+}
+
 export function withApiKeyHeader(headers?: HeadersInit): Headers {
   const merged = new Headers(headers);
+  if (merged.has('X-API-Key')) {
+    return merged;
+  }
+
   const apiKey = getConfiguredApiKey();
 
   if (apiKey) {

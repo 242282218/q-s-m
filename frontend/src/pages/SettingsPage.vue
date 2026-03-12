@@ -1,9 +1,18 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
-import { getHealth, getMetrics, updateSettings } from '@/api';
+import {
+  getHealth,
+  getMetrics,
+  getSettings,
+  getSettingsWithApiKey,
+  updateSettings,
+  updateSettingsWithApiKey,
+} from '@/api';
 import ToggleSwitch from '@/components/ToggleSwitch.vue';
-import type { HealthCheck, SettingsUpdate } from '@/types/api';
+import type { HealthCheck, SettingsCurrentData, SettingsUpdate } from '@/types/api';
 import { useToast } from '@/composables/useToast';
+import { getApiKeyCandidates, setConfiguredApiKey } from '@/lib/api-key';
+import { ApiError } from '@/lib/http';
 import { getHealthIssues, getHealthStatusLabel, getHealthTone } from '@/utils/healthStatus';
 
 const { push } = useToast();
@@ -22,6 +31,7 @@ const healthIssues = computed(() => getHealthIssues(healthChecks.value));
 
 const form = reactive({
   LOG_LEVEL: '',
+  API_KEY: '',
   TMDB_API_KEY: '',
   HTTP_PROXY: '',
   QUARK_TRANSFER_COOKIE: '',
@@ -32,6 +42,12 @@ const form = reactive({
   TRANSFER_CLEANUP_DELETE_NON_VIDEO: false,
   TRANSFER_CLEANUP_DELETE_UNSELECTED_VIDEO: false,
   TRANSFER_CLEANUP_DELETE_EMPTY_DIRS: false,
+});
+
+const secretFieldHints = reactive({
+  API_KEY: '留空则不修改',
+  TMDB_API_KEY: '留空则不修改',
+  QUARK_TRANSFER_COOKIE: '留空则不修改',
 });
 
 const boolFields = [
@@ -45,6 +61,65 @@ const boolFields = [
 ] as const;
 
 type BoolField = (typeof boolFields)[number];
+
+function applySettingsSnapshot(snapshot: SettingsCurrentData) {
+  form.LOG_LEVEL = snapshot.LOG_LEVEL || '';
+  form.HTTP_PROXY = snapshot.HTTP_PROXY || '';
+
+  boolFields.forEach((key) => {
+    form[key] = snapshot[key];
+  });
+
+  form.API_KEY = '';
+  form.TMDB_API_KEY = '';
+  form.QUARK_TRANSFER_COOKIE = '';
+
+  secretFieldHints.API_KEY = snapshot.API_KEY_CONFIGURED
+    ? `当前已配置：${snapshot.API_KEY_MASKED ?? '***'}，留空则不修改`
+    : '未配置，留空则不修改';
+  secretFieldHints.TMDB_API_KEY = snapshot.TMDB_API_KEY_CONFIGURED
+    ? `当前已配置：${snapshot.TMDB_API_KEY_MASKED ?? '***'}，留空则不修改`
+    : '未配置，留空则不修改';
+  secretFieldHints.QUARK_TRANSFER_COOKIE = snapshot.QUARK_TRANSFER_COOKIE_CONFIGURED
+    ? `当前已配置：${snapshot.QUARK_TRANSFER_COOKIE_MASKED ?? '***'}，留空则不修改`
+    : '未配置，留空则不修改';
+}
+
+async function loadSettingsSnapshot() {
+  const candidates = getApiKeyCandidates(String(form.API_KEY || '').trim());
+  let lastError: unknown;
+
+  if (candidates.length === 0) {
+    const res = await getSettings();
+    if (res.code !== 0) {
+      throw new Error(res.message || '无法读取当前配置');
+    }
+    applySettingsSnapshot(res.data);
+    return;
+  }
+
+  for (const apiKey of candidates) {
+    try {
+      const res = await getSettingsWithApiKey(apiKey);
+      if (res.code !== 0) {
+        throw new Error(res.message || '无法读取当前配置');
+      }
+      applySettingsSnapshot(res.data);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!(error instanceof ApiError) || error.status !== 401) {
+        throw error;
+      }
+    }
+  }
+
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+
+  throw new Error('无法读取当前配置');
+}
 
 function validateSettings(): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
@@ -76,7 +151,7 @@ async function submit() {
 
   const payload: SettingsUpdate = {};
 
-  const textKeys = ['LOG_LEVEL', 'TMDB_API_KEY', 'HTTP_PROXY', 'QUARK_TRANSFER_COOKIE'] as const;
+  const textKeys = ['LOG_LEVEL', 'API_KEY', 'TMDB_API_KEY', 'HTTP_PROXY', 'QUARK_TRANSFER_COOKIE'] as const;
   textKeys.forEach((key) => {
     const value = String(form[key] || '').trim();
     if (value) payload[key] = value;
@@ -88,10 +163,41 @@ async function submit() {
 
   loading.value = true;
   try {
-    const res = await updateSettings(payload);
+    const candidates = getApiKeyCandidates(String(form.API_KEY || '').trim());
+    let res;
+
+    if (candidates.length === 0) {
+      res = await updateSettings(payload);
+    } else {
+      let lastError: unknown;
+
+      for (const apiKey of candidates) {
+        try {
+          res = await updateSettingsWithApiKey(payload, apiKey);
+          break;
+        } catch (error) {
+          lastError = error;
+          if (!(error instanceof ApiError) || error.status !== 401) {
+            throw error;
+          }
+        }
+      }
+
+      if (!res) {
+        throw lastError instanceof Error ? lastError : new Error('保存失败');
+      }
+    }
+
     if (res.code !== 0) {
       push(res.message || '保存失败', 'error');
       return;
+    }
+    if (payload.API_KEY) {
+      setConfiguredApiKey(payload.API_KEY);
+    }
+    const reloadResults = await Promise.allSettled([loadSettingsSnapshot(), refreshSystem()]);
+    if (reloadResults.some((result) => result.status === 'rejected')) {
+      push('配置已保存，但当前页面未能刷新最新状态', 'info');
     }
     push('配置已保存，请按提示重启后端服务', 'success', 3200);
   } catch (error) {
@@ -146,8 +252,19 @@ async function refreshSystem() {
   }
 }
 
+async function initializePage() {
+  const results = await Promise.allSettled([refreshSystem(), loadSettingsSnapshot()]);
+  const settingsResult = results[1];
+  if (settingsResult.status === 'rejected') {
+    push(
+      settingsResult.reason instanceof Error ? settingsResult.reason.message : '无法读取当前配置',
+      'error'
+    );
+  }
+}
+
 onMounted(() => {
-  void refreshSystem();
+  void initializePage();
 });
 </script>
 
@@ -278,14 +395,27 @@ onMounted(() => {
 
           <div class="form-group">
             <label class="form-label">
+              <span class="label-text">API 访问 Key</span>
+              <span class="label-desc">{{ secretFieldHints.API_KEY }}</span>
+            </label>
+            <input
+              v-model="form.API_KEY"
+              type="text"
+              class="form-input"
+              :placeholder="secretFieldHints.API_KEY"
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">
               <span class="label-text">TMDB API Key</span>
-              <span class="label-desc">The Movie Database API 密钥</span>
+              <span class="label-desc">{{ secretFieldHints.TMDB_API_KEY }}</span>
             </label>
             <input
               v-model="form.TMDB_API_KEY"
               type="text"
               class="form-input"
-              placeholder="留空则不修改"
+              :placeholder="secretFieldHints.TMDB_API_KEY"
             />
           </div>
 
@@ -305,13 +435,13 @@ onMounted(() => {
           <div class="form-group">
             <label class="form-label">
               <span class="label-text">夸克网盘 Cookie</span>
-              <span class="label-desc">从浏览器开发者工具获取</span>
+              <span class="label-desc">{{ secretFieldHints.QUARK_TRANSFER_COOKIE }}</span>
             </label>
             <textarea
               v-model="form.QUARK_TRANSFER_COOKIE"
               class="form-textarea"
               rows="3"
-              placeholder="留空则不修改"
+              :placeholder="secretFieldHints.QUARK_TRANSFER_COOKIE"
             />
           </div>
         </div>
