@@ -1,0 +1,35 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-/api/v1}
+        VITE_API_KEY: ${VITE_API_KEY:-}
+    image: qsm:local
+    env_file:
+      - .env
+    environment:
+      ENV: production
+      QSM_STORAGE_ROOT: /app/storage
+      QSM_DATA_DIR: /app/storage/db
+      QSM_RUNTIME_ENV_FILE: /app/storage/config/settings.env
+      LOG_DIR: /app/storage/logs
+    ports:
+      - "${APP_BIND_HOST:-127.0.0.1}:${APP_PORT:-8000}:8000"
+    volumes:
+      - ./storage/db:/app/storage/db
+      - ./storage/logs:/app/storage/logs
+      - ./storage/config:/app/storage/config
+      - ./storage/uploads:/app/storage/uploads
+      - ./storage/backups:/app/storage/backups
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["redis"]
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:

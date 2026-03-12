@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block head %}
+<script src="/static/js/detail.js" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="page">
+  <!-- 影片详情头部 -->
+  <section class="detail-hero" aria-labelledby="detail-title"
+    style="{% if item.backdrop_url %}background-image: linear-gradient(180deg, rgba(10,10,10,0.7), rgba(10,10,10,0.9)), url('{{ item.backdrop_url }}');{% else %}background: linear-gradient(135deg, var(--color-bg-secondary) 0%, var(--color-bg-primary) 100%);{% endif %}">
+    <div class="detail-shell">
+      <div class="detail-poster">
+        {% if item.poster_url %}
+        <img src="{{ item.poster_url }}" alt="{{ item.title }} 海报" loading="eager">
+        {% else %}
+        <div class="poster-skeleton" aria-hidden="true"></div>
+        {% endif %}
+      </div>
+      <div class="detail-meta">
+        <h1 class="detail-title" id="detail-title">{{ item.title }}</h1>
+        <div class="detail-subtitle">
+          {% if item.year %}<span>{{ item.year }}</span>{% endif %}
+          {% if item.vote %}<span class="dot" aria-hidden="true">•</span><span>⭐ {{ "%.1f"|format(item.vote) }}</span>{% endif %}
+          {% if item.runtime %}<span class="dot" aria-hidden="true">•</span><span>{{ item.runtime }} 分钟</span>{% endif %}
+        </div>
+        {% if item.genres %}
+        <div class="detail-tags" role="list" aria-label="类型标签">
+          {% for g in item.genres %}
+          <span class="tag" role="listitem">{{ g }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if item.tagline %}
+        <p class="detail-tagline">"{{ item.tagline }}"</p>
+        {% endif %}
+        {% if item.overview %}
+        <p class="detail-overview">{{ item.overview }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <!-- 夸克网盘资源 -->
+  <section class="section detail-section" id="quark-resources-section" aria-labelledby="quark-title">
+    <div class="section-header">
+      <span class="section-icon" aria-hidden="true">📦</span>
+      <h2 class="section-title" id="quark-title">夸克网盘资源</h2>
+    </div>
+    <div class="section-body">
+      <div id="quark-resources-container">
+        <div class="loading" id="quark-loading" role="status">
+          <div class="loading-spinner" aria-hidden="true"></div>
+          <span>搜索资源中...</span>
+        </div>
+        <div class="empty" id="quark-empty" style="display: none;" role="status">
+          <div class="empty-icon">🔍</div>
+          <div class="empty-text">未找到相关资源</div>
+        </div>
+        <div class="quark-resources-scroll" id="quark-resources-list" role="list" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 演员阵容 -->
+  <section class="section detail-section" aria-labelledby="cast-title">
+    <div class="section-header">
+      <span class="section-icon" aria-hidden="true">👥</span>
+      <h2 class="section-title" id="cast-title">演员阵容</h2>
+    </div>
+    <div class="section-body">
+      {% if item.cast %}
+      <div class="cast-grid" role="list">
+        {% for c in item.cast %}
+        <a class="cast-link" href="/person/{{ c.id }}" role="listitem">
+          <div class="cast-card">
+            <div class="cast-avatar">
+              {% if c.profile_url %}
+              <img src="{{ c.profile_url }}" alt="{{ c.name }}" loading="lazy" decoding="async">
+              {% else %}
+              <div class="poster-skeleton" aria-hidden="true"></div>
+              {% endif %}
+            </div>
+            <div class="cast-name">{{ c.name }}</div>
+            {% if c.character %}<div class="cast-role">{{ c.character }}</div>{% endif %}
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty" role="status">
+        <div class="empty-icon">👤</div>
+        <div class="empty-text">暂无演员信息</div>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <!-- 相关推荐 -->
+  <section class="section detail-section" aria-labelledby="recommend-title">
+    <div class="section-header">
+      <span class="section-icon" aria-hidden="true">📺</span>
+      <h2 class="section-title" id="recommend-title">相关推荐</h2>
+    </div>
+    <div class="section-body">
+      {% if recommendations %}
+      <div class="recommend-grid" role="list">
+        {% for poster in recommendations %}
+        {% include "partials/poster_card.html" %}
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty" role="status">
+        <div class="empty-icon">🎬</div>
+        <div class="empty-text">暂无相关推荐</div>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <!-- 视频预览 -->
+  <section class="section detail-section" aria-labelledby="video-title">
+    <div class="section-header">
+      <span class="section-icon" aria-hidden="true">🎥</span>
+      <h2 class="section-title" id="video-title">视频预览</h2>
+    </div>
+    <div class="section-body">
+      {% if item.videos %}
+      <div class="video-grid" role="list">
+        {% for v in item.videos[:2] %}
+        <div class="video-card" data-video-key="{{ v.key }}" role="listitem">
+          <div class="video-thumbnail" onclick="playVideo(this, '{{ v.key }}')" role="button" tabindex="0" aria-label="播放视频: {{ v.name }}">
+            <img src="https://img.youtube.com/vi/{{ v.key }}/mqdefault.jpg" alt="{{ v.name }}" loading="lazy" decoding="async">
+            <div class="video-play-button" aria-hidden="true">
+              <svg viewBox="0 0 68 48" width="68" height="48">
+                <path
+                  d="M66.52,7.74c-0.78-2.93-2.49-5.41-5.42-6.19C55.79,.13,34,0,34,0S12.21,.13,6.9,1.55 C3.97,2.33,2.27,4.81,1.48,7.74C0.06,13.05,0,24,0,24s0.06,10.95,1.48,16.26c0.78,2.93,2.49,5.41,5.42,6.19 C12.21,47.87,34,48,34,48s21.79-0.13,27.1-1.55c2.93-0.78,4.64-3.26,5.42-6.19C67.94,34.95,68,24,68,24S67.94,13.05,66.52,7.74z"
+                  fill="#f00"></path>
+                <path d="M 45,24 27,14 27,34" fill="#fff"></path>
+              </svg>
+            </div>
+          </div>
+          <div class="video-content">
+            <div class="video-title">{{ v.name }}</div>
+            {% if v.type %}<div class="video-meta">{{ v.type }}{% if v.official %} · 官方{% endif %}</div>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty" role="status">
+        <div class="empty-icon">🎞️</div>
+        <div class="empty-text">暂无视频资源</div>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+</div>
+
+<script>
+  window.mediaType = '{{ item.media_type }}';
+  window.itemId = {{ item.id }};
+  window.itemTitle = '{{ item.title | replace("'", "\\'") }}';
+  window.itemYear = {{ item.year or 0 }};
+  window.itemPosterPath = '{{ item.poster_path | default("", true) }}';
+  window.itemBackdropPath = '{{ item.backdrop_path | default("", true) }}';
+  window.isCollected = false;
+  window.collectionId = null;
+</script>
+{% endblock %}

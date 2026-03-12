@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page">
+  <section class="section" aria-labelledby="settings-title">
+    <div class="section-header">
+      <span class="section-icon" aria-hidden="true">⚙️</span>
+      <h2 class="section-title" id="settings-title">系统设置</h2>
+    </div>
+
+    <div class="settings-container">
+      <p class="settings-desc">已配置的信息会以掩码显示。修改后保存才会更新。</p>
+
+      <form id="settingsForm" class="settings-form">
+        <div class="settings-section">
+          <h3 class="settings-section-title">基础配置</h3>
+
+          <div class="form-group">
+            <label for="TMDB_API_KEY">TMDB API Key</label>
+            <input
+              type="text"
+              id="TMDB_API_KEY"
+              name="TMDB_API_KEY"
+              value="{{ masked.tmdb_api_key }}"
+              data-sensitive="1"
+              autocomplete="off"
+              placeholder="未配置时请输入 TMDB API Key"
+            >
+            <small>当前显示为掩码；若不修改此项，提交时会保留原值</small>
+          </div>
+
+          <div class="form-group">
+            <label for="HTTP_PROXY">HTTP 代理</label>
+            <input
+              type="text"
+              id="HTTP_PROXY"
+              name="HTTP_PROXY"
+              value="{{ settings.http_proxy or '' }}"
+              placeholder="http://127.0.0.1:7890"
+            >
+            <small>访问 TMDB API 可能需要代理，留空则不使用代理</small>
+          </div>
+
+          <div class="form-group">
+            <label for="LOG_LEVEL">日志级别</label>
+            <select id="LOG_LEVEL" name="LOG_LEVEL">
+              <option value="DEBUG" {% if settings.log_level == 'DEBUG' %}selected{% endif %}>DEBUG - 调试</option>
+              <option value="INFO" {% if settings.log_level == 'INFO' %}selected{% endif %}>INFO - 信息</option>
+              <option value="WARNING" {% if settings.log_level == 'WARNING' %}selected{% endif %}>WARNING - 警告</option>
+              <option value="ERROR" {% if settings.log_level == 'ERROR' %}selected{% endif %}>ERROR - 错误</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3 class="settings-section-title">夸克网盘配置</h3>
+
+          <div class="form-group">
+            <label for="QUARK_TRANSFER_COOKIE">QUARK_TRANSFER_COOKIE</label>
+            <textarea
+              id="QUARK_TRANSFER_COOKIE"
+              name="QUARK_TRANSFER_COOKIE"
+              rows="4"
+              data-sensitive="1"
+              autocomplete="off"
+              placeholder="未配置时请输入夸克网盘 Cookie"
+            >{{ masked.quark_transfer_cookie }}</textarea>
+            <small>当前显示为掩码；若不修改此项，提交时会保留原值</small>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3 class="settings-section-title">转存与清理策略</h3>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="TRANSFER_KEEP_EXTRAS" name="TRANSFER_KEEP_EXTRAS" {% if settings.transfer_keep_extras %}checked{% endif %}>
+              保留花絮（extras/幕后/预告等）
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="TRANSFER_KEEP_SUBTITLES" name="TRANSFER_KEEP_SUBTITLES" {% if settings.transfer_keep_subtitles %}checked{% endif %}>
+              保留字幕文件（.srt/.ass/.ssa/.sub/.vtt）
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="TRANSFER_DRY_RUN" name="TRANSFER_DRY_RUN" {% if settings.transfer_dry_run %}checked{% endif %}>
+              Dry-run（只预演，不执行移动/重命名/删除）
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="TRANSFER_CLEANUP_ENABLED" name="TRANSFER_CLEANUP_ENABLED" {% if settings.transfer_cleanup_enabled %}checked{% endif %}>
+              启用清理阶段
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="TRANSFER_CLEANUP_DELETE_NON_VIDEO" name="TRANSFER_CLEANUP_DELETE_NON_VIDEO" {% if settings.transfer_cleanup_delete_non_video %}checked{% endif %}>
+              清理非视频文件
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="TRANSFER_CLEANUP_DELETE_UNSELECTED_VIDEO" name="TRANSFER_CLEANUP_DELETE_UNSELECTED_VIDEO" {% if settings.transfer_cleanup_delete_unselected_video %}checked{% endif %}>
+              清理未选中视频（重复低质量/未归档）
+            </label>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="TRANSFER_CLEANUP_DELETE_EMPTY_DIRS" name="TRANSFER_CLEANUP_DELETE_EMPTY_DIRS" {% if settings.transfer_cleanup_delete_empty_dirs %}checked{% endif %}>
+              清理空目录
+            </label>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">保存配置</button>
+        </div>
+      </form>
+    </div>
+  </section>
+</div>
+
+<script>
+document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const keepSentinel = '{{ keep_sentinel }}';
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  const originalText = submitBtn.textContent;
+  submitBtn.textContent = '保存中...';
+  submitBtn.disabled = true;
+
+  const data = {};
+  const form = e.target;
+  const elements = Array.from(form.elements);
+  elements.forEach((el) => {
+    if (!el.name) return;
+    if (el.type === 'checkbox') {
+      data[el.name] = Boolean(el.checked);
+      return;
+    }
+    data[el.name] = el.value;
+  });
+  const sensitiveFields = e.target.querySelectorAll('[data-sensitive="1"]');
+
+  sensitiveFields.forEach((el) => {
+    const key = el.name;
+    const current = String(data[key] || '').trim();
+    const maskedLike = current !== '' && /^\*+$/.test(current.replace(/[^\*]/g, '')) && current.includes('***');
+    if (maskedLike || current === '') {
+      data[key] = keepSentinel;
+    }
+  });
+
+  for (const key in data) {
+    if (data[key] === '') {
+      data[key] = null;
+    }
+  }
+
+  try {
+    const response = await fetch('/api/settings/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+    if (response.ok) {
+      submitBtn.textContent = '保存成功';
+      submitBtn.classList.add('btn-success');
+      setTimeout(() => window.location.reload(), 800);
+    } else {
+      submitBtn.textContent = '保存失败';
+      submitBtn.classList.add('btn-error');
+      alert('保存失败: ' + (result.detail || result.message || '未知错误'));
+      setTimeout(() => {
+        submitBtn.textContent = originalText;
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('btn-error');
+      }, 1500);
+    }
+  } catch (error) {
+    submitBtn.textContent = '保存失败';
+    submitBtn.classList.add('btn-error');
+    alert('保存失败: ' + error.message);
+    setTimeout(() => {
+      submitBtn.textContent = originalText;
+      submitBtn.disabled = false;
+      submitBtn.classList.remove('btn-error');
+    }, 1500);
+  }
+});
+</script>
+{% endblock %}

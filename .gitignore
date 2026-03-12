@@ -1,0 +1,98 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+backend/data/*.db
+
+# Logs
+logs/
+*.log
+*.err
+*.out
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# AI Tools
+.ai/
+.trae/
+
+# Skills Engine
+.skills-engine/
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+.gemini/skills/
+
+# Temporary files
+*.tmp
+*.temp
+*.cache
+
+# Environment variables (keep .env.example)
+.env
+backend/.env
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Test results
+performance_results.json
+stress_test_results.json
+
+# SQLite temporary files
+data/*.db-shm
+data/*.db-wal
+storage/**/*.db-shm
+storage/**/*.db-wal
+
+# Runtime storage
+storage/*
+!storage/.gitignore
+!storage/backups/.gitkeep
+!storage/config/.gitkeep
+!storage/db/.gitkeep
+!storage/logs/.gitkeep
+!storage/uploads/.gitkeep
+
+# Scripts (not needed for deployment)
+scripts/
+
+# Reference projects
+参考项目/
+
+# Documentation (optional)
+docs/*
+!docs/deployment/
+!docs/deployment/docker-with-nginx.md
+DEPLOYMENT.md
+PROMPT_PLAYBOOK.md
+agent.md
+测试开发计划.md

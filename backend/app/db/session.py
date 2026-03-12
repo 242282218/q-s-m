@@ -1,0 +1,355 @@
+"""
+SQLAlchemy 数据库会话管理 - 性能优化版本
+
+优化记录:
+- 2026-02-26: 添加连接池配置、性能监控、批量操作支持
+"""
+import os
+import time
+import logging
+from contextlib import contextmanager
+from typing import Generator, Any, List, Optional as OptAny
+
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.orm import sessionmaker, declarative_base, Session
+from sqlalchemy.pool import StaticPool, QueuePool
+from sqlalchemy.exc import SQLAlchemyError
+
+from ..core.paths import ensure_directory, resolve_data_dir
+
+logger = logging.getLogger(__name__)
+
+DATA_DIR = ensure_directory(resolve_data_dir())
+DATABASE_PATH = DATA_DIR / "qsm.db"
+INIT_LOCK_PATH = DATA_DIR / ".init_db.lock"
+
+DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
+
+# 性能监控：查询耗时统计
+class QueryStats:
+    """SQL 查询性能统计"""
+    def __init__(self):
+        self.query_count = 0
+        self.total_time = 0.0
+        self.slow_queries: list[dict[str, Any]] = []
+        self.slow_query_threshold = 0.5  # 慢查询阈值：500ms（优化：从 1s 降低到 500ms）
+    
+    def record(self, duration: float, statement: str, parameters: Any = None):
+        """记录查询统计信息"""
+        self.query_count += 1
+        self.total_time += duration
+        
+        # 记录慢查询 (>1 秒)
+        if duration > self.slow_query_threshold:
+            slow_query_info = {
+                "duration": round(duration, 3),
+                "statement": statement[:500],  # 限制长度避免日志过大
+                "timestamp": time.time(),
+            }
+            if parameters:
+                # 添加参数信息（脱敏处理）
+                try:
+                    params_str = str(parameters)[:200]
+                    # 简单脱敏：隐藏可能的密码等敏感信息
+                    if "password" in params_str.lower():
+                        params_str = "***REDACTED***"
+                    slow_query_info["parameters"] = params_str
+                except Exception:
+                    pass
+            
+            self.slow_queries.append(slow_query_info)
+            if len(self.slow_queries) > 100:
+                self.slow_queries.pop(0)
+            
+            # 记录慢查询日志
+            logger.warning(
+                f"慢查询 detected: {duration:.3f}s - {statement[:200]}..."
+            )
+
+query_stats = QueryStats()
+
+# 根据环境选择连接池类型
+# 开发环境使用 StaticPool，生产环境使用 QueuePool
+is_production = os.getenv("ENV", "development") == "production"
+
+if is_production:
+    # 生产环境：使用 QueuePool 支持多线程
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={
+            "check_same_thread": False,
+            "timeout": 30,
+        },
+        poolclass=QueuePool,
+        pool_size=20,
+        max_overflow=40,
+        pool_pre_ping=True,  # 自动检测断开的连接
+        pool_recycle=3600,   # 1小时后回收连接
+        echo=False,
+    )
+else:
+    # 开发环境：使用 StaticPool
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={
+            "check_same_thread": False,
+            "timeout": 30,
+        },
+        poolclass=StaticPool,
+        echo=False,
+    )
+
+# 启用 WAL 模式以提升并发性能
+with engine.connect() as conn:
+    conn.execute(text("PRAGMA journal_mode=WAL"))
+    conn.execute(text("PRAGMA busy_timeout=30000"))
+    conn.execute(text("PRAGMA wal_autocheckpoint=1000"))  # WAL 达到 1000 页时自动检查点
+    conn.commit()
+    logger.info("SQLite WAL mode enabled with auto-checkpoint at 1000 pages")
+
+# 在每次创建新连接时配置 SQLite 参数
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    """配置 SQLite 连接参数以优化性能"""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=30000")
+    cursor.execute("PRAGMA wal_autocheckpoint=1000")  # WAL 达到 1000 页时自动检查点
+    cursor.close()
+    logger.debug("SQLite connection configured with WAL mode and auto-checkpoint")
+
+
+# 添加查询性能监控
+@event.listens_for(engine, "before_cursor_execute")
+def before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    """在查询执行前记录开始时间"""
+    context._query_start_time = time.time()
+
+@event.listens_for(engine, "after_cursor_execute")
+def after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    """在查询执行后记录耗时并统计"""
+    duration = time.time() - context._query_start_time
+    query_stats.record(duration, statement, parameters)
+
+# 创建 Session 工厂 - 优化配置
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+    expire_on_commit=False  # 优化：提交后不立即过期对象
+)
+
+# 声明基类
+Base = declarative_base()
+
+
+@contextmanager
+def _acquire_init_db_lock(timeout: float = 60.0, stale_after: float = 300.0):
+    """Serialize schema creation across multiple worker processes."""
+    start = time.monotonic()
+    fd: int | None = None
+
+    while True:
+        try:
+            fd = os.open(INIT_LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode("utf-8"))
+            break
+        except FileExistsError:
+            try:
+                age = time.time() - INIT_LOCK_PATH.stat().st_mtime
+                if age > stale_after:
+                    INIT_LOCK_PATH.unlink(missing_ok=True)
+                    logger.warning("Removed stale init_db lock: %s", INIT_LOCK_PATH)
+                    continue
+            except FileNotFoundError:
+                continue
+
+            if time.monotonic() - start >= timeout:
+                raise TimeoutError(f"Timed out waiting for init_db lock: {INIT_LOCK_PATH}")
+
+            time.sleep(0.1)
+
+    try:
+        yield
+    finally:
+        if fd is not None:
+            os.close(fd)
+        try:
+            INIT_LOCK_PATH.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("Failed to remove init_db lock: %s", INIT_LOCK_PATH, exc_info=True)
+
+
+def get_db() -> Generator[Session, None, None]:
+    """
+    获取数据库会话的依赖注入函数
+    用于 FastAPI 的 Depends
+    """
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@contextmanager
+def get_db_context() -> Generator[Session, None, None]:
+    """
+    数据库会话上下文管理器
+    用于非 FastAPI 依赖注入场景
+    
+    用法:
+        with get_db_context() as db:
+            result = db.query(Model).all()
+    """
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except SQLAlchemyError as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+
+
+def init_db():
+    """
+    初始化数据库，创建所有表
+    """
+    from . import models  # noqa: F401
+    with _acquire_init_db_lock():
+        Base.metadata.create_all(bind=engine)
+    logger.info("Database initialized")
+
+
+def get_query_stats() -> dict[str, Any]:
+    """获取查询统计信息"""
+    return {
+        "total_queries": query_stats.query_count,
+        "total_time": round(query_stats.total_time, 3),
+        "avg_time": round(query_stats.total_time / max(query_stats.query_count, 1), 3),
+        "slow_queries_count": len(query_stats.slow_queries),
+        "slow_query_threshold": query_stats.slow_query_threshold,
+        "recent_slow_queries": query_stats.slow_queries[-10:] if query_stats.slow_queries else []
+    }
+
+
+def set_slow_query_threshold(threshold: float):
+    """
+    设置慢查询阈值（秒）
+    
+    Args:
+        threshold: 慢查询阈值，单位为秒
+    """
+    query_stats.slow_query_threshold = threshold
+    logger.info(f"慢查询阈值已更新为：{threshold}秒")
+
+
+def get_slow_query_stats() -> dict[str, Any]:
+    """
+    获取慢查询详细统计信息
+    
+    Returns:
+        包含慢查询数量、平均耗时、最慢查询等信息的字典
+    """
+    if not query_stats.slow_queries:
+        return {
+            "count": 0,
+            "avg_duration": 0,
+            "max_duration": 0,
+            "total_duration": 0,
+            "queries": []
+        }
+    
+    durations = [q["duration"] for q in query_stats.slow_queries]
+    return {
+        "count": len(query_stats.slow_queries),
+        "avg_duration": round(sum(durations) / len(durations), 3),
+        "max_duration": round(max(durations), 3),
+        "min_duration": round(min(durations), 3),
+        "total_duration": round(sum(durations), 3),
+        "queries": sorted(query_stats.slow_queries, key=lambda x: x["duration"], reverse=True)[:10]
+    }
+
+
+def reset_query_stats():
+    """重置查询统计"""
+    query_stats.query_count = 0
+    query_stats.total_time = 0.0
+    query_stats.slow_queries = []
+
+
+class BulkInserter:
+    """
+    批量插入优化器
+    
+    用法:
+        with BulkInserter(db, batch_size=100) as inserter:
+            for item in items:
+                inserter.add(Model(**item))
+    """
+    def __init__(self, session: Session, batch_size: int = 100):
+        self.session = session
+        self.batch_size = batch_size
+        self.buffer: List[Any] = []
+        self.total_inserted = 0
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.buffer:
+            self._flush()
+        return False
+    
+    def add(self, obj: Any):
+        """添加对象到缓冲区"""
+        self.buffer.append(obj)
+        if len(self.buffer) >= self.batch_size:
+            self._flush()
+    
+    def _flush(self):
+        """执行批量插入"""
+        if not self.buffer:
+            return
+        
+        try:
+            self.session.bulk_save_objects(self.buffer)
+            self.session.commit()
+            self.total_inserted += len(self.buffer)
+            self.buffer = []
+        except SQLAlchemyError as e:
+            self.session.rollback()
+            logger.error(f"Bulk insert failed: {e}")
+            raise
+
+
+def bulk_insert(session: Session, objects: List[Any], batch_size: int = 100) -> int:
+    """
+    批量插入对象
+    
+    Args:
+        session: 数据库会话
+        objects: 要插入的对象列表
+        batch_size: 每批插入数量
+        
+    Returns:
+        成功插入的数量
+    """
+    if not objects:
+        return 0
+    
+    total = 0
+    for i in range(0, len(objects), batch_size):
+        batch = objects[i:i + batch_size]
+        try:
+            session.bulk_save_objects(batch)
+            session.commit()
+            total += len(batch)
+        except SQLAlchemyError as e:
+            session.rollback()
+            logger.error(f"Batch insert failed at offset {i}: {e}")
+            raise
+    
+    return total

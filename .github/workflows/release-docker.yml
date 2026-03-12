@@ -1,0 +1,109 @@
+name: Release Docker Image
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing tag to rebuild and upload Docker assets for
+        required: true
+        type: string
+      publish_latest:
+        description: Also publish/update the latest tag
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-release-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      IMAGE_NAME: qsm-movie-wall
+      GHCR_IMAGE: ghcr.io/${{ github.repository }}:${{ github.event.release.tag_name || github.event.inputs.release_tag }}
+      GHCR_IMAGE_LATEST: ghcr.io/${{ github.repository }}:latest
+      RELEASE_TAG: ${{ github.event.release.tag_name || github.event.inputs.release_tag }}
+      PLATFORM: linux/amd64
+      ASSET_SUFFIX: linux-amd64
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v5
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.0.0
+
+      - name: Login to GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${GH_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v7.0.0
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          platforms: ${{ env.PLATFORM }}
+          tags: ${{ env.IMAGE_NAME }}:${{ env.RELEASE_TAG }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ env.RELEASE_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Package Docker image
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          asset_base="${IMAGE_NAME}-${RELEASE_TAG}-${ASSET_SUFFIX}"
+          docker save "${IMAGE_NAME}:${RELEASE_TAG}" | gzip > "release-assets/${asset_base}.tar.gz"
+          sha256sum "release-assets/${asset_base}.tar.gz" > "release-assets/${asset_base}.tar.gz.sha256"
+
+      - name: Push image to GHCR
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker tag "${IMAGE_NAME}:${RELEASE_TAG}" "${GHCR_IMAGE}"
+          docker push "${GHCR_IMAGE}"
+          if [[ "${{ github.event_name }}" == "release" || "${{ github.event.inputs.publish_latest }}" == "true" ]]; then
+            docker tag "${IMAGE_NAME}:${RELEASE_TAG}" "${GHCR_IMAGE_LATEST}"
+            docker push "${GHCR_IMAGE_LATEST}"
+          fi
+
+      - name: Check release existence
+        id: release_check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "exists=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "exists=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Upload release assets
+        if: steps.release_check.outputs.exists == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload "${RELEASE_TAG}" \
+            "release-assets/${IMAGE_NAME}-${RELEASE_TAG}-${ASSET_SUFFIX}.tar.gz" \
+            "release-assets/${IMAGE_NAME}-${RELEASE_TAG}-${ASSET_SUFFIX}.tar.gz.sha256" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --clobber

@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la .env* 2>/dev/null || echo \"No .env files found\")",
+      "Bash(cd backend:*)",
+      "Bash(python -m py_compile app/core/distributed_lock.py 2>&1)",
+      "Bash(python -m py_compile app/core/exceptions.py 2>&1)",
+      "Bash(python -m py_compile app/core/exceptions.py app/core/distributed_lock.py app/quark/services/rename_service.py app/quark/services/cleanup_service.py app/transfer/service.py 2>&1 | head -20)",
+      "Bash(python -c \"import app.core.exceptions; import app.core.distributed_lock; import app.quark.services.rename_service; import app.quark.services.cleanup_service\" 2>&1)",
+      "Bash(python --version && pip list | grep -E \"fastapi|uvicorn|sqlalchemy|redis\" 2>&1 | head -10)",
+      "Bash(python -c \"from app.transfer.service import TransferService; print\\('✓ TransferService imports OK'\\)\" 2>&1)",
+      "Bash(python -c \"from app.transfer.service import TransferService; from app.core.distributed_lock import get_distributed_lock; print\\('✓ All imports successful'\\)\" 2>&1)",
+      "Bash(pip install:*)",
+      "Bash(xargs kill:*)",
+      "Bash(netstat -tuln 2>/dev/null | grep -E \"8000|7799\" || echo \"Checking ports...\")",
+      "Bash(curl -s http://localhost:7799/api/settings 2>&1 | head -50)",
+      "Bash(curl -s http://localhost:7799/api/settings/update -X POST -H \"Content-Type: application/json\" -d '{}' 2>&1)",
+      "Bash(curl -s http://localhost:7799/api/v1/settings/update -X POST -H \"Content-Type: application/json\" -d '{}' 2>&1)",
+      "Bash(find . -path ./node_modules -prune -o -name \"*.ts\" -o -name \"*.tsx\" | xargs grep -l \"settings\" 2>/dev/null | head -5)",
+      "Bash(find frontend:*)",
+      "Bash(find frontend/src -name \"*.ts\" -o -name \"*.tsx\" 2>/dev/null | head -20)",
+      "Bash(curl -s http://localhost:7799/ 2>&1 | head -20)",
+      "Bash(curl -s http://localhost:7799/api/v1/settings 2>&1)",
+      "Bash(pkill -f \"uvicorn\" || true\nsleep 2\necho \"Server stopped\")",
+      "Bash(curl -s http://127.0.0.1:7799/api/v1/settings 2>&1)",
+      "Bash(curl -s http://127.0.0.1:7799/api/v1/health 2>&1 | head -100)",
+      "Bash(curl -s http://127.0.0.1:7799/api/v1/metrics 2>&1 | head -50)",
+      "Bash(curl -s http://127.0.0.1:7799/api/v1/collections 2>&1 | head -50)",
+      "Bash(curl -s http://127.0.0.1:7799/api/v1/health 2>&1 | python -m json.tool 2>&1 | head -30)",
+      "Bash(sleep 5 && curl -s http://127.0.0.1:7799/api/v1/health 2>&1 | python -m json.tool 2>&1 | head -30)"
+    ]
+  }
+}
