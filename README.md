@@ -46,11 +46,70 @@ Runtime settings updates are persisted to `storage/config/settings.env` by defau
 
 ## Docker Deployment
 
+### Option A: Build locally
+
 ```bash
+cp .env.example .env
+# Edit .env and fill in API_KEY, TMDB_API_KEY, QUARK_TRANSFER_COOKIE
 docker compose up -d --build
 ```
 
-Persistent data is stored under:
+### Option B: Pull from GitHub Container Registry
+
+Every push to `main` automatically builds and publishes an image to `ghcr.io`.
+
+```bash
+# 1. Create project directory on your server
+mkdir -p ~/qsm && cd ~/qsm
+
+# 2. Create docker-compose.yml
+cat > docker-compose.yml << 'EOF'
+services:
+  app:
+    image: ghcr.io/YOUR_GITHUB_USERNAME/qsm:latest
+    environment:
+      ENV: production
+      QSM_STORAGE_ROOT: /app/storage
+      QSM_DATA_DIR: /app/storage/db
+      QSM_RUNTIME_ENV_FILE: /app/storage/config/settings.env
+      LOG_DIR: /app/storage/logs
+      API_KEY: your-api-key
+      TMDB_API_KEY: your-tmdb-key
+      QUARK_TRANSFER_COOKIE: your-quark-cookie
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./storage/db:/app/storage/db
+      - ./storage/logs:/app/storage/logs
+      - ./storage/config:/app/storage/config
+      - ./storage/uploads:/app/storage/uploads
+      - ./storage/backups:/app/storage/backups
+    restart: unless-stopped
+EOF
+
+# 3. Create storage directories
+mkdir -p storage/{db,logs,config,uploads,backups}
+
+# 4. Pull and start
+docker compose pull
+docker compose up -d
+```
+
+### First-time API Key setup
+
+If `API_KEY` is set in the environment, the frontend needs to know it too.
+Open the browser console on `http://your-server:8000` and run:
+
+```javascript
+localStorage.setItem('qsm_api_key', 'your-api-key')
+```
+
+Then refresh the page. Alternatively, go to **Settings**, enter the key in the
+"API 访问 Key" field, and save — this persists it to `localStorage` automatically.
+
+### Persistent data
+
+All runtime data is stored under:
 - `storage/db`
 - `storage/logs`
 - `storage/config`
