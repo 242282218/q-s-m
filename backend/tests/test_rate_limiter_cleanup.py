@@ -243,7 +243,31 @@ def test_rate_limit_uses_x_forwarded_for_when_proxy_trusted(monkeypatch):
         )
 
     assert response.status_code == 200
-    assert captured == ["198.51.100.24"]
+    assert captured == ["203.0.113.8"]
+
+
+def test_rate_limit_ignores_spoofed_leftmost_xff_when_proxy_appends(monkeypatch):
+    limiter = RateLimiter(requests_per_minute=10, requests_per_hour=20)
+    captured: list[str] = []
+
+    def fake_is_allowed(key: str):
+        captured.append(key)
+        return True, {"limit": 10, "window": "minute", "remaining": 9, "retry_after": 0}
+
+    monkeypatch.setattr(rate_limit_module, "rate_limiter", limiter)
+    monkeypatch.setattr(rate_limit_module, "_redis_rate_limiter", None)
+    monkeypatch.setattr(rate_limit_module._settings, "trust_proxy_headers", True)
+    monkeypatch.setattr(rate_limit_module, "_trusted_proxy_ips", {"testclient"})
+    monkeypatch.setattr(limiter, "is_allowed", fake_is_allowed)
+
+    with TestClient(_create_probe_app()) as client:
+        response = client.get(
+            "/probe",
+            headers={"X-Forwarded-For": "6.6.6.6, 203.0.113.8, testclient"},
+        )
+
+    assert response.status_code == 200
+    assert captured == ["203.0.113.8"]
 
 
 def test_rate_limit_falls_back_to_x_real_ip_when_forwarded_for_missing(monkeypatch):

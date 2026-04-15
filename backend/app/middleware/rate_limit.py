@@ -218,6 +218,18 @@ _settings = get_settings()
 _trusted_proxy_ips: Set[str] = set(_settings.trusted_proxy_ips)
 
 
+def _resolve_forwarded_client_ip(forwarded_for: str) -> str | None:
+    forwarded_ips = [ip.strip() for ip in forwarded_for.split(",") if ip.strip()]
+    if not forwarded_ips:
+        return None
+
+    # Walk from right to left and skip trusted proxy hops.
+    for ip in reversed(forwarded_ips):
+        if ip not in _trusted_proxy_ips:
+            return ip
+    return forwarded_ips[0]
+
+
 def _extract_client_ip(request: Request) -> str:
     client_ip = request.client.host if request.client else "unknown"
     if not _settings.trust_proxy_headers:
@@ -227,9 +239,9 @@ def _extract_client_ip(request: Request) -> str:
 
     forwarded_for = request.headers.get("x-forwarded-for")
     if forwarded_for:
-        forwarded_ips = [ip.strip() for ip in forwarded_for.split(",") if ip.strip()]
-        if forwarded_ips:
-            return forwarded_ips[0]
+        forwarded_client_ip = _resolve_forwarded_client_ip(forwarded_for)
+        if forwarded_client_ip:
+            return forwarded_client_ip
 
     real_ip = request.headers.get("x-real-ip")
     if real_ip and real_ip.strip():
