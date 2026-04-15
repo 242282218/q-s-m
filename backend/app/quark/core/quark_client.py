@@ -3,7 +3,7 @@ import re
 import time
 import logging
 from dataclasses import dataclass, asdict
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional, Set, Any, Tuple
 
 import aiohttp
 
@@ -188,9 +188,34 @@ class AsyncQuarkAPIClient:
         elif parsed_count < len(raw_list):
             logger.info(f"解析成功: {parsed_count}/{len(raw_list)} (关键词: {keyword})")
         if deduplicate:
-            unique: Dict[int, QuarkResource] = {}
+            unique: Dict[Tuple[str, Any], QuarkResource] = {}
             for r in resources:
-                if r.id not in unique:
-                    unique[r.id] = r
+                normalized_id = self._safe_positive_int(r.id)
+                if normalized_id is not None:
+                    dedup_key: Tuple[str, Any] = ("id", normalized_id)
+                else:
+                    dedup_key = ("resource", self._resource_fingerprint(r))
+                if dedup_key not in unique:
+                    unique[dedup_key] = r
             resources = list(unique.values())
         return resources
+
+    @staticmethod
+    def _safe_positive_int(value: Any) -> Optional[int]:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return None
+        return parsed if parsed > 0 else None
+
+    @staticmethod
+    def _resource_fingerprint(resource: QuarkResource) -> Tuple[Any, ...]:
+        return (
+            resource.name,
+            resource.link,
+            resource.size,
+            resource.updatetime,
+            resource.categoryid,
+            resource.uploaderid,
+            resource.views,
+        )
