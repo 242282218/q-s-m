@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from pydantic import ValidationError
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -147,6 +148,41 @@ class SettingsPersistenceTests(unittest.TestCase):
 
         self.assertIsNone(settings.tmdb_api_key)
         self.assertIsNone(settings.quark_transfer_cookie)
+
+    def test_trusted_proxy_ips_supports_comma_separated_env(self):
+        os.environ["TRUSTED_PROXY_IPS"] = "127.0.0.1,::1"
+        self.runtime_env_path.write_text("", encoding="utf-8")
+
+        get_settings.cache_clear()
+        settings = get_settings()
+
+        self.assertEqual(settings.trusted_proxy_ips, ["127.0.0.1", "::1"])
+
+    def test_trusted_proxy_ips_supports_bracketed_non_json_env(self):
+        os.environ["TRUSTED_PROXY_IPS"] = "[127.0.0.1, ::1]"
+        self.runtime_env_path.write_text("", encoding="utf-8")
+
+        get_settings.cache_clear()
+        settings = get_settings()
+
+        self.assertEqual(settings.trusted_proxy_ips, ["127.0.0.1", "::1"])
+
+    def test_trusted_proxy_ips_are_normalized_and_deduplicated(self):
+        os.environ["TRUSTED_PROXY_IPS"] = "127.0.0.1,127.0.0.1, [::1] , ::1"
+        self.runtime_env_path.write_text("", encoding="utf-8")
+
+        get_settings.cache_clear()
+        settings = get_settings()
+
+        self.assertEqual(settings.trusted_proxy_ips, ["127.0.0.1", "::1"])
+
+    def test_trusted_proxy_ips_rejects_invalid_ip(self):
+        os.environ["TRUSTED_PROXY_IPS"] = "127.0.0.1,bad-ip"
+        self.runtime_env_path.write_text("", encoding="utf-8")
+
+        get_settings.cache_clear()
+        with self.assertRaises(ValidationError):
+            get_settings()
 
 
 if __name__ == "__main__":

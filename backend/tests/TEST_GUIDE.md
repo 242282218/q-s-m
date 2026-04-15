@@ -96,5 +96,6 @@ Redis 限流故障冷却：
 
 1. 默认 `TRUST_PROXY_HEADERS=false`，限流键使用直连客户端地址。
 2. 仅当部署在可信反向代理后启用 `TRUST_PROXY_HEADERS=true`，并配置精确 `TRUSTED_PROXY_IPS`。
-3. 启用后按 `X-Forwarded-For` 从右向左剥离可信代理，取首个非代理 IP；缺失时回退 `X-Real-IP`。
-4. 头部中的非法 IP 或带异常格式值会被忽略并回退到连接源地址。
+3. `TRUSTED_PROXY_IPS` 推荐 JSON 数组（如 `["127.0.0.1","::1"]`），也兼容逗号分隔（如 `127.0.0.1,::1`）。
+4. 启用后按 `X-Forwarded-For` 从右向左剥离可信代理，取首个非代理 IP；缺失时回退 `X-Real-IP`。
+5. 头部中的非法 IP 或带异常格式值会被忽略并回退到连接源地址。

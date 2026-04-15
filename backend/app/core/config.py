@@ -2,11 +2,13 @@ from functools import lru_cache
 from typing import Optional
 import logging
 import json
+from ipaddress import ip_address
 
 from pydantic import Field, field_validator
 from pydantic_settings import (
     BaseSettings,
     DotEnvSettingsSource,
+    EnvSettingsSource,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
 )
@@ -14,6 +16,22 @@ from pydantic_settings import (
 from .paths import resolve_default_env_path, resolve_runtime_env_path
 
 logger = logging.getLogger(__name__)
+
+
+class CommaFriendlyEnvSettingsSource(EnvSettingsSource):
+    """Allow comma-separated TRUSTED_PROXY_IPS in environment variables."""
+
+    def prepare_field_value(self, field_name, field, value, value_is_complex):
+        if field_name == "trusted_proxy_ips" and isinstance(value, str):
+            text = value.strip()
+            if text:
+                if text.startswith("[") and text.endswith("]"):
+                    inner = text[1:-1].strip()
+                    if inner and '"' not in inner and "'" not in inner:
+                        return [item.strip() for item in inner.split(",") if item.strip()]
+                if not text.startswith("["):
+                    return [item.strip() for item in text.split(",") if item.strip()]
+        return super().prepare_field_value(field_name, field, value, value_is_complex)
 
 
 class Settings(BaseSettings):
@@ -90,10 +108,11 @@ class Settings(BaseSettings):
             env_file=resolve_runtime_env_path(),
             env_file_encoding="utf-8",
         )
+        process_env_settings = CommaFriendlyEnvSettingsSource(settings_cls)
         return (
             init_settings,
             runtime_env_settings,
-            env_settings,
+            process_env_settings,
             default_env_settings,
             file_secret_settings,
         )
@@ -107,6 +126,43 @@ class Settings(BaseSettings):
             except json.JSONDecodeError:
                 return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
+
+    @field_validator("trusted_proxy_ips", mode="before")
+    @classmethod
+    def parse_trusted_proxy_ips(cls, v):
+        if isinstance(v, str):
+            text = v.strip()
+            if not text:
+                return []
+            try:
+                parsed = json.loads(text)
+                if isinstance(parsed, list):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+            return [item.strip() for item in text.split(",") if item.strip()]
+        return v
+
+    @field_validator("trusted_proxy_ips")
+    @classmethod
+    def normalize_trusted_proxy_ips(cls, values: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for raw in values:
+            text = str(raw).strip()
+            if not text:
+                continue
+            if text.startswith("[") and text.endswith("]"):
+                text = text[1:-1].strip()
+            try:
+                canonical = str(ip_address(text))
+            except ValueError as exc:
+                raise ValueError(f"invalid IP in TRUSTED_PROXY_IPS: {raw}") from exc
+            if canonical in seen:
+                continue
+            seen.add(canonical)
+            normalized.append(canonical)
+        return normalized
 
     def validate_production_security(self) -> list[str]:
         """验证生产环境安全配置"""

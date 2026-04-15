@@ -47,6 +47,8 @@ cp .env.example .env
    control how long rate limiting stays on in-memory fallback after a Redis failure.
 5. Behind Nginx/Ingress, set `TRUST_PROXY_HEADERS=true` and configure
    `TRUSTED_PROXY_IPS` to your proxy source addresses only, otherwise keep it disabled.
+   `TRUSTED_PROXY_IPS` supports both JSON array (recommended) and comma-separated string.
+   Example: `["127.0.0.1","::1"]` or `127.0.0.1,::1`.
    The limiter resolves `X-Forwarded-For` from right to left and skips trusted proxy hops.
    Non-IP or malformed header values are ignored and fallback to the connection source IP.
 
