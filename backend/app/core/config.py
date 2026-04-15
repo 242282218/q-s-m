@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     rate_limit_redis_failure_cooldown_seconds: int = Field(
         30, alias="RATE_LIMIT_REDIS_FAILURE_COOLDOWN_SECONDS"
     )
+    trust_proxy_headers: bool = Field(False, alias="TRUST_PROXY_HEADERS")
+    trusted_proxy_ips: list[str] = Field(["127.0.0.1", "::1"], alias="TRUSTED_PROXY_IPS")
     cache_ttl: int = Field(3600, alias="CACHE_TTL")
 
     quark_transfer_cookie: Optional[str] = Field(None, alias="QUARK_TRANSFER_COOKIE")

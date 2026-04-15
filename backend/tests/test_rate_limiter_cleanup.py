@@ -1,6 +1,8 @@
 from unittest.mock import patch
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from app.middleware import rate_limit as rate_limit_module
 from app.middleware.rate_limit import RateLimiter, RedisRateLimiter
@@ -184,3 +186,85 @@ async def test_rate_limiter_retries_redis_after_cooldown(monkeypatch):
     assert third_info["remaining"] == 59
     assert recovering_limiter.call_count == 2
     assert rate_limit_module._redis_rate_limiter_retry_at == 0.0
+
+
+def _create_probe_app() -> FastAPI:
+    app = FastAPI()
+
+    @app.get("/probe")
+    async def probe():
+        return {"ok": True}
+
+    app.middleware("http")(rate_limit_module.rate_limit_middleware)
+    return app
+
+
+def test_rate_limit_uses_remote_ip_when_proxy_trust_disabled(monkeypatch):
+    limiter = RateLimiter(requests_per_minute=10, requests_per_hour=20)
+    captured: list[str] = []
+
+    def fake_is_allowed(key: str):
+        captured.append(key)
+        return True, {"limit": 10, "window": "minute", "remaining": 9, "retry_after": 0}
+
+    monkeypatch.setattr(rate_limit_module, "rate_limiter", limiter)
+    monkeypatch.setattr(rate_limit_module, "_redis_rate_limiter", None)
+    monkeypatch.setattr(rate_limit_module._settings, "trust_proxy_headers", False)
+    monkeypatch.setattr(limiter, "is_allowed", fake_is_allowed)
+
+    with TestClient(_create_probe_app()) as client:
+        response = client.get(
+            "/probe",
+            headers={"X-Forwarded-For": "198.51.100.24"},
+        )
+
+    assert response.status_code == 200
+    assert captured == ["testclient"]
+
+
+def test_rate_limit_uses_x_forwarded_for_when_proxy_trusted(monkeypatch):
+    limiter = RateLimiter(requests_per_minute=10, requests_per_hour=20)
+    captured: list[str] = []
+
+    def fake_is_allowed(key: str):
+        captured.append(key)
+        return True, {"limit": 10, "window": "minute", "remaining": 9, "retry_after": 0}
+
+    monkeypatch.setattr(rate_limit_module, "rate_limiter", limiter)
+    monkeypatch.setattr(rate_limit_module, "_redis_rate_limiter", None)
+    monkeypatch.setattr(rate_limit_module._settings, "trust_proxy_headers", True)
+    monkeypatch.setattr(rate_limit_module, "_trusted_proxy_ips", {"testclient"})
+    monkeypatch.setattr(limiter, "is_allowed", fake_is_allowed)
+
+    with TestClient(_create_probe_app()) as client:
+        response = client.get(
+            "/probe",
+            headers={"X-Forwarded-For": "198.51.100.24, 203.0.113.8"},
+        )
+
+    assert response.status_code == 200
+    assert captured == ["198.51.100.24"]
+
+
+def test_rate_limit_falls_back_to_x_real_ip_when_forwarded_for_missing(monkeypatch):
+    limiter = RateLimiter(requests_per_minute=10, requests_per_hour=20)
+    captured: list[str] = []
+
+    def fake_is_allowed(key: str):
+        captured.append(key)
+        return True, {"limit": 10, "window": "minute", "remaining": 9, "retry_after": 0}
+
+    monkeypatch.setattr(rate_limit_module, "rate_limiter", limiter)
+    monkeypatch.setattr(rate_limit_module, "_redis_rate_limiter", None)
+    monkeypatch.setattr(rate_limit_module._settings, "trust_proxy_headers", True)
+    monkeypatch.setattr(rate_limit_module, "_trusted_proxy_ips", {"testclient"})
+    monkeypatch.setattr(limiter, "is_allowed", fake_is_allowed)
+
+    with TestClient(_create_probe_app()) as client:
+        response = client.get(
+            "/probe",
+            headers={"X-Real-IP": "198.51.100.25"},
+        )
+
+    assert response.status_code == 200
+    assert captured == ["198.51.100.25"]

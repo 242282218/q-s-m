@@ -91,3 +91,9 @@ Redis 限流故障冷却：
 
 1. 默认 `RATE_LIMIT_REDIS_FAILURE_COOLDOWN_SECONDS=30`，Redis 限流异常后 30 秒内短路到内存限流，避免每请求重试。
 2. 设为 `0` 时关闭冷却策略，每次请求都会尝试 Redis 并在异常时回退内存。
+
+反向代理限流 IP 解析：
+
+1. 默认 `TRUST_PROXY_HEADERS=false`，限流键使用直连客户端地址。
+2. 仅当部署在可信反向代理后启用 `TRUST_PROXY_HEADERS=true`，并配置精确 `TRUSTED_PROXY_IPS`。
+3. 启用后优先取 `X-Forwarded-For` 首个 IP，缺失时回退 `X-Real-IP`。

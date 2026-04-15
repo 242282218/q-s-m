@@ -21,7 +21,12 @@ API_KEY=replace-with-a-long-random-string
 TMDB_API_KEY=replace-with-your-tmdb-api-key
 QUARK_TRANSFER_COOKIE=replace-with-your-quark-cookie
 CORS_ORIGINS=["https://your-domain.com"]
+# Optional: trust proxy headers for rate limiting
+TRUST_PROXY_HEADERS=true
+TRUSTED_PROXY_IPS=["127.0.0.1","::1"]
 ```
+
+如果 Nginx 与应用不在同一网络命名空间，请把 `TRUSTED_PROXY_IPS` 改为实际代理来源 IP；不要配置为 `*` 或整个网段，避免头部伪造绕过限流。
 
 ## 2. 启动容器
 

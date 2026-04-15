@@ -1,10 +1,10 @@
 """
 速率限制中间件
 """
-import time
 import logging
+import time
 from collections import defaultdict
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Set, Tuple
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -214,6 +214,28 @@ def _build_redis_rate_limiter() -> tuple[Optional[RedisRateLimiter], int]:
 
 _redis_rate_limiter, _redis_rate_limiter_failure_cooldown_seconds = _build_redis_rate_limiter()
 _redis_rate_limiter_retry_at = 0.0
+_settings = get_settings()
+_trusted_proxy_ips: Set[str] = set(_settings.trusted_proxy_ips)
+
+
+def _extract_client_ip(request: Request) -> str:
+    client_ip = request.client.host if request.client else "unknown"
+    if not _settings.trust_proxy_headers:
+        return client_ip
+    if client_ip not in _trusted_proxy_ips:
+        return client_ip
+
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        forwarded_ips = [ip.strip() for ip in forwarded_for.split(",") if ip.strip()]
+        if forwarded_ips:
+            return forwarded_ips[0]
+
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip and real_ip.strip():
+        return real_ip.strip()
+
+    return client_ip
 
 
 async def _is_allowed_with_fallback(key: str) -> Tuple[bool, dict]:
@@ -269,7 +291,7 @@ async def rate_limit_middleware(request: Request, call_next):
         return await call_next(request)
 
     # 获取客户端 IP
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = _extract_client_ip(request)
 
     # 先检查是否允许 —— 不允许则直接返回 429，不执行下游请求
     allowed, info = await _is_allowed_with_fallback(client_ip)

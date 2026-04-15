@@ -45,6 +45,8 @@ cp .env.example .env
    so cache + rate limiting stay consistent across processes.
 4. Optional: tune `RATE_LIMIT_REDIS_FAILURE_COOLDOWN_SECONDS` (default `30`) to
    control how long rate limiting stays on in-memory fallback after a Redis failure.
+5. Behind Nginx/Ingress, set `TRUST_PROXY_HEADERS=true` and configure
+   `TRUSTED_PROXY_IPS` to your proxy source addresses only, otherwise keep it disabled.
 
 Runtime settings updates are persisted to `storage/config/settings.env` by default. Existing local deployments that still use `backend/data/settings.env` remain compatible until migrated.
 
