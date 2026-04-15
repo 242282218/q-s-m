@@ -4,6 +4,7 @@
 import logging
 import time
 from collections import defaultdict
+from ipaddress import ip_address
 from typing import Any, Dict, Optional, Set, Tuple
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -218,8 +219,38 @@ _settings = get_settings()
 _trusted_proxy_ips: Set[str] = set(_settings.trusted_proxy_ips)
 
 
+def _normalize_ip(value: str | None) -> str | None:
+    if not value:
+        return None
+
+    candidate = value.strip()
+    if not candidate:
+        return None
+
+    # IPv6 with bracket notation, optionally with port.
+    if candidate.startswith("["):
+        closing_bracket = candidate.find("]")
+        if closing_bracket == -1:
+            return None
+        host = candidate[1:closing_bracket].strip()
+    else:
+        host = candidate
+        if host.count(".") == 3 and host.count(":") == 1:
+            host, port = host.rsplit(":", 1)
+            if not port.isdigit():
+                return None
+        elif host.count(":") == 1 and host.split(":")[0].isdigit():
+            return None
+
+    try:
+        return str(ip_address(host))
+    except ValueError:
+        return None
+
+
 def _resolve_forwarded_client_ip(forwarded_for: str) -> str | None:
-    forwarded_ips = [ip.strip() for ip in forwarded_for.split(",") if ip.strip()]
+    forwarded_ips = [_normalize_ip(ip) for ip in forwarded_for.split(",")]
+    forwarded_ips = [ip for ip in forwarded_ips if ip]
     if not forwarded_ips:
         return None
 
@@ -232,6 +263,10 @@ def _resolve_forwarded_client_ip(forwarded_for: str) -> str | None:
 
 def _extract_client_ip(request: Request) -> str:
     client_ip = request.client.host if request.client else "unknown"
+    normalized_client_ip = _normalize_ip(client_ip)
+    if normalized_client_ip:
+        client_ip = normalized_client_ip
+
     if not _settings.trust_proxy_headers:
         return client_ip
     if client_ip not in _trusted_proxy_ips:
@@ -244,8 +279,9 @@ def _extract_client_ip(request: Request) -> str:
             return forwarded_client_ip
 
     real_ip = request.headers.get("x-real-ip")
-    if real_ip and real_ip.strip():
-        return real_ip.strip()
+    normalized_real_ip = _normalize_ip(real_ip)
+    if normalized_real_ip:
+        return normalized_real_ip
 
     return client_ip
 

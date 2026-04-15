@@ -48,6 +48,7 @@ cp .env.example .env
 5. Behind Nginx/Ingress, set `TRUST_PROXY_HEADERS=true` and configure
    `TRUSTED_PROXY_IPS` to your proxy source addresses only, otherwise keep it disabled.
    The limiter resolves `X-Forwarded-For` from right to left and skips trusted proxy hops.
+   Non-IP or malformed header values are ignored and fallback to the connection source IP.
 
 Runtime settings updates are persisted to `storage/config/settings.env` by default. Existing local deployments that still use `backend/data/settings.env` remain compatible until migrated.
 
