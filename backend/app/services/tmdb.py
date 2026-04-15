@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 from datetime import datetime, timedelta
+from asyncio import AbstractEventLoop
 from typing import Any, Dict, List, Optional
 import logging
 import time
+from weakref import WeakKeyDictionary
 
 import httpx
 
@@ -31,6 +35,31 @@ GENRE_TONE = {
 }
 
 logger = logging.getLogger(__name__)
+HOME_SECTIONS_CACHE_KEY = "tmdb:home_sections"
+_home_sections_cache_locks: WeakKeyDictionary[AbstractEventLoop, asyncio.Lock] = (
+    WeakKeyDictionary()
+)
+
+
+def _build_tmdb_cache_key(path: str, params: Dict[str, Any]) -> str:
+    serialized = json.dumps(
+        params,
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        default=str,
+    )
+    digest = hashlib.md5(serialized.encode("utf-8")).hexdigest()[:16]
+    return f"tmdb:{path}:{digest}"
+
+
+def _get_home_sections_cache_lock() -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    lock = _home_sections_cache_locks.get(loop)
+    if lock is None:
+        lock = asyncio.Lock()
+        _home_sections_cache_locks[loop] = lock
+    return lock
 
 
 class TmdbClient:
@@ -122,10 +151,10 @@ class TmdbClient:
         # 生成缓存键
         cache_key = None
         if use_cache:
-            cache_key = f"tmdb:{path}:{hash(str(sorted(params.items())))}"
+            cache_key = _build_tmdb_cache_key(path, params)
             cache = get_cache()
             cached = await cache.get(cache_key)
-            if cached:
+            if cached is not None:
                 self._cache_hits += 1
                 logger.debug(f"Cache hit for {path}")
                 return cached
@@ -525,42 +554,49 @@ async def gather_sections(client: TmdbClient) -> Dict[str, List[Dict[str, Any]]]
     - 错误隔离
     """
     cache = get_cache()
-    cache_key = "tmdb:home_sections"
+    cache_key = HOME_SECTIONS_CACHE_KEY
     
     cached_data = await cache.get(cache_key)
-    if cached_data:
+    if cached_data is not None:
         logger.debug("返回缓存的首页分区数据")
         return cached_data
-    
-    start_time = time.time()
-    
-    # 并发获取所有分区数据
-    results = await asyncio.gather(
-        client.anime_latest(),
-        client.tv_latest(),
-        client.movies("top_rated"),
-        client.tv_popular(),
-        client.anime_popular(),
-        return_exceptions=True
-    )
-    
-    keys = ["anime_latest", "tv_latest", "top_rated", "tv_popular", "anime_popular"]
-    data: Dict[str, List[Dict[str, Any]]] = {}
-    
-    for key, result in zip(keys, results):
-        if isinstance(result, Exception):
-            error_msg = f"Failed to fetch section {key}: {type(result).__name__}: {str(result) or 'Unknown error'}"
-            logger.error(error_msg)
-            data[key] = []
-        else:
-            data[key] = result
-    
-    await cache.set(cache_key, data, ttl=HOME_SECTIONS_CACHE_TTL)
-    
-    elapsed = time.time() - start_time
-    logger.info(f"首页分区数据获取完成，耗时 {elapsed:.2f}s，已缓存 {HOME_SECTIONS_CACHE_TTL}s")
-    
-    return data
+
+    lock = _get_home_sections_cache_lock()
+    async with lock:
+        cached_data = await cache.get(cache_key)
+        if cached_data is not None:
+            logger.debug("返回缓存的首页分区数据（锁内命中）")
+            return cached_data
+
+        start_time = time.time()
+
+        # 并发获取所有分区数据
+        results = await asyncio.gather(
+            client.anime_latest(),
+            client.tv_latest(),
+            client.movies("top_rated"),
+            client.tv_popular(),
+            client.anime_popular(),
+            return_exceptions=True
+        )
+
+        keys = ["anime_latest", "tv_latest", "top_rated", "tv_popular", "anime_popular"]
+        data: Dict[str, List[Dict[str, Any]]] = {}
+
+        for key, result in zip(keys, results):
+            if isinstance(result, Exception):
+                error_msg = f"Failed to fetch section {key}: {type(result).__name__}: {str(result) or 'Unknown error'}"
+                logger.error(error_msg)
+                data[key] = []
+            else:
+                data[key] = result
+
+        await cache.set(cache_key, data, ttl=HOME_SECTIONS_CACHE_TTL)
+
+        elapsed = time.time() - start_time
+        logger.info(f"首页分区数据获取完成，耗时 {elapsed:.2f}s，已缓存 {HOME_SECTIONS_CACHE_TTL}s")
+
+        return data
 
 
 def adapt_detail(item: Dict, client: TmdbClient) -> Dict:
