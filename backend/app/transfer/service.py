@@ -11,6 +11,7 @@ import logging
 import asyncio
 from typing import Any, AsyncGenerator, Optional, List, Dict, Tuple
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import BackgroundTasks
 from sqlalchemy.orm import Session
@@ -120,6 +121,49 @@ class TransferService:
         for src, dst in PATH_REPLACEMENTS.items():
             normalized = normalized.replace(src, dst)
         return normalized
+
+    @staticmethod
+    def _attach_share_passcode(share_url: str, share_pwd: Optional[str]) -> str:
+        """
+        统一补齐分享链接中的提取码参数。
+
+        Why:
+            收藏记录会单独存储 share_pwd；若链接未携带 pwd 参数，转存链路会把私密分享误判为失效。
+        """
+        normalized_url = (share_url or "").strip()
+        if not normalized_url:
+            return ""
+
+        passcode = (share_pwd or "").strip()
+        if not passcode:
+            return normalized_url
+
+        try:
+            split_result = urlsplit(normalized_url)
+        except ValueError:
+            return normalized_url
+
+        query_items = parse_qsl(split_result.query, keep_blank_values=True)
+        for index, (key, value) in enumerate(query_items):
+            if key.lower() != "pwd":
+                continue
+            if value.strip():
+                return normalized_url
+            query_items[index] = (key, passcode)
+            break
+        else:
+            query_items.append(("pwd", passcode))
+
+        rebuilt_query = urlencode(query_items, doseq=True)
+        return urlunsplit(
+            (
+                split_result.scheme,
+                split_result.netloc,
+                split_result.path,
+                rebuilt_query,
+                split_result.fragment,
+            )
+        )
 
     async def validate_link(
         self,
@@ -301,10 +345,14 @@ class TransferService:
                     return False, f"创建目标目录失败: {media_root_path}", []
 
                 # 执行转存
+                share_url = self._attach_share_passcode(
+                    collection.quark_share_url,
+                    collection.quark_share_pwd,
+                )
                 success, message, transferred_items, task_id = await asyncio.wait_for(
                     transfer_share_to_target_fid(
                         client=client,
-                        share_url=collection.quark_share_url,
+                        share_url=share_url,
                         target_fid=media_root_fid,
                         flatten_single_root=True,
                     ),
