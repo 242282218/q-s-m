@@ -34,6 +34,22 @@ class CommaFriendlyEnvSettingsSource(EnvSettingsSource):
         return super().prepare_field_value(field_name, field, value, value_is_complex)
 
 
+class CommaFriendlyDotEnvSettingsSource(DotEnvSettingsSource):
+    """Allow comma-separated TRUSTED_PROXY_IPS in .env files."""
+
+    def prepare_field_value(self, field_name, field, value, value_is_complex):
+        if field_name == "trusted_proxy_ips" and isinstance(value, str):
+            text = value.strip()
+            if text:
+                if text.startswith("[") and text.endswith("]"):
+                    inner = text[1:-1].strip()
+                    if inner and '"' not in inner and "'" not in inner:
+                        return [item.strip() for item in inner.split(",") if item.strip()]
+                if not text.startswith("["):
+                    return [item.strip() for item in text.split(",") if item.strip()]
+        return super().prepare_field_value(field_name, field, value, value_is_complex)
+
+
 class Settings(BaseSettings):
     app_name: str = "TMDB 海报墙"
     debug: bool = False
@@ -98,12 +114,12 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        default_env_settings = DotEnvSettingsSource(
+        default_env_settings = CommaFriendlyDotEnvSettingsSource(
             settings_cls,
             env_file=resolve_default_env_path(),
             env_file_encoding="utf-8",
         )
-        runtime_env_settings = DotEnvSettingsSource(
+        runtime_env_settings = CommaFriendlyDotEnvSettingsSource(
             settings_cls,
             env_file=resolve_runtime_env_path(),
             env_file_encoding="utf-8",

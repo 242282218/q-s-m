@@ -184,6 +184,26 @@ class SettingsPersistenceTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             get_settings()
 
+    def test_trusted_proxy_ips_supports_comma_separated_in_default_env_file(self):
+        os.environ.pop("TRUSTED_PROXY_IPS", None)
+        self.default_env_path.write_text("TRUSTED_PROXY_IPS=127.0.0.1,::1\n", encoding="utf-8")
+        self.runtime_env_path.write_text("", encoding="utf-8")
+
+        get_settings.cache_clear()
+        settings = get_settings()
+
+        self.assertEqual(settings.trusted_proxy_ips, ["127.0.0.1", "::1"])
+
+    def test_trusted_proxy_ips_supports_comma_separated_in_runtime_env_file(self):
+        os.environ.pop("TRUSTED_PROXY_IPS", None)
+        self.default_env_path.write_text("", encoding="utf-8")
+        self.runtime_env_path.write_text("TRUSTED_PROXY_IPS=127.0.0.1,::1\n", encoding="utf-8")
+
+        get_settings.cache_clear()
+        settings = get_settings()
+
+        self.assertEqual(settings.trusted_proxy_ips, ["127.0.0.1", "::1"])
+
 
 if __name__ == "__main__":
     unittest.main()
