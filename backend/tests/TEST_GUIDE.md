@@ -63,3 +63,20 @@ pnpm test -- src/__tests__/http.test.ts
 ```bash
 pnpm test -- --coverage
 ```
+
+## 性能压测
+
+在 `backend` 目录执行：
+
+```bash
+# 默认性能基线（缓存 + 并发调度 + DB + 内存限流），输出 JSON
+python ../tests/performance/benchmark.py --output-json
+
+# 包含 Redis 限流吞吐压测（Redis 不可用时会标记 skipped）
+python ../tests/performance/benchmark.py --output-json --include-redis-rate-limit
+```
+
+阈值说明：
+
+1. 内存限流：`>=100000 ops/s` 优秀，`>=40000 ops/s` 良好。
+2. Redis 限流：`>=2000 ops/s` 优秀，`>=800 ops/s` 良好。
