@@ -77,6 +77,9 @@ python ../tests/performance/benchmark.py --output-json --include-redis-rate-limi
 
 # 作为门禁使用：任一指标落入“需关注”时返回非零退出码
 python ../tests/performance/benchmark.py --output-json --fail-on-threshold-breach
+
+# 作为部署前强校验：Redis 不可用或跳过时直接失败
+python ../tests/performance/benchmark.py --output-json --include-redis-rate-limit --fail-on-threshold-breach --require-redis
 ```
 
 阈值说明：

@@ -245,7 +245,7 @@ def _persist_results(results: dict[str, Any], output_path: Path) -> None:
     )
 
 
-def _collect_threshold_breaches(results: dict[str, Any]) -> list[str]:
+def _collect_threshold_breaches(results: dict[str, Any], require_redis: bool = False) -> list[str]:
     breaches: list[str] = []
     cache = results.get("cache", {})
     if cache.get("write_evaluation") == "需关注":
@@ -268,6 +268,8 @@ def _collect_threshold_breaches(results: dict[str, Any]) -> list[str]:
     redis_rate_limit = results.get("rate_limiter_redis", {})
     if redis_rate_limit.get("evaluation") == "需关注":
         breaches.append("rate_limiter_redis.ops_per_sec")
+    if require_redis and redis_rate_limit.get("evaluation") == "skipped":
+        breaches.append("rate_limiter_redis.required")
 
     return breaches
 
@@ -286,6 +288,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-json", action="store_true")
     parser.add_argument("--output-path", default="performance_results.json")
     parser.add_argument("--fail-on-threshold-breach", action="store_true")
+    parser.add_argument("--require-redis", action="store_true")
     return parser.parse_args()
 
 
@@ -349,7 +352,7 @@ async def run_all_benchmarks(args: argparse.Namespace) -> dict[str, Any]:
         "rate_limiter_memory": mem_rate_limit_result,
         "rate_limiter_redis": redis_rate_limit_result,
     }
-    threshold_breaches = _collect_threshold_breaches(results)
+    threshold_breaches = _collect_threshold_breaches(results, require_redis=args.require_redis)
     results["threshold_breaches"] = threshold_breaches
     if threshold_breaches:
         print(f"阈值未达标: {', '.join(threshold_breaches)}")
@@ -366,6 +369,9 @@ async def run_all_benchmarks(args: argparse.Namespace) -> dict[str, Any]:
 
 def main() -> int:
     args = parse_args()
+    if args.require_redis and not args.include_redis_rate_limit:
+        print("参数错误: --require-redis 需要同时启用 --include-redis-rate-limit")
+        return 2
     results = asyncio.run(run_all_benchmarks(args))
     if args.fail_on_threshold_breach and results["threshold_breaches"]:
         return 2
