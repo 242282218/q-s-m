@@ -19,10 +19,25 @@ class RateLimiter:
     自动清理过期记录以防止内存泄漏
     """
     
-    def __init__(self, requests_per_minute: int = 60, requests_per_hour: int = 1000):
+    def __init__(
+        self,
+        requests_per_minute: int = 60,
+        requests_per_hour: int = 1000,
+        cleanup_interval_seconds: int = 300,
+        inactive_seconds: int = 7200,
+    ):
         self.requests_per_minute = requests_per_minute
         self.requests_per_hour = requests_per_hour
         self.requests: Dict[str, list[float]] = defaultdict(list)
+        self._cleanup_interval_seconds = cleanup_interval_seconds
+        self._inactive_seconds = inactive_seconds
+        self._last_cleanup_at = time.time()
+
+    def _maybe_cleanup(self, now: float) -> None:
+        if now - self._last_cleanup_at < self._cleanup_interval_seconds:
+            return
+        self.cleanup_inactive_keys(inactive_seconds=self._inactive_seconds, now=now)
+        self._last_cleanup_at = now
     
     def is_allowed(self, key: str) -> Tuple[bool, dict]:
         """
@@ -37,6 +52,7 @@ class RateLimiter:
         now = time.time()
         minute_ago = now - 60
         hour_ago = now - 3600
+        self._maybe_cleanup(now)
         
         # 获取该 key 的所有请求时间戳
         timestamps = self.requests[key]
@@ -69,10 +85,6 @@ class RateLimiter:
         # 记录当前请求
         timestamps.append(now)
         
-        # 如果该 key 已长时间无活动，清理其记录以释放内存
-        if not timestamps:
-            del self.requests[key]
-        
         return True, {
             "limit": self.requests_per_minute,
             "window": "minute",
@@ -80,20 +92,20 @@ class RateLimiter:
             "retry_after": 0
         }
     
-    def cleanup_inactive_keys(self, inactive_seconds: int = 7200):
+    def cleanup_inactive_keys(self, inactive_seconds: int = 7200, now: float | None = None):
         """
         清理长时间不活跃的 key，释放内存
         
         Args:
             inactive_seconds: 不活跃时间阈值（秒），默认 2 小时
         """
-        now = time.time()
+        now = time.time() if now is None else now
         cutoff = now - inactive_seconds
         keys_to_remove = []
         
-        for key, timestamps in self.requests.items():
+        for key, timestamps in list(self.requests.items()):
             # 如果所有记录都已过期，标记删除
-            if all(t < cutoff for t in timestamps):
+            if not timestamps or all(t < cutoff for t in timestamps):
                 keys_to_remove.append(key)
         
         for key in keys_to_remove:
