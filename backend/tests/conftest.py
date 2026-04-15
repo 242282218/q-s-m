@@ -25,6 +25,8 @@ def test_db():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    # Ensure all ORM models are registered before metadata creation.
+    from app.db import models  # noqa: F401
     Base.metadata.create_all(engine)
     try:
         yield engine
