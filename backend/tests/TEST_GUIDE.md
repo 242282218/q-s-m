@@ -29,6 +29,15 @@ python -m pytest tests/test_concurrent_operations.py
 
 # 首页 Hero 缓存并发回归
 python -m pytest tests/test_home_hero_cache.py
+
+# TMDB 缓存并发/键稳定性回归
+python -m pytest tests/test_tmdb_cache_behaviors.py
+
+# RateLimiter 自动清理回归
+python -m pytest tests/test_rate_limiter_cleanup.py
+
+# Metrics 重置统计结构回归
+python -m pytest tests/test_metrics_reset.py
 ```
 
 ### 生成覆盖率报告
