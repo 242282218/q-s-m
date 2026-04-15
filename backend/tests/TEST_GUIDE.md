@@ -86,3 +86,8 @@ python ../tests/performance/benchmark.py --output-json --include-redis-rate-limi
 
 1. 内存限流：`>=100000 ops/s` 优秀，`>=40000 ops/s` 良好。
 2. Redis 限流：`>=2000 ops/s` 优秀，`>=800 ops/s` 良好。
+
+Redis 限流故障冷却：
+
+1. 默认 `RATE_LIMIT_REDIS_FAILURE_COOLDOWN_SECONDS=30`，Redis 限流异常后 30 秒内短路到内存限流，避免每请求重试。
+2. 设为 `0` 时关闭冷却策略，每次请求都会尝试 Redis 并在异常时回退内存。

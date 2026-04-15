@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     cache_enabled: bool = Field(True, alias="CACHE_ENABLED")
     cache_type: str = Field("memory", alias="CACHE_TYPE")
     redis_url: str = Field("redis://localhost:6379/0", alias="REDIS_URL")
+    rate_limit_redis_failure_cooldown_seconds: int = Field(
+        30, alias="RATE_LIMIT_REDIS_FAILURE_COOLDOWN_SECONDS"
+    )
     cache_ttl: int = Field(3600, alias="CACHE_TTL")
 
     quark_transfer_cookie: Optional[str] = Field(None, alias="QUARK_TRANSFER_COOKIE")

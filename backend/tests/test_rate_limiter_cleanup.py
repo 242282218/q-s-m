@@ -100,15 +100,22 @@ async def test_redis_rate_limiter_enforces_hour_limit():
 
 
 class BrokenRedisRateLimiter:
+    def __init__(self):
+        self.call_count = 0
+
     async def is_allowed(self, _: str):
+        self.call_count += 1
         raise RuntimeError("redis unavailable")
 
 
 @pytest.mark.asyncio
 async def test_rate_limiter_fallback_to_memory_when_redis_fails(monkeypatch):
     memory_limiter = RateLimiter(requests_per_minute=1, requests_per_hour=10)
+    broken_limiter = BrokenRedisRateLimiter()
     monkeypatch.setattr(rate_limit_module, "rate_limiter", memory_limiter)
-    monkeypatch.setattr(rate_limit_module, "_redis_rate_limiter", BrokenRedisRateLimiter())
+    monkeypatch.setattr(rate_limit_module, "_redis_rate_limiter", broken_limiter)
+    monkeypatch.setattr(rate_limit_module, "_redis_rate_limiter_failure_cooldown_seconds", 0)
+    monkeypatch.setattr(rate_limit_module, "_redis_rate_limiter_retry_at", 0.0)
 
     first_allowed, _ = await rate_limit_module._is_allowed_with_fallback("fallback_ip")
     second_allowed, info = await rate_limit_module._is_allowed_with_fallback("fallback_ip")
@@ -116,3 +123,64 @@ async def test_rate_limiter_fallback_to_memory_when_redis_fails(monkeypatch):
     assert first_allowed is True
     assert second_allowed is False
     assert info["window"] == "minute"
+    assert broken_limiter.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_rate_limiter_skips_redis_calls_during_failure_cooldown(monkeypatch):
+    memory_limiter = RateLimiter(requests_per_minute=5, requests_per_hour=10)
+    broken_limiter = BrokenRedisRateLimiter()
+    monkeypatch.setattr(rate_limit_module, "rate_limiter", memory_limiter)
+    monkeypatch.setattr(rate_limit_module, "_redis_rate_limiter", broken_limiter)
+    monkeypatch.setattr(rate_limit_module, "_redis_rate_limiter_failure_cooldown_seconds", 30)
+    monkeypatch.setattr(rate_limit_module, "_redis_rate_limiter_retry_at", 0.0)
+
+    first_allowed, _ = await rate_limit_module._is_allowed_with_fallback("cooldown_ip")
+    second_allowed, _ = await rate_limit_module._is_allowed_with_fallback("cooldown_ip")
+
+    assert first_allowed is True
+    assert second_allowed is True
+    assert broken_limiter.call_count == 1
+    assert rate_limit_module._redis_rate_limiter_retry_at > 0.0
+
+
+class RecoveringRedisRateLimiter:
+    def __init__(self):
+        self.call_count = 0
+
+    async def is_allowed(self, _: str):
+        self.call_count += 1
+        if self.call_count == 1:
+            raise RuntimeError("temporary redis error")
+        return True, {
+            "limit": 60,
+            "window": "minute",
+            "remaining": 59,
+            "retry_after": 0,
+        }
+
+
+@pytest.mark.asyncio
+async def test_rate_limiter_retries_redis_after_cooldown(monkeypatch):
+    memory_limiter = RateLimiter(requests_per_minute=5, requests_per_hour=10)
+    recovering_limiter = RecoveringRedisRateLimiter()
+    monkeypatch.setattr(rate_limit_module, "rate_limiter", memory_limiter)
+    monkeypatch.setattr(rate_limit_module, "_redis_rate_limiter", recovering_limiter)
+    monkeypatch.setattr(rate_limit_module, "_redis_rate_limiter_failure_cooldown_seconds", 30)
+    monkeypatch.setattr(rate_limit_module, "_redis_rate_limiter_retry_at", 0.0)
+
+    first_allowed, first_info = await rate_limit_module._is_allowed_with_fallback("recover_ip")
+    second_allowed, second_info = await rate_limit_module._is_allowed_with_fallback("recover_ip")
+
+    # Simulate cooldown elapsed and allow one retry on Redis limiter.
+    monkeypatch.setattr(rate_limit_module, "_redis_rate_limiter_retry_at", 0.0)
+    third_allowed, third_info = await rate_limit_module._is_allowed_with_fallback("recover_ip")
+
+    assert first_allowed is True
+    assert first_info["window"] == "minute"
+    assert second_allowed is True
+    assert second_info["window"] == "minute"
+    assert third_allowed is True
+    assert third_info["remaining"] == 59
+    assert recovering_limiter.call_count == 2
+    assert rate_limit_module._redis_rate_limiter_retry_at == 0.0

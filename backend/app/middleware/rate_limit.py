@@ -195,31 +195,51 @@ class RedisRateLimiter:
 rate_limiter = RateLimiter(requests_per_minute=60, requests_per_hour=1000)
 
 
-def _build_redis_rate_limiter() -> Optional[RedisRateLimiter]:
+def _build_redis_rate_limiter() -> tuple[Optional[RedisRateLimiter], int]:
     settings = get_settings()
+    failure_cooldown_seconds = max(0, settings.rate_limit_redis_failure_cooldown_seconds)
     if not settings.cache_enabled or settings.cache_type != "redis":
-        return None
+        return None, failure_cooldown_seconds
     try:
-        return RedisRateLimiter(
+        limiter = RedisRateLimiter(
             redis_url=settings.redis_url,
             requests_per_minute=rate_limiter.requests_per_minute,
             requests_per_hour=rate_limiter.requests_per_hour,
         )
+        return limiter, failure_cooldown_seconds
     except Exception as exc:
         logger.warning("Redis rate limiter disabled, fallback to in-memory limiter: %s", exc)
-        return None
+        return None, failure_cooldown_seconds
 
 
-_redis_rate_limiter = _build_redis_rate_limiter()
+_redis_rate_limiter, _redis_rate_limiter_failure_cooldown_seconds = _build_redis_rate_limiter()
+_redis_rate_limiter_retry_at = 0.0
 
 
 async def _is_allowed_with_fallback(key: str) -> Tuple[bool, dict]:
+    global _redis_rate_limiter_retry_at
+
     if _redis_rate_limiter is None:
         return rate_limiter.is_allowed(key)
+
+    now = time.time()
+    if _redis_rate_limiter_retry_at > now:
+        return rate_limiter.is_allowed(key)
+
     try:
-        return await _redis_rate_limiter.is_allowed(key)
+        allowed, info = await _redis_rate_limiter.is_allowed(key)
+        _redis_rate_limiter_retry_at = 0.0
+        return allowed, info
     except Exception as exc:
-        logger.warning("Redis rate limiter runtime error, fallback to in-memory limiter: %s", exc)
+        if _redis_rate_limiter_failure_cooldown_seconds > 0:
+            _redis_rate_limiter_retry_at = now + _redis_rate_limiter_failure_cooldown_seconds
+            logger.warning(
+                "Redis rate limiter runtime error, fallback to in-memory limiter for %ss: %s",
+                _redis_rate_limiter_failure_cooldown_seconds,
+                exc,
+            )
+        else:
+            logger.warning("Redis rate limiter runtime error, fallback to in-memory limiter: %s", exc)
         return rate_limiter.is_allowed(key)
 
 # 不参与限流的路径前缀（静态资源、HMR、健康检查等）
