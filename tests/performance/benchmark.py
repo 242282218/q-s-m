@@ -245,6 +245,33 @@ def _persist_results(results: dict[str, Any], output_path: Path) -> None:
     )
 
 
+def _collect_threshold_breaches(results: dict[str, Any]) -> list[str]:
+    breaches: list[str] = []
+    cache = results.get("cache", {})
+    if cache.get("write_evaluation") == "需关注":
+        breaches.append("cache.write_ops_per_sec")
+    if cache.get("read_evaluation") == "需关注":
+        breaches.append("cache.read_ops_per_sec")
+
+    transfer = results.get("transfer", {})
+    if transfer.get("evaluation") == "需关注":
+        breaches.append("transfer.throughput_tasks_per_sec")
+
+    database = results.get("database", {})
+    if database.get("evaluation") == "需关注":
+        breaches.append("database.queries_per_sec")
+
+    memory_rate_limit = results.get("rate_limiter_memory", {})
+    if memory_rate_limit.get("evaluation") == "需关注":
+        breaches.append("rate_limiter_memory.ops_per_sec")
+
+    redis_rate_limit = results.get("rate_limiter_redis", {})
+    if redis_rate_limit.get("evaluation") == "需关注":
+        breaches.append("rate_limiter_redis.ops_per_sec")
+
+    return breaches
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="QSM performance benchmarks")
     parser.add_argument("--cache-iterations", type=int, default=1000)
@@ -258,6 +285,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--output-json", action="store_true")
     parser.add_argument("--output-path", default="performance_results.json")
+    parser.add_argument("--fail-on-threshold-breach", action="store_true")
     return parser.parse_args()
 
 
@@ -321,6 +349,12 @@ async def run_all_benchmarks(args: argparse.Namespace) -> dict[str, Any]:
         "rate_limiter_memory": mem_rate_limit_result,
         "rate_limiter_redis": redis_rate_limit_result,
     }
+    threshold_breaches = _collect_threshold_breaches(results)
+    results["threshold_breaches"] = threshold_breaches
+    if threshold_breaches:
+        print(f"阈值未达标: {', '.join(threshold_breaches)}")
+    else:
+        print("阈值检查: 全部通过")
 
     if args.output_json:
         output_path = _resolve_output_path(args.output_path)
@@ -330,5 +364,13 @@ async def run_all_benchmarks(args: argparse.Namespace) -> dict[str, Any]:
     return results
 
 
+def main() -> int:
+    args = parse_args()
+    results = asyncio.run(run_all_benchmarks(args))
+    if args.fail_on_threshold_breach and results["threshold_breaches"]:
+        return 2
+    return 0
+
+
 if __name__ == "__main__":
-    asyncio.run(run_all_benchmarks(parse_args()))
+    raise SystemExit(main())

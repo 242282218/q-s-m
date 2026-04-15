@@ -74,6 +74,9 @@ python ../tests/performance/benchmark.py --output-json
 
 # 包含 Redis 限流吞吐压测（Redis 不可用时会标记 skipped）
 python ../tests/performance/benchmark.py --output-json --include-redis-rate-limit
+
+# 作为门禁使用：任一指标落入“需关注”时返回非零退出码
+python ../tests/performance/benchmark.py --output-json --fail-on-threshold-breach
 ```
 
 阈值说明：
