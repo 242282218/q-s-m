@@ -53,6 +53,14 @@ def resolve_frontend_dist_dir(app_dir: Path) -> Path:
     return candidates[0]
 
 
+def build_request_stats_store() -> dict:
+    return {
+        "total_requests": 0,
+        "total_time": 0.0,
+        "slow_requests": deque(maxlen=100),
+    }
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
@@ -81,11 +89,7 @@ async def lifespan(app: FastAPI):
     
     # 初始化性能统计
     # 使用固定大小的队列防止内存泄漏
-    app.state.request_stats = {
-        "total_requests": 0,
-        "total_time": 0.0,
-        "slow_requests": deque(maxlen=100)
-    }
+    app.state.request_stats = build_request_stats_store()
     
     logger.info("Application started: HTTP clients and cache initialized")
     
@@ -189,9 +193,6 @@ async def performance_monitoring(request: Request, call_next: Callable) -> Respo
                 "time": round(process_time, 3),
                 "timestamp": utc_now_iso(),
             })
-            # 只保留最近100条慢请求
-            if len(request.app.state.request_stats["slow_requests"]) > 100:
-                request.app.state.request_stats["slow_requests"].pop(0)
     
     # 添加性能相关的响应头
     response.headers["X-Process-Time"] = str(process_time)
@@ -332,11 +333,7 @@ async def get_metrics() -> ApiResponse[MetricsData]:
 async def reset_metrics() -> ApiResponse[MetricsResetData]:
     """重置性能统计"""
     if hasattr(app.state, "request_stats"):
-        app.state.request_stats = {
-            "total_requests": 0,
-            "total_time": 0.0,
-            "slow_requests": []
-        }
+        app.state.request_stats = build_request_stats_store()
     reset_query_stats()
     return ok(
         MetricsResetData(reset=True, timestamp=utc_now_iso()),
