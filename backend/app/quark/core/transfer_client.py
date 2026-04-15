@@ -172,12 +172,13 @@ class QuarkTransferClient:
             )
         return url, params
     
-    async def get_stoken(self, pwd_id: str) -> Optional[str]:
+    async def get_stoken(self, pwd_id: str, passcode: str = "") -> Optional[str]:
         """
         获取分享的stoken
         
         Args:
             pwd_id: 分享ID
+            passcode: 分享提取码（无提取码时为空字符串）
             
         Returns:
             stoken，失败返回None
@@ -187,7 +188,7 @@ class QuarkTransferClient:
         params["uc_param_str"] = ""
         url, params = self._apply_mobile_share_params(url, params)
         headers = self._build_headers(json_body=True, include_cookie=not self.mparam)
-        payload = {"pwd_id": pwd_id, "passcode": ""}
+        payload = {"pwd_id": pwd_id, "passcode": passcode or ""}
         
         try:
             async with self.session.post(url, headers=headers, params=params, json=payload, allow_redirects=False) as response:
@@ -628,7 +629,7 @@ class QuarkTransferClient:
         if not pwd_id:
             return False, None, None
         
-        stoken = await self.get_stoken(pwd_id)
+        stoken = await self.get_stoken(pwd_id, passcode)
         if stoken:
             return True, pwd_id, stoken
         
