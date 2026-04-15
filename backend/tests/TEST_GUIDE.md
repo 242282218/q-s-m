@@ -10,28 +10,31 @@ pip install pytest pytest-asyncio httpx
 
 ### 运行所有测试
 ```bash
-pytest
+python -m pytest -q tests
 ```
 
 ### 运行特定测试
 ```bash
 # Collections API测试
-pytest tests/test_api_collections.py
+python -m pytest tests/test_api_collections.py
 
 # Transfers API测试
-pytest tests/test_api_transfers.py
+python -m pytest tests/test_api_transfers.py
 
 # SSE流测试
-pytest tests/test_sse_streams.py
+python -m pytest tests/test_sse_streams.py
 
 # 并发测试
-pytest tests/test_concurrent_operations.py
+python -m pytest tests/test_concurrent_operations.py
+
+# 首页 Hero 缓存并发回归
+python -m pytest tests/test_home_hero_cache.py
 ```
 
 ### 生成覆盖率报告
 ```bash
 pip install pytest-cov
-pytest --cov=app --cov-report=html
+python -m pytest --cov=app --cov-report=html
 ```
 
 ## 前端测试
@@ -39,15 +42,15 @@ pytest --cov=app --cov-report=html
 ### 运行测试
 ```bash
 cd frontend
-npm test
+pnpm test -- --run
 ```
 
 ### 运行HTTP层测试
 ```bash
-npm test http.test.ts
+pnpm test -- src/__tests__/http.test.ts
 ```
 
 ### 生成覆盖率
 ```bash
-npm test -- --coverage
+pnpm test -- --coverage
 ```

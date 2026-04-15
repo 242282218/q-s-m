@@ -3,7 +3,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import time
+from asyncio import AbstractEventLoop
 from typing import Any
+from weakref import WeakKeyDictionary
 
 from fastapi import APIRouter, Request
 
@@ -24,6 +27,22 @@ SECTION_META: list[HomeSectionMeta] = [
 
 HERO_CACHE_TTL = 300
 _hero_cache: dict[str, Any] = {"data": None, "timestamp": 0}
+_hero_cache_locks: WeakKeyDictionary[AbstractEventLoop, asyncio.Lock] = WeakKeyDictionary()
+
+
+def _is_hero_cache_fresh(now: float) -> bool:
+    cache_data = _hero_cache.get("data")
+    cache_timestamp = _hero_cache.get("timestamp", 0)
+    return bool(cache_data) and (now - cache_timestamp) < HERO_CACHE_TTL
+
+
+def _get_hero_cache_lock() -> asyncio.Lock:
+    loop = asyncio.get_running_loop()
+    lock = _hero_cache_locks.get(loop)
+    if lock is None:
+        lock = asyncio.Lock()
+        _hero_cache_locks[loop] = lock
+    return lock
 
 
 def get_tmdb_client(request: Request) -> TmdbClient | None:
@@ -119,70 +138,76 @@ async def _get_hero_items(
     sections: dict[str, list[HomePosterItem]]
 ) -> list[HomeHeroItem]:
     """
-    获取 Hero 数据，带缓存和并发优化
+    获取 Hero 数据。
+    当缓存失效时，通过互斥锁避免并发请求同时触发 TMDB 明细拉取。
     """
-    import time
     now = time.time()
-    
-    if _hero_cache["data"] and (now - _hero_cache["timestamp"]) < HERO_CACHE_TTL:
-        return _hero_cache["data"]
-    
-    hero_candidates: list[HomePosterItem] = []
-    hero_candidates.extend(sections.get("tv_popular", [])[:3])
-    hero_candidates.extend(sections.get("tv_latest", [])[:2])
-    hero_candidates.extend(sections.get("top_rated", [])[:2])
-    hero_candidates.extend(sections.get("anime_popular", [])[:2])
 
-    if not hero_candidates:
-        return []
-    
-    selected = random.sample(hero_candidates, min(5, len(hero_candidates)))
-    
-    async def fetch_hero_detail(candidate: HomePosterItem) -> HomeHeroItem:
-        try:
-            detail_data = await tmdb_client.details(candidate.media_type, candidate.id)
-            adapted = adapt_detail(detail_data, tmdb_client)
-            
-            backdrop_url = await tmdb_client.get_best_backdrop(
-                candidate.media_type, candidate.id
-            )
-            if not backdrop_url:
-                backdrop_url = adapted.get("backdrop_url")
-            
-            return HomeHeroItem(
-                id=candidate.id,
-                media_type=candidate.media_type,
-                title=adapted.get("title", candidate.title),
-                year=parse_year(adapted.get("year", "")),
-                genres=[str(g) for g in adapted.get("genres", [])],
-                runtime=adapted.get("runtime"),
-                vote=adapted.get("vote"),
-                tagline=adapted.get("tagline", ""),
-                overview=adapted.get("overview", candidate.overview),
-                poster_url=adapted.get("poster_url") or candidate.poster_url,
-                backdrop_url=backdrop_url,
-            )
-        except Exception as e:
-            error_msg = f"Failed to fetch hero detail for {candidate.media_type}/{candidate.id}: {type(e).__name__}: {str(e) or 'Unknown error'}"
-            logger.warning(error_msg)
-            return HomeHeroItem(
-                id=candidate.id,
-                media_type=candidate.media_type,
-                title=candidate.title,
-                year=parse_year(candidate.subtitle[:4]) if candidate.subtitle else None,
-                genres=[],
-                runtime=None,
-                vote=None,
-                tagline="",
-                overview=candidate.overview,
-                poster_url=candidate.poster_url,
-                backdrop_url=candidate.backdrop_url,
-            )
-    
-    hero_items = await asyncio.gather(*[fetch_hero_detail(c) for c in selected])
-    
-    _hero_cache["data"] = hero_items
-    _hero_cache["timestamp"] = now
-    
-    return hero_items
+    if _is_hero_cache_fresh(now):
+        return _hero_cache["data"]
+
+    lock = _get_hero_cache_lock()
+    async with lock:
+        now = time.time()
+        if _is_hero_cache_fresh(now):
+            return _hero_cache["data"]
+
+        hero_candidates: list[HomePosterItem] = []
+        hero_candidates.extend(sections.get("tv_popular", [])[:3])
+        hero_candidates.extend(sections.get("tv_latest", [])[:2])
+        hero_candidates.extend(sections.get("top_rated", [])[:2])
+        hero_candidates.extend(sections.get("anime_popular", [])[:2])
+
+        if not hero_candidates:
+            return []
+
+        selected = random.sample(hero_candidates, min(5, len(hero_candidates)))
+
+        async def fetch_hero_detail(candidate: HomePosterItem) -> HomeHeroItem:
+            try:
+                detail_data = await tmdb_client.details(candidate.media_type, candidate.id)
+                adapted = adapt_detail(detail_data, tmdb_client)
+
+                backdrop_url = await tmdb_client.get_best_backdrop(
+                    candidate.media_type, candidate.id
+                )
+                if not backdrop_url:
+                    backdrop_url = adapted.get("backdrop_url")
+
+                return HomeHeroItem(
+                    id=candidate.id,
+                    media_type=candidate.media_type,
+                    title=adapted.get("title", candidate.title),
+                    year=parse_year(adapted.get("year", "")),
+                    genres=[str(g) for g in adapted.get("genres", [])],
+                    runtime=adapted.get("runtime"),
+                    vote=adapted.get("vote"),
+                    tagline=adapted.get("tagline", ""),
+                    overview=adapted.get("overview", candidate.overview),
+                    poster_url=adapted.get("poster_url") or candidate.poster_url,
+                    backdrop_url=backdrop_url,
+                )
+            except Exception as e:
+                error_msg = f"Failed to fetch hero detail for {candidate.media_type}/{candidate.id}: {type(e).__name__}: {str(e) or 'Unknown error'}"
+                logger.warning(error_msg)
+                return HomeHeroItem(
+                    id=candidate.id,
+                    media_type=candidate.media_type,
+                    title=candidate.title,
+                    year=parse_year(candidate.subtitle[:4]) if candidate.subtitle else None,
+                    genres=[],
+                    runtime=None,
+                    vote=None,
+                    tagline="",
+                    overview=candidate.overview,
+                    poster_url=candidate.poster_url,
+                    backdrop_url=candidate.backdrop_url,
+                )
+
+        hero_items = await asyncio.gather(*[fetch_hero_detail(c) for c in selected])
+
+        _hero_cache["data"] = hero_items
+        _hero_cache["timestamp"] = now
+
+        return hero_items
 
