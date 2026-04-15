@@ -41,6 +41,8 @@ cp .env.example .env
    - `TMDB_API_KEY`
    - `QUARK_TRANSFER_COOKIE`
    - `API_KEY`
+3. For multi-worker deployment, set `CACHE_TYPE=redis` and a reachable `REDIS_URL`
+   so cache + rate limiting stay consistent across processes.
 
 Runtime settings updates are persisted to `storage/config/settings.env` by default. Existing local deployments that still use `backend/data/settings.env` remain compatible until migrated.
 

@@ -4,9 +4,11 @@
 import time
 import logging
 from collections import defaultdict
-from typing import Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 from fastapi import Request
 from fastapi.responses import JSONResponse
+
+from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -115,9 +117,110 @@ class RateLimiter:
             logger.debug(f"Cleaned up {len(keys_to_remove)} inactive rate limit keys")
 
 
+class RedisRateLimiter:
+    """Redis-backed fixed-window limiter for cross-process consistency."""
+
+    def __init__(
+        self,
+        redis_url: str,
+        requests_per_minute: int = 60,
+        requests_per_hour: int = 1000,
+        key_prefix: str = "qsm:rate_limit",
+        redis_client: Any | None = None,
+    ):
+        self.requests_per_minute = requests_per_minute
+        self.requests_per_hour = requests_per_hour
+        self.key_prefix = key_prefix
+        if redis_client is not None:
+            self._redis = redis_client
+            return
+        import redis.asyncio as redis
+
+        self._redis = redis.from_url(redis_url, decode_responses=True)
+
+    def _window_keys(self, key: str, now: int) -> tuple[str, str]:
+        minute_bucket = now // 60
+        hour_bucket = now // 3600
+        minute_key = f"{self.key_prefix}:{key}:m:{minute_bucket}"
+        hour_key = f"{self.key_prefix}:{key}:h:{hour_bucket}"
+        return minute_key, hour_key
+
+    @staticmethod
+    def _ttl_or_fallback(ttl: int, fallback: int) -> int:
+        return ttl if ttl > 0 else fallback
+
+    async def is_allowed(self, key: str) -> Tuple[bool, dict]:
+        now = int(time.time())
+        minute_key, hour_key = self._window_keys(key, now)
+
+        minute_count = int(await self._redis.incr(minute_key))
+        if minute_count == 1:
+            await self._redis.expire(minute_key, 60)
+
+        hour_count = int(await self._redis.incr(hour_key))
+        if hour_count == 1:
+            await self._redis.expire(hour_key, 3600)
+
+        minute_ttl = int(await self._redis.ttl(minute_key))
+        hour_ttl = int(await self._redis.ttl(hour_key))
+
+        if minute_count > self.requests_per_minute:
+            return False, {
+                "limit": self.requests_per_minute,
+                "window": "minute",
+                "remaining": 0,
+                "retry_after": self._ttl_or_fallback(minute_ttl, 60),
+            }
+
+        if hour_count > self.requests_per_hour:
+            return False, {
+                "limit": self.requests_per_hour,
+                "window": "hour",
+                "remaining": 0,
+                "retry_after": self._ttl_or_fallback(hour_ttl, 3600),
+            }
+
+        minute_remaining = max(0, self.requests_per_minute - minute_count)
+        hour_remaining = max(0, self.requests_per_hour - hour_count)
+        return True, {
+            "limit": self.requests_per_minute,
+            "window": "minute",
+            "remaining": min(minute_remaining, hour_remaining),
+            "retry_after": 0,
+        }
+
+
 # 生产环境标准限制：60 次/分钟，1000 次/小时
 # 本地开发环境可适当放宽，但不应过高以避免资源耗尽
 rate_limiter = RateLimiter(requests_per_minute=60, requests_per_hour=1000)
+
+
+def _build_redis_rate_limiter() -> Optional[RedisRateLimiter]:
+    settings = get_settings()
+    if not settings.cache_enabled or settings.cache_type != "redis":
+        return None
+    try:
+        return RedisRateLimiter(
+            redis_url=settings.redis_url,
+            requests_per_minute=rate_limiter.requests_per_minute,
+            requests_per_hour=rate_limiter.requests_per_hour,
+        )
+    except Exception as exc:
+        logger.warning("Redis rate limiter disabled, fallback to in-memory limiter: %s", exc)
+        return None
+
+
+_redis_rate_limiter = _build_redis_rate_limiter()
+
+
+async def _is_allowed_with_fallback(key: str) -> Tuple[bool, dict]:
+    if _redis_rate_limiter is None:
+        return rate_limiter.is_allowed(key)
+    try:
+        return await _redis_rate_limiter.is_allowed(key)
+    except Exception as exc:
+        logger.warning("Redis rate limiter runtime error, fallback to in-memory limiter: %s", exc)
+        return rate_limiter.is_allowed(key)
 
 # 不参与限流的路径前缀（静态资源、HMR、健康检查等）
 _RATE_LIMIT_SKIP_PREFIXES = (
@@ -149,7 +252,7 @@ async def rate_limit_middleware(request: Request, call_next):
     client_ip = request.client.host if request.client else "unknown"
 
     # 先检查是否允许 —— 不允许则直接返回 429，不执行下游请求
-    allowed, info = rate_limiter.is_allowed(client_ip)
+    allowed, info = await _is_allowed_with_fallback(client_ip)
 
     if not allowed:
         return JSONResponse(
