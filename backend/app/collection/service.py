@@ -5,6 +5,7 @@ Collection 业务逻辑服务
 - 2024-02-24: 优化 list() 方法，使用单次查询获取总数和数据
 - 2026-02-28: 添加 selectinload 优化关联查询，添加批量获取关联数据方法
 """
+import base64
 import json
 import logging
 from typing import Optional, List, Tuple
@@ -515,8 +516,6 @@ class CollectionService:
         cursor_data = None
         if cursor:
             try:
-                import base64
-                import json
                 padding = 4 - len(cursor) % 4
                 if padding != 4:
                     cursor += '=' * padding
