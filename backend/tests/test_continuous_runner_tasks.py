@@ -206,6 +206,32 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             ):
                 load_tasks(tasks_file)
 
+    def test_load_tasks_rejects_non_positive_or_non_integer_timeout(self):
+        invalid_timeouts = ["30", 0, -1, True]
+
+        for timeout in invalid_timeouts:
+            payload = {
+                "tasks": [
+                    {
+                        "name": "backend_pytest",
+                        "module": "backend",
+                        "cwd": "backend",
+                        "command": ["python", "-m", "pytest"],
+                        "timeout": timeout,
+                    }
+                ]
+            }
+
+            with self.subTest(timeout=timeout):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    tasks_file = Path(temp_dir) / "tasks.invalid.json"
+                    tasks_file.write_text(json.dumps(payload), encoding="utf-8")
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        r"Task field 'timeout' must be a positive integer",
+                    ):
+                        load_tasks(tasks_file)
+
     def test_run_loop_returns_error_for_invalid_tasks_file_schema(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
