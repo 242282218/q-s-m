@@ -5,6 +5,10 @@
       "module": "backend",
       "cwd": "backend",
       "command": ["python", "-m", "pytest"],
+      "agent": {
+        "name": "backend-agent",
+        "model": "gpt-5.3-codex"
+      },
       "timeout": 1800,
       "enabled": true
     },
@@ -13,6 +17,10 @@
       "module": "frontend",
       "cwd": "frontend",
       "command": ["pnpm", "run", "lint"],
+      "agent": {
+        "name": "frontend-agent",
+        "model": "gpt-5.3-codex"
+      },
       "timeout": 900,
       "enabled": true
     },
@@ -21,6 +29,10 @@
       "module": "frontend",
       "cwd": "frontend",
       "command": ["pnpm", "test"],
+      "agent": {
+        "name": "frontend-agent",
+        "model": "gpt-5.3-codex"
+      },
       "timeout": 1200,
       "enabled": true
     },
@@ -29,6 +41,10 @@
       "module": "frontend",
       "cwd": "frontend",
       "command": ["pnpm", "build"],
+      "agent": {
+        "name": "frontend-agent",
+        "model": "gpt-5.3-codex"
+      },
       "timeout": 900,
       "enabled": true
     },
@@ -37,6 +53,10 @@
       "module": "performance",
       "cwd": "backend",
       "command": ["python", "../tests/performance/benchmark.py", "--output-json"],
+      "agent": {
+        "name": "backend-agent",
+        "model": "gpt-5.3-codex"
+      },
       "timeout": 900,
       "enabled": true
     }

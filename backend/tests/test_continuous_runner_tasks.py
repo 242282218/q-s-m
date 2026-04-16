@@ -66,7 +66,7 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertEqual(frontend_build.cwd, Path("frontend"))
         self.assertEqual(frontend_build.command, ["pnpm", "build"])
         self.assertEqual(frontend_build.timeout, 900)
-        self.assertEqual(frontend_build.agent, DEFAULT_AGENT_NAME)
+        self.assertEqual(frontend_build.agent, "frontend-agent")
         self.assertEqual(frontend_build.model, DEFAULT_AGENT_MODEL)
 
         performance_task = tasks_by_name["performance_benchmark"]
@@ -75,6 +75,7 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             performance_task.command,
             ["python", "../tests/performance/benchmark.py", "--output-json"],
         )
+        self.assertEqual(performance_task.agent, "backend-agent")
         self.assertEqual(performance_task.model, DEFAULT_AGENT_MODEL)
 
     def test_load_tasks_supports_utf8_bom(self):

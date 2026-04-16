@@ -31,6 +31,21 @@ pnpm install
 pnpm dev
 ```
 
+## Continuous QA Loop
+
+Use the built-in continuous runner to execute default backend/frontend checks in a loop:
+
+```bash
+python ops/continuous/continuous_runner.py --max-workers 2 --interval 60
+```
+
+Default task config lives in `ops/continuous/tasks.default.json`.
+It is pre-split into `backend-agent` and `frontend-agent` lanes:
+
+- tasks in the same agent run sequentially (stable context, less interference)
+- different agents can run in parallel (controlled by `--max-workers`)
+- `agent.model` is fixed to `gpt-5.3-codex` and invalid models fail fast
+
 ## Environment
 
 1. Copy the template:
