@@ -21,6 +21,7 @@ from ops.continuous.continuous_runner import (
     TaskDefinition,
     build_suggestions,
     load_tasks,
+    reserve_next_iteration,
     run_loop,
     run_task,
 )
@@ -1036,6 +1037,48 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(len(captured), 1)
         self.assertEqual(captured[0]["iteration"], 12)
+
+    def test_reserve_next_iteration_returns_unique_values_across_threads(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            log_dir = Path(temp_dir) / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            (log_dir / "latest.json").write_text(
+                json.dumps({"iteration": 12}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            barrier = threading.Barrier(3)
+            results: list[int] = []
+            errors: list[BaseException] = []
+            lock = threading.Lock()
+
+            def reserve_in_thread() -> None:
+                try:
+                    barrier.wait(timeout=5)
+                    iteration = reserve_next_iteration(log_dir)
+                    with lock:
+                        results.append(iteration)
+                except BaseException as err:
+                    with lock:
+                        errors.append(err)
+
+            threads = [
+                threading.Thread(target=reserve_in_thread),
+                threading.Thread(target=reserve_in_thread),
+            ]
+            for thread in threads:
+                thread.start()
+
+            barrier.wait(timeout=5)
+
+            for thread in threads:
+                thread.join(timeout=5)
+
+            self.assertEqual(errors, [])
+            self.assertEqual(sorted(results), [13, 14])
+            self.assertEqual(
+                (log_dir / ".iteration-counter").read_text(encoding="utf-8").strip(),
+                "14",
+            )
 
     def test_run_loop_parallel_workers_execute_tasks_concurrently_and_keep_order(self):
         first_task = TaskDefinition(

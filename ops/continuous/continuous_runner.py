@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -12,16 +14,23 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 DEFAULT_TASKS_FILE = Path("ops/continuous/tasks.default.json")
 DEFAULT_LOG_DIR = Path("storage/logs/continuous")
 DEFAULT_AGENT_NAME = "default"
 DEFAULT_AGENT_MODEL = "gpt-5.3-codex"
+ITERATION_COUNTER_FILE = ".iteration-counter"
+ITERATION_LOCK_FILE = ".iteration-lock"
 ANSI_CSI_PATTERN = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 ANSI_OSC_PATTERN = re.compile(r"\x1B\][^\x1B\x07]*(?:\x07|\x1B\\)")
 ANSI_SINGLE_ESCAPE_PATTERN = re.compile(r"\x1B(?:[@-Z\\-_]|[78])")
 ITERATION_REPORT_PATTERN = re.compile(r"^iteration-(\d+)-\d{8}-\d{6}\.json$")
+
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
 
 
 def parse_agent(raw: Any) -> tuple[str, str]:
@@ -707,6 +716,67 @@ def infer_next_iteration(log_dir: Path) -> int:
     return history_next or 1
 
 
+def _ensure_lock_file_bytes(handle: Any) -> None:
+    handle.seek(0, os.SEEK_END)
+    if handle.tell() == 0:
+        handle.write(b"0")
+        handle.flush()
+    handle.seek(0)
+
+
+def _lock_file(handle: Any) -> None:
+    _ensure_lock_file_bytes(handle)
+    if os.name == "nt":
+        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+        return
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+
+
+def _unlock_file(handle: Any) -> None:
+    handle.seek(0)
+    if os.name == "nt":
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        return
+    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+@contextmanager
+def _lock_iteration_state(log_dir: Path) -> Iterator[None]:
+    log_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = log_dir / ITERATION_LOCK_FILE
+    with lock_path.open("a+b") as handle:
+        _lock_file(handle)
+        try:
+            yield
+        finally:
+            _unlock_file(handle)
+
+
+def _read_reserved_iteration(log_dir: Path) -> int:
+    counter_path = log_dir / ITERATION_COUNTER_FILE
+    try:
+        raw_value = counter_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return 0
+    if raw_value.isdigit():
+        iteration = int(raw_value)
+        if iteration > 0:
+            return iteration
+    return 0
+
+
+def reserve_next_iteration(log_dir: Path) -> int:
+    with _lock_iteration_state(log_dir):
+        next_from_reports = infer_next_iteration(log_dir)
+        last_reserved = _read_reserved_iteration(log_dir)
+        reserved_iteration = max(next_from_reports, last_reserved + 1)
+        (log_dir / ITERATION_COUNTER_FILE).write_text(
+            str(reserved_iteration),
+            encoding="utf-8",
+        )
+        return reserved_iteration
+
+
 def run_loop(args: argparse.Namespace) -> int:
     try:
         interval, max_iterations, tail_lines, default_timeout, max_workers = (
@@ -728,7 +798,6 @@ def run_loop(args: argparse.Namespace) -> int:
         )
         max_workers = 1
 
-    iteration = infer_next_iteration(log_dir)
     executed_iterations = 0
     while True:
         try:
@@ -738,6 +807,11 @@ def run_loop(args: argparse.Namespace) -> int:
             return 1
         if not tasks:
             print("No enabled tasks found.")
+            return 1
+        try:
+            iteration = reserve_next_iteration(log_dir)
+        except OSError as err:
+            print(f"Failed to reserve iteration id: {err}", file=sys.stderr)
             return 1
 
         iteration_started = datetime.now().astimezone().isoformat()
@@ -794,7 +868,6 @@ def run_loop(args: argparse.Namespace) -> int:
         wait_seconds = max(0.0, interval - elapsed)
         if wait_seconds > 0:
             time.sleep(wait_seconds)
-        iteration += 1
 
 
 def main() -> int:
