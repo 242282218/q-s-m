@@ -51,6 +51,7 @@ It is pre-split into `backend-agent`, `frontend-agent`, and `performance-agent` 
 - `task.cwd` must stay inside `repo_root`; absolute path / `..` escape is rejected
 - `task.cwd` must resolve to an existing directory; missing/non-directory paths fail fast
 - unhandled task errors and unexpected lane-level errors are downgraded to failed task results (`exit_code=70`); finished lane tasks are preserved, incomplete lane result sets only backfill missing tasks, and invalid lane indexes are treated as lane-level failures
+- `optimization_suggestions` adds task-specific guidance for the default frontend quality gates, so lint / format / test / build failures point to the next fix path instead of a generic fallback
 - next iteration id resumes from `latest.json`; if `latest.json` is broken/stale, runner falls back to highest `iteration-*.json`
 - runners that share the same `log_dir` reserve iteration ids through a lock-backed counter, so updated processes do not reuse the same iteration number concurrently
 

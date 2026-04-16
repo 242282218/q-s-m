@@ -495,6 +495,60 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
                     suggestions,
                 )
 
+    def test_build_suggestions_includes_frontend_gate_guidance(self):
+        cases = [
+            (
+                "frontend_lint_check",
+                ["C:/Program Files/nodejs/pnpm.cmd", "run", "lint:check"],
+                "frontend_lint_check: fix the reported ESLint violations in frontend sources before rerunning.",
+            ),
+            (
+                "frontend_format_check",
+                ["C:/Program Files/nodejs/corepack.cmd", "pnpm", "run", "format:check"],
+                "frontend_format_check: apply formatter changes for the reported frontend files before rerunning.",
+            ),
+            (
+                "frontend_vitest",
+                ["C:/Program Files/nodejs/corepack.cmd", "pnpm", "test"],
+                "frontend_vitest: fix the failing frontend test cases before rerunning.",
+            ),
+            (
+                "frontend_build",
+                ["C:/Program Files/nodejs/pnpm.cmd", "build"],
+                "frontend_build: fix the reported frontend build errors before rerunning.",
+            ),
+        ]
+
+        for name, command, expected in cases:
+            with self.subTest(name=name):
+                failed = self._passed_result(name, agent="frontend-agent")
+                failed["module"] = "frontend"
+                failed["command"] = command
+                failed["status"] = "failed"
+                failed["exit_code"] = 1
+                failed["stdout_tail"] = "frontend task failed"
+                suggestions = build_suggestions([failed])
+                self.assertIn(expected, suggestions)
+
+    def test_build_suggestions_prioritizes_missing_pnpm_over_frontend_gate_fix(self):
+        failed = self._passed_result("frontend_lint_check", agent="frontend-agent")
+        failed["module"] = "frontend"
+        failed["command"] = ["pnpm", "run", "lint:check"]
+        failed["status"] = "failed"
+        failed["exit_code"] = 127
+        failed["stderr_tail"] = "[WinError 2] The system cannot find the file specified"
+
+        suggestions = build_suggestions([failed])
+
+        self.assertIn(
+            "frontend_lint_check: install pnpm and rerun frontend tasks.",
+            suggestions,
+        )
+        self.assertNotIn(
+            "frontend_lint_check: fix the reported ESLint violations in frontend sources before rerunning.",
+            suggestions,
+        )
+
     def test_run_loop_returns_error_for_invalid_tasks_file_schema(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)

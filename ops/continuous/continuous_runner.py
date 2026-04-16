@@ -646,6 +646,33 @@ def run_tasks_parallel(
     return [result for result in ordered_results if result is not None]
 
 
+def command_tokens(command: Any) -> list[str]:
+    if not isinstance(command, list):
+        return []
+    tokens: list[str] = []
+    for part in command:
+        text = str(part).strip()
+        if text:
+            tokens.append(Path(text).name.lower())
+    return tokens
+
+
+def infer_frontend_suggestion(result: dict[str, Any]) -> str | None:
+    if str(result.get("module", "")).strip() != "frontend":
+        return None
+    name = result["name"]
+    tokens = command_tokens(result.get("command"))
+    if "lint:check" in tokens:
+        return f"{name}: fix the reported ESLint violations in frontend sources before rerunning."
+    if "format:check" in tokens:
+        return f"{name}: apply formatter changes for the reported frontend files before rerunning."
+    if "test" in tokens:
+        return f"{name}: fix the failing frontend test cases before rerunning."
+    if "build" in tokens:
+        return f"{name}: fix the reported frontend build errors before rerunning."
+    return None
+
+
 def build_suggestions(task_results: list[dict[str, Any]]) -> list[str]:
     suggestions: list[str] = []
     for result in task_results:
@@ -653,6 +680,7 @@ def build_suggestions(task_results: list[dict[str, Any]]) -> list[str]:
             continue
         text = f"{result['stdout_tail']}\n{result['stderr_tail']}"
         name = result["name"]
+        resolved_command = " ".join(str(part) for part in result["command"])
         if (
             "Task cwd '" in text
             and "repo root" in text
@@ -669,11 +697,12 @@ def build_suggestions(task_results: list[dict[str, Any]]) -> list[str]:
             suggestions.append(f"{name}: install missing Python dependencies.")
         if "No module named 'app'" in text:
             suggestions.append(f"{name}: run benchmark with backend as working directory.")
-        if (
-            "pnpm" in " ".join(result["command"])
-            and ("not recognized" in text or "WinError 2" in text)
-        ):
+        missing_pnpm = "pnpm" in resolved_command and ("not recognized" in text or "WinError 2" in text)
+        if missing_pnpm:
             suggestions.append(f"{name}: install pnpm and rerun frontend tasks.")
+        frontend_suggestion = None if missing_pnpm else infer_frontend_suggestion(result)
+        if frontend_suggestion:
+            suggestions.append(frontend_suggestion)
         if "FAILED" in text and "pytest" in " ".join(result["command"]):
             suggestions.append(f"{name}: prioritize failing pytest cases and isolate regressions.")
         if result["status"] == "timeout":
