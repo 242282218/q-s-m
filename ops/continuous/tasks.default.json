@@ -1,0 +1,36 @@
+{
+  "tasks": [
+    {
+      "name": "backend_pytest",
+      "module": "backend",
+      "cwd": "backend",
+      "command": ["python", "-m", "pytest"],
+      "timeout": 1800,
+      "enabled": true
+    },
+    {
+      "name": "frontend_lint_fix",
+      "module": "frontend",
+      "cwd": "frontend",
+      "command": ["pnpm", "run", "lint"],
+      "timeout": 900,
+      "enabled": true
+    },
+    {
+      "name": "frontend_vitest",
+      "module": "frontend",
+      "cwd": "frontend",
+      "command": ["pnpm", "test"],
+      "timeout": 1200,
+      "enabled": true
+    },
+    {
+      "name": "performance_benchmark",
+      "module": "performance",
+      "cwd": "backend",
+      "command": ["python", "../tests/performance/benchmark.py", "--output-json"],
+      "timeout": 900,
+      "enabled": true
+    }
+  ]
+}
