@@ -559,6 +559,87 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertEqual(run_count, 1)
         self.assertIn("forcing max-workers=1", stderr.getvalue())
 
+    def test_run_loop_stop_on_failure_marks_remaining_tasks_skipped(self):
+        first_task = TaskDefinition(
+            name="first_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+        )
+        second_task = TaskDefinition(
+            name="second_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            args = Namespace(
+                repo_root=repo_root,
+                tasks_file=repo_root / "tasks.json",
+                log_dir=repo_root / "logs",
+                interval=0.0,
+                max_iterations=1,
+                tail_lines=20,
+                default_timeout=30,
+                max_workers=1,
+                stop_on_failure=True,
+            )
+            report_path = repo_root / "report.json"
+            run_count = 0
+            captured: list[dict[str, object]] = []
+
+            def fake_run_task(*task_args: object, **_kwargs: object) -> dict[str, object]:
+                nonlocal run_count
+                run_count += 1
+                task = task_args[0]
+                assert isinstance(task, TaskDefinition)
+                if task.name == "first_task":
+                    result = self._passed_result(task.name)
+                    result["status"] = "failed"
+                    result["exit_code"] = 1
+                    result["stderr_tail"] = "FAILED"
+                    return result
+                return self._passed_result(task.name)
+
+            def capture_iteration_payload(_log_dir: Path, payload: dict[str, object]) -> Path:
+                captured.append(payload.copy())
+                return report_path
+
+            with (
+                patch(
+                    "ops.continuous.continuous_runner.load_tasks",
+                    return_value=[first_task, second_task],
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.run_task",
+                    side_effect=fake_run_task,
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.persist_iteration",
+                    side_effect=capture_iteration_payload,
+                ),
+            ):
+                exit_code = run_loop(args)
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(run_count, 1)
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(captured[0]["overall_status"], "failed")
+        self.assertEqual(captured[0]["failed_count"], 1)
+        self.assertEqual(captured[0]["task_count"], 2)
+        first_result = captured[0]["tasks"][0]
+        second_result = captured[0]["tasks"][1]
+        assert isinstance(first_result, dict)
+        assert isinstance(second_result, dict)
+        self.assertEqual(first_result["status"], "failed")
+        self.assertEqual(second_result["status"], "skipped")
+        self.assertEqual(second_result["exit_code"], 125)
+        self.assertIn("Skipped because stop-on-failure", str(second_result["stderr_tail"]))
+
     def test_run_loop_parallel_worker_exception_turns_into_failed_task(self):
         first_task = TaskDefinition(
             name="first_task",

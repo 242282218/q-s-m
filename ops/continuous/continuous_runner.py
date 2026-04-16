@@ -220,6 +220,28 @@ def run_task_safe(
         }
 
 
+def build_skipped_task_result(
+    task: TaskDefinition,
+    default_timeout: int,
+    reason: str,
+) -> dict[str, Any]:
+    timestamp = datetime.now().astimezone().isoformat()
+    return {
+        "name": task.name,
+        "module": task.module,
+        "cwd": str(task.cwd),
+        "command": resolve_command(normalize_command(task.command)),
+        "status": "skipped",
+        "exit_code": 125,
+        "timeout_seconds": task.timeout or default_timeout,
+        "duration_seconds": 0.0,
+        "started_at": timestamp,
+        "finished_at": timestamp,
+        "stdout_tail": "",
+        "stderr_tail": reason,
+    }
+
+
 def print_task_result(iteration: int, task_name: str, result: dict[str, Any]) -> None:
     print(
         f"[{iteration:04d}] {task_name} => {result['status']} "
@@ -236,11 +258,23 @@ def run_tasks_sequential(
     stop_on_failure: bool,
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
-    for task in tasks:
+    for index, task in enumerate(tasks):
         result = run_task_safe(task, repo_root, tail_lines, default_timeout)
         results.append(result)
         print_task_result(iteration, task.name, result)
         if stop_on_failure and result["status"] != "passed":
+            skipped_reason = (
+                "Skipped because stop-on-failure halted the iteration after "
+                "a previous task failed."
+            )
+            for skipped_task in tasks[index + 1 :]:
+                skipped_result = build_skipped_task_result(
+                    skipped_task,
+                    default_timeout,
+                    skipped_reason,
+                )
+                results.append(skipped_result)
+                print_task_result(iteration, skipped_task.name, skipped_result)
             break
     return results
 
@@ -270,7 +304,7 @@ def run_tasks_parallel(
 def build_suggestions(task_results: list[dict[str, Any]]) -> list[str]:
     suggestions: list[str] = []
     for result in task_results:
-        if result["status"] == "passed":
+        if result["status"] in {"passed", "skipped"}:
             continue
         text = f"{result['stdout_tail']}\n{result['stderr_tail']}"
         name = result["name"]
@@ -369,7 +403,9 @@ def run_loop(args: argparse.Namespace) -> int:
                 max_workers=max_workers,
             )
 
-        failed_count = sum(item["status"] != "passed" for item in iteration_results)
+        failed_count = sum(
+            item["status"] not in {"passed", "skipped"} for item in iteration_results
+        )
         payload = {
             "iteration": iteration,
             "started_at": iteration_started,
