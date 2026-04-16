@@ -498,6 +498,18 @@ def build_suggestions(task_results: list[dict[str, Any]]) -> list[str]:
             continue
         text = f"{result['stdout_tail']}\n{result['stderr_tail']}"
         name = result["name"]
+        if (
+            "Task cwd '" in text
+            and "repo root" in text
+            and (
+                "escapes repo root" in text
+                or "does not exist under repo root" in text
+                or "is not a directory under repo root" in text
+            )
+        ):
+            suggestions.append(
+                f"{name}: fix task.cwd to an existing directory under repo_root."
+            )
         if "ModuleNotFoundError" in text or "No module named" in text:
             suggestions.append(f"{name}: install missing Python dependencies.")
         if "No module named 'app'" in text:

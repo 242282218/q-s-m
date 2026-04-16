@@ -19,6 +19,7 @@ from ops.continuous.continuous_runner import (
     DEFAULT_AGENT_NAME,
     DEFAULT_TASKS_FILE,
     TaskDefinition,
+    build_suggestions,
     load_tasks,
     run_loop,
     run_task,
@@ -453,6 +454,25 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
                 r"Task field 'agent.model' must be 'gpt-5.3-codex'",
             ):
                 load_tasks(tasks_file)
+
+    def test_build_suggestions_includes_task_cwd_fix_guidance(self):
+        error_texts = [
+            "Task cwd '..' escapes repo root 'C:/repo'.",
+            "Task cwd 'missing-dir' does not exist under repo root 'C:/repo'.",
+            "Task cwd 'task.cwd' is not a directory under repo root 'C:/repo'.",
+        ]
+
+        for error_text in error_texts:
+            with self.subTest(error_text=error_text):
+                failed = self._passed_result("cwd_task")
+                failed["status"] = "failed"
+                failed["exit_code"] = 78
+                failed["stderr_tail"] = error_text
+                suggestions = build_suggestions([failed])
+                self.assertIn(
+                    "cwd_task: fix task.cwd to an existing directory under repo_root.",
+                    suggestions,
+                )
 
     def test_run_loop_returns_error_for_invalid_tasks_file_schema(self):
         with tempfile.TemporaryDirectory() as temp_dir:
