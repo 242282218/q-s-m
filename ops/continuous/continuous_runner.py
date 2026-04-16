@@ -15,7 +15,9 @@ from typing import Any
 
 DEFAULT_TASKS_FILE = Path("ops/continuous/tasks.default.json")
 DEFAULT_LOG_DIR = Path("storage/logs/continuous")
-ANSI_ESCAPE_PATTERN = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
+ANSI_CSI_PATTERN = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
+ANSI_OSC_PATTERN = re.compile(r"\x1B\][^\x1B\x07]*(?:\x07|\x1B\\)")
+ANSI_SINGLE_ESCAPE_PATTERN = re.compile(r"\x1B(?:[@-Z\\-_]|[78])")
 
 
 @dataclass(frozen=True)
@@ -69,7 +71,9 @@ def tail_text(text: str, tail_lines: int) -> str:
 
 
 def strip_ansi_sequences(text: str) -> str:
-    return ANSI_ESCAPE_PATTERN.sub("", text)
+    sanitized = ANSI_OSC_PATTERN.sub("", text)
+    sanitized = ANSI_CSI_PATTERN.sub("", sanitized)
+    return ANSI_SINGLE_ESCAPE_PATTERN.sub("", sanitized)
 
 
 def normalize_command(command: list[str]) -> list[str]:

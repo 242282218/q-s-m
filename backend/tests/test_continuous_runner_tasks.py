@@ -67,6 +67,33 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertNotIn("\u001b[", result["stdout_tail"])
         self.assertNotIn("\u001b[", result["stderr_tail"])
 
+    def test_run_task_strips_osc_and_single_escape_sequences(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            script = temp_path / "emit_osc.py"
+            script.write_text(
+                (
+                    "import sys\n"
+                    "sys.stdout.write('\\x1b]0;runner-title\\x07ok\\n')\n"
+                    "sys.stderr.write('\\x1b7saved\\x1b8\\n')\n"
+                ),
+                encoding="utf-8",
+            )
+            task = TaskDefinition(
+                name="osc_output",
+                module="test",
+                cwd=Path("."),
+                command=["python", str(script.name)],
+                timeout=30,
+            )
+            result = run_task(task, temp_path, tail_lines=20, default_timeout=30)
+
+        self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["stdout_tail"].strip(), "ok")
+        self.assertEqual(result["stderr_tail"].strip(), "saved")
+        self.assertNotIn("\u001b]", result["stdout_tail"])
+        self.assertNotIn("\u001b7", result["stderr_tail"])
+
 
 if __name__ == "__main__":
     unittest.main()
