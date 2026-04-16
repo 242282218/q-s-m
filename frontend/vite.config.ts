@@ -18,6 +18,26 @@ export default defineConfig(({ mode }) => {
       environment: "node",
       globals: true,
       include: ["src/**/*.test.ts", "tests/**/*.test.ts", "tests/**/*.test.mjs"],
+      coverage: {
+        provider: "v8",
+        reportsDirectory: "./coverage",
+        reporter: ["text-summary", "json-summary"],
+        include: [
+          "src/App.vue",
+          "src/api/**/*.ts",
+          "src/composables/useApiCache.ts",
+          "src/lib/**/*.ts",
+          "src/shared/lib/**/*.ts",
+          "src/utils/**/*.ts",
+        ],
+        exclude: ["src/**/*.d.ts", "src/**/__tests__/**"],
+        thresholds: {
+          branches: 60,
+          functions: 45,
+          lines: 50,
+          statements: 50,
+        },
+      },
     },
     server: {
       host: "0.0.0.0",

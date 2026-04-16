@@ -91,6 +91,13 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertEqual(frontend_build.agent, "frontend-agent")
         self.assertEqual(frontend_build.model, DEFAULT_AGENT_MODEL)
 
+        frontend_vitest = tasks_by_name["frontend_vitest"]
+        self.assertEqual(frontend_vitest.cwd, Path("frontend"))
+        self.assertEqual(frontend_vitest.command, ["pnpm", "run", "test:coverage"])
+        self.assertEqual(frontend_vitest.timeout, 1200)
+        self.assertEqual(frontend_vitest.agent, "frontend-agent")
+        self.assertEqual(frontend_vitest.model, DEFAULT_AGENT_MODEL)
+
         performance_task = tasks_by_name["performance_benchmark"]
         self.assertEqual(performance_task.cwd, Path("backend"))
         self.assertEqual(
@@ -516,7 +523,7 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             ),
             (
                 "frontend_vitest",
-                ["C:/Program Files/nodejs/corepack.cmd", "pnpm", "test"],
+                ["C:/Program Files/nodejs/corepack.cmd", "pnpm", "run", "test:coverage"],
                 "frontend_vitest: fix the failing frontend test cases before rerunning.",
             ),
             (
@@ -536,6 +543,21 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
                 failed["stdout_tail"] = "frontend task failed"
                 suggestions = build_suggestions([failed])
                 self.assertIn(expected, suggestions)
+
+    def test_build_suggestions_includes_frontend_coverage_guidance(self):
+        failed = self._passed_result("frontend_vitest", agent="frontend-agent")
+        failed["module"] = "frontend"
+        failed["command"] = ["pnpm", "run", "test:coverage"]
+        failed["status"] = "failed"
+        failed["exit_code"] = 1
+        failed["stderr_tail"] = "Coverage for lines (49%) does not meet global threshold (50%)"
+
+        suggestions = build_suggestions([failed])
+
+        self.assertIn(
+            "frontend_vitest: raise frontend coverage or narrow the intended coverage scope before rerunning.",
+            suggestions,
+        )
 
     def test_build_suggestions_prioritizes_missing_pnpm_over_frontend_gate_fix(self):
         failed = self._passed_result("frontend_lint_check", agent="frontend-agent")

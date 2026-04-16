@@ -40,7 +40,7 @@
       "name": "frontend_vitest",
       "module": "frontend",
       "cwd": "frontend",
-      "command": ["pnpm", "test"],
+      "command": ["pnpm", "run", "test:coverage"],
       "agent": {
         "name": "frontend-agent",
         "model": "gpt-5.4"

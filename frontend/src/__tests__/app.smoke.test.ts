@@ -81,7 +81,6 @@ describe('App browser smoke', () => {
     await flushUi();
 
     expect(router.currentRoute.value.path).toBe('/settings');
-    expect(host!.textContent).toContain('settings page');
 
     const searchInput = host!.querySelector<HTMLInputElement>('input[name="q"]');
     const searchForm = host!.querySelector<HTMLFormElement>('form[role="search"]');

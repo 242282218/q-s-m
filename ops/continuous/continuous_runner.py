@@ -658,15 +658,23 @@ def command_tokens(command: Any) -> list[str]:
     return tokens
 
 
-def infer_frontend_suggestion(result: dict[str, Any]) -> str | None:
+def infer_frontend_suggestion(result: dict[str, Any], text: str) -> str | None:
     if str(result.get("module", "")).strip() != "frontend":
         return None
     name = result["name"]
     tokens = command_tokens(result.get("command"))
+    lower_text = text.lower()
     if "lint:check" in tokens:
         return f"{name}: fix the reported ESLint violations in frontend sources before rerunning."
     if "format:check" in tokens:
         return f"{name}: apply formatter changes for the reported frontend files before rerunning."
+    if "test:coverage" in tokens or "coverage.enabled" in tokens:
+        if "coverage" in lower_text and "threshold" in lower_text:
+            return (
+                f"{name}: raise frontend coverage or narrow the intended coverage scope "
+                "before rerunning."
+            )
+        return f"{name}: fix the failing frontend test cases before rerunning."
     if "test" in tokens:
         return f"{name}: fix the failing frontend test cases before rerunning."
     if "build" in tokens:
@@ -719,7 +727,7 @@ def build_suggestions(task_results: list[dict[str, Any]]) -> list[str]:
         missing_pnpm = "pnpm" in resolved_command and ("not recognized" in text or "WinError 2" in text)
         if missing_pnpm:
             suggestions.append(f"{name}: install pnpm and rerun frontend tasks.")
-        frontend_suggestion = None if missing_pnpm else infer_frontend_suggestion(result)
+        frontend_suggestion = None if missing_pnpm else infer_frontend_suggestion(result, text)
         if frontend_suggestion:
             suggestions.append(frontend_suggestion)
         performance_suggestion = infer_performance_suggestion(result, text)
