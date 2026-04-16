@@ -59,7 +59,12 @@ def parse_args() -> argparse.Namespace:
 
 def load_tasks(tasks_file: Path) -> list[TaskDefinition]:
     try:
-        payload = json.loads(tasks_file.read_text(encoding="utf-8-sig"))
+        raw_content = tasks_file.read_text(encoding="utf-8-sig")
+    except OSError as err:
+        raise ValueError(f"Unable to read tasks file '{tasks_file}': {err}") from err
+
+    try:
+        payload = json.loads(raw_content)
     except json.JSONDecodeError as err:
         raise ValueError(
             f"Invalid JSON in tasks file '{tasks_file}': "

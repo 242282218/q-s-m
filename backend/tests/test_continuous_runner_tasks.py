@@ -72,6 +72,12 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertEqual(tasks[0].cwd, Path("backend"))
         self.assertEqual(tasks[0].command, ["python", "-m", "pytest"])
 
+    def test_load_tasks_reports_missing_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            missing_file = Path(temp_dir) / "missing.tasks.json"
+            with self.assertRaisesRegex(ValueError, r"Unable to read tasks file"):
+                load_tasks(missing_file)
+
     def test_load_tasks_rejects_non_list_tasks_field(self):
         payload = {"tasks": {"name": "invalid"}}
 
@@ -117,6 +123,24 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             repo_root = Path(temp_dir)
             tasks_file = repo_root / "tasks.invalid.json"
             tasks_file.write_text(json.dumps({"tasks": {}}), encoding="utf-8")
+            args = Namespace(
+                repo_root=repo_root,
+                tasks_file=tasks_file,
+                log_dir=repo_root / "logs",
+                interval=1.0,
+                max_iterations=1,
+                tail_lines=20,
+                default_timeout=30,
+                stop_on_failure=False,
+            )
+            exit_code = run_loop(args)
+
+        self.assertEqual(exit_code, 1)
+
+    def test_run_loop_returns_error_for_missing_tasks_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            tasks_file = repo_root / "missing.tasks.json"
             args = Namespace(
                 repo_root=repo_root,
                 tasks_file=tasks_file,
