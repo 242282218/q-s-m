@@ -601,7 +601,11 @@ def run_loop(args: argparse.Namespace) -> int:
             "tasks": iteration_results,
             "optimization_suggestions": build_suggestions(iteration_results),
         }
-        report_path = persist_iteration(log_dir, payload)
+        try:
+            report_path = persist_iteration(log_dir, payload)
+        except OSError as err:
+            print(f"Failed to persist iteration report: {err}", file=sys.stderr)
+            return 1
         print(f"[{iteration:04d}] report => {report_path}")
 
         executed_iterations += 1

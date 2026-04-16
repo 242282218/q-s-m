@@ -491,6 +491,49 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 1)
 
+    def test_run_loop_returns_error_when_persist_iteration_fails(self):
+        task = TaskDefinition(
+            name="persist_failure_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            args = Namespace(
+                repo_root=repo_root,
+                tasks_file=repo_root / "tasks.json",
+                log_dir=repo_root / "logs",
+                interval=0.0,
+                max_iterations=1,
+                tail_lines=20,
+                default_timeout=30,
+                max_workers=1,
+                stop_on_failure=False,
+            )
+            with (
+                patch(
+                    "ops.continuous.continuous_runner.load_tasks",
+                    return_value=[task],
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.run_task",
+                    return_value=self._passed_result(task.name),
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.persist_iteration",
+                    side_effect=OSError("disk full"),
+                ),
+                patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                exit_code = run_loop(args)
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("Failed to persist iteration report", stderr.getvalue())
+        self.assertIn("disk full", stderr.getvalue())
+
     def test_run_loop_returns_error_for_negative_max_iterations(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
