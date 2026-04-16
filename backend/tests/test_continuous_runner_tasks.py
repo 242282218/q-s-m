@@ -15,6 +15,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from ops.continuous.continuous_runner import (
+    DEFAULT_AGENT_MODEL,
+    DEFAULT_AGENT_NAME,
     DEFAULT_TASKS_FILE,
     TaskDefinition,
     load_tasks,
@@ -25,10 +27,16 @@ from ops.continuous.continuous_runner import (
 
 class ContinuousRunnerTaskFileTests(unittest.TestCase):
     @staticmethod
-    def _passed_result(name: str) -> dict[str, object]:
+    def _passed_result(
+        name: str,
+        agent: str = DEFAULT_AGENT_NAME,
+        model: str = DEFAULT_AGENT_MODEL,
+    ) -> dict[str, object]:
         return {
             "name": name,
             "module": "test",
+            "agent": agent,
+            "model": model,
             "cwd": ".",
             "command": ["python", "-m", "pytest"],
             "status": "passed",
@@ -58,6 +66,8 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertEqual(frontend_build.cwd, Path("frontend"))
         self.assertEqual(frontend_build.command, ["pnpm", "build"])
         self.assertEqual(frontend_build.timeout, 900)
+        self.assertEqual(frontend_build.agent, DEFAULT_AGENT_NAME)
+        self.assertEqual(frontend_build.model, DEFAULT_AGENT_MODEL)
 
         performance_task = tasks_by_name["performance_benchmark"]
         self.assertEqual(performance_task.cwd, Path("backend"))
@@ -65,6 +75,7 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             performance_task.command,
             ["python", "../tests/performance/benchmark.py", "--output-json"],
         )
+        self.assertEqual(performance_task.model, DEFAULT_AGENT_MODEL)
 
     def test_load_tasks_supports_utf8_bom(self):
         payload = {
@@ -261,6 +272,71 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
                         r"Task field 'command' must be a non-empty string array",
                     ):
                         load_tasks(tasks_file)
+
+    def test_load_tasks_defaults_agent_and_model(self):
+        payload = {
+            "tasks": [
+                {
+                    "name": "backend_pytest",
+                    "module": "backend",
+                    "cwd": "backend",
+                    "command": ["python", "-m", "pytest"],
+                }
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tasks_file = Path(temp_dir) / "tasks.default-agent.json"
+            tasks_file.write_text(json.dumps(payload), encoding="utf-8")
+            tasks = load_tasks(tasks_file)
+
+        self.assertEqual(len(tasks), 1)
+        self.assertEqual(tasks[0].agent, DEFAULT_AGENT_NAME)
+        self.assertEqual(tasks[0].model, DEFAULT_AGENT_MODEL)
+
+    def test_load_tasks_rejects_non_object_agent_field(self):
+        payload = {
+            "tasks": [
+                {
+                    "name": "backend_pytest",
+                    "module": "backend",
+                    "cwd": "backend",
+                    "command": ["python", "-m", "pytest"],
+                    "agent": "backend-agent",
+                }
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tasks_file = Path(temp_dir) / "tasks.invalid-agent.json"
+            tasks_file.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                r"Task field 'agent' must be a JSON object",
+            ):
+                load_tasks(tasks_file)
+
+    def test_load_tasks_rejects_non_gpt_53_codex_agent_model(self):
+        payload = {
+            "tasks": [
+                {
+                    "name": "backend_pytest",
+                    "module": "backend",
+                    "cwd": "backend",
+                    "command": ["python", "-m", "pytest"],
+                    "agent": {"name": "backend-agent", "model": "gpt-4.1"},
+                }
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tasks_file = Path(temp_dir) / "tasks.invalid-agent-model.json"
+            tasks_file.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                r"Task field 'agent.model' must be 'gpt-5.3-codex'",
+            ):
+                load_tasks(tasks_file)
 
     def test_run_loop_returns_error_for_invalid_tasks_file_schema(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -672,6 +748,7 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             cwd=Path("."),
             command=["python", "-m", "pytest"],
             timeout=30,
+            agent="backend-agent",
         )
         second_task = TaskDefinition(
             name="second_task",
@@ -679,6 +756,7 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             cwd=Path("."),
             command=["python", "-m", "pytest"],
             timeout=30,
+            agent="frontend-agent",
         )
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -711,7 +789,7 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
                 time.sleep(delay)
                 with lock:
                     running -= 1
-                return self._passed_result(task.name)
+                return self._passed_result(task.name, task.agent, task.model)
 
             def capture_iteration_payload(_log_dir: Path, payload: dict[str, object]) -> Path:
                 captured.append(payload.copy())
@@ -740,6 +818,90 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             [task["name"] for task in captured[0]["tasks"]],
             ["first_task", "second_task"],
         )
+        self.assertEqual(
+            [task["agent"] for task in captured[0]["tasks"]],
+            ["backend-agent", "frontend-agent"],
+        )
+
+    def test_run_loop_parallel_workers_keep_same_agent_tasks_sequential(self):
+        first_task = TaskDefinition(
+            name="first_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+            agent="shared-agent",
+        )
+        second_task = TaskDefinition(
+            name="second_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+            agent="shared-agent",
+        )
+        third_task = TaskDefinition(
+            name="third_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+            agent="independent-agent",
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            args = Namespace(
+                repo_root=repo_root,
+                tasks_file=repo_root / "tasks.json",
+                log_dir=repo_root / "logs",
+                interval=0.0,
+                max_iterations=1,
+                tail_lines=20,
+                default_timeout=30,
+                max_workers=3,
+                stop_on_failure=False,
+            )
+            report_path = repo_root / "report.json"
+            lock = threading.Lock()
+            active_per_agent: dict[str, int] = {}
+            max_same_agent_running = 0
+            max_total_running = 0
+
+            def fake_run_task(*task_args: object, **_kwargs: object) -> dict[str, object]:
+                nonlocal max_same_agent_running, max_total_running
+                task = task_args[0]
+                assert isinstance(task, TaskDefinition)
+                with lock:
+                    active = active_per_agent.get(task.agent, 0) + 1
+                    active_per_agent[task.agent] = active
+                    total_running = sum(active_per_agent.values())
+                    max_same_agent_running = max(max_same_agent_running, active)
+                    max_total_running = max(max_total_running, total_running)
+                time.sleep(0.1)
+                with lock:
+                    active_per_agent[task.agent] -= 1
+                return self._passed_result(task.name, task.agent, task.model)
+
+            with (
+                patch(
+                    "ops.continuous.continuous_runner.load_tasks",
+                    return_value=[first_task, second_task, third_task],
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.run_task",
+                    side_effect=fake_run_task,
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.persist_iteration",
+                    return_value=report_path,
+                ),
+            ):
+                exit_code = run_loop(args)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(max_same_agent_running, 1)
+        self.assertGreaterEqual(max_total_running, 2)
 
     def test_run_loop_forces_single_worker_for_stop_on_failure(self):
         first_task = TaskDefinition(
@@ -1052,6 +1214,8 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             result = run_task(task, temp_path, tail_lines=20, default_timeout=30)
 
         self.assertEqual(result["status"], "passed")
+        self.assertEqual(result["agent"], DEFAULT_AGENT_NAME)
+        self.assertEqual(result["model"], DEFAULT_AGENT_MODEL)
         self.assertIn("red", result["stdout_tail"])
         self.assertIn("warn", result["stderr_tail"])
         self.assertNotIn("\u001b[", result["stdout_tail"])

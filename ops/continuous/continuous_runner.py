@@ -16,9 +16,37 @@ from typing import Any
 
 DEFAULT_TASKS_FILE = Path("ops/continuous/tasks.default.json")
 DEFAULT_LOG_DIR = Path("storage/logs/continuous")
+DEFAULT_AGENT_NAME = "default"
+DEFAULT_AGENT_MODEL = "gpt-5.3-codex"
 ANSI_CSI_PATTERN = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 ANSI_OSC_PATTERN = re.compile(r"\x1B\][^\x1B\x07]*(?:\x07|\x1B\\)")
 ANSI_SINGLE_ESCAPE_PATTERN = re.compile(r"\x1B(?:[@-Z\\-_]|[78])")
+
+
+def parse_agent(raw: Any) -> tuple[str, str]:
+    if raw is None:
+        return DEFAULT_AGENT_NAME, DEFAULT_AGENT_MODEL
+    if not isinstance(raw, dict):
+        raise ValueError("Task field 'agent' must be a JSON object.")
+
+    unknown_fields = sorted(set(raw) - {"name", "model"})
+    if unknown_fields:
+        unknown_list = ", ".join(unknown_fields)
+        raise ValueError(
+            f"Task field 'agent' only supports keys 'name' and 'model' (got: {unknown_list})."
+        )
+
+    name = raw.get("name", DEFAULT_AGENT_NAME)
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("Task field 'agent.name' must be a non-empty string.")
+
+    model = raw.get("model", DEFAULT_AGENT_MODEL)
+    if not isinstance(model, str) or not model.strip():
+        raise ValueError("Task field 'agent.model' must be a non-empty string.")
+    if model.strip() != DEFAULT_AGENT_MODEL:
+        raise ValueError(f"Task field 'agent.model' must be '{DEFAULT_AGENT_MODEL}'.")
+
+    return name.strip(), model.strip()
 
 
 @dataclass(frozen=True)
@@ -28,6 +56,8 @@ class TaskDefinition:
     cwd: Path
     command: list[str]
     timeout: int | None
+    agent: str = DEFAULT_AGENT_NAME
+    model: str = DEFAULT_AGENT_MODEL
 
     @staticmethod
     def from_dict(raw: dict[str, Any]) -> "TaskDefinition":
@@ -55,12 +85,15 @@ class TaskDefinition:
             timeout = timeout_raw
         else:
             raise ValueError("Task field 'timeout' must be a positive integer.")
+        agent, model = parse_agent(raw.get("agent"))
         return TaskDefinition(
             name=name.strip(),
             module=module.strip(),
             cwd=Path(cwd.strip()),
             command=normalized_command,
             timeout=timeout,
+            agent=agent,
+            model=model,
         )
 
 
@@ -236,6 +269,8 @@ def run_task(
     return {
         "name": task.name,
         "module": task.module,
+        "agent": task.agent,
+        "model": task.model,
         "cwd": str(task.cwd),
         "command": command,
         "status": status,
@@ -268,6 +303,8 @@ def run_task_safe(
         return {
             "name": task.name,
             "module": task.module,
+            "agent": task.agent,
+            "model": task.model,
             "cwd": str(task.cwd),
             "command": resolve_command(normalize_command(task.command)),
             "status": "failed",
@@ -290,6 +327,8 @@ def build_skipped_task_result(
     return {
         "name": task.name,
         "module": task.module,
+        "agent": task.agent,
+        "model": task.model,
         "cwd": str(task.cwd),
         "command": resolve_command(normalize_command(task.command)),
         "status": "skipped",
@@ -304,10 +343,35 @@ def build_skipped_task_result(
 
 
 def print_task_result(iteration: int, task_name: str, result: dict[str, Any]) -> None:
+    agent_name = str(result.get("agent", DEFAULT_AGENT_NAME))
     print(
-        f"[{iteration:04d}] {task_name} => {result['status']} "
+        f"[{iteration:04d}] {agent_name}/{task_name} => {result['status']} "
         f"({result['duration_seconds']}s)"
     )
+
+
+def build_agent_lanes(
+    tasks: list[TaskDefinition],
+) -> list[list[tuple[int, TaskDefinition]]]:
+    lanes: dict[str, list[tuple[int, TaskDefinition]]] = {}
+    for index, task in enumerate(tasks):
+        lanes.setdefault(task.agent, []).append((index, task))
+    return list(lanes.values())
+
+
+def run_agent_lane(
+    lane: list[tuple[int, TaskDefinition]],
+    repo_root: Path,
+    tail_lines: int,
+    default_timeout: int,
+    iteration: int,
+) -> list[tuple[int, dict[str, Any]]]:
+    lane_results: list[tuple[int, dict[str, Any]]] = []
+    for index, task in lane:
+        result = run_task_safe(task, repo_root, tail_lines, default_timeout)
+        lane_results.append((index, result))
+        print_task_result(iteration, task.name, result)
+    return lane_results
 
 
 def run_tasks_sequential(
@@ -349,16 +413,23 @@ def run_tasks_parallel(
     max_workers: int,
 ) -> list[dict[str, Any]]:
     ordered_results: list[dict[str, Any] | None] = [None] * len(tasks)
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+    lanes = build_agent_lanes(tasks)
+    worker_count = min(max_workers, len(lanes))
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
         futures = {
-            executor.submit(run_task_safe, task, repo_root, tail_lines, default_timeout): index
-            for index, task in enumerate(tasks)
+            executor.submit(
+                run_agent_lane,
+                lane,
+                repo_root,
+                tail_lines,
+                default_timeout,
+                iteration,
+            ): lane
+            for lane in lanes
         }
         for future in as_completed(futures):
-            index = futures[future]
-            result = future.result()
-            ordered_results[index] = result
-            print_task_result(iteration, tasks[index].name, result)
+            for index, result in future.result():
+                ordered_results[index] = result
     return [result for result in ordered_results if result is not None]
 
 
