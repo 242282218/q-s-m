@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ops.continuous.continuous_runner import load_tasks
+from ops.continuous.continuous_runner import TaskDefinition, load_tasks, run_task
 
 
 class ContinuousRunnerTaskFileTests(unittest.TestCase):
@@ -39,6 +39,33 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertEqual(tasks[0].name, "backend_pytest")
         self.assertEqual(tasks[0].cwd, Path("backend"))
         self.assertEqual(tasks[0].command, ["python", "-m", "pytest"])
+
+    def test_run_task_strips_ansi_escape_sequences(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            script = temp_path / "emit_ansi.py"
+            script.write_text(
+                (
+                    "import sys\n"
+                    "sys.stdout.write('\\x1b[31mred\\x1b[0m\\n')\n"
+                    "sys.stderr.write('\\x1b[33mwarn\\x1b[0m\\n')\n"
+                ),
+                encoding="utf-8",
+            )
+            task = TaskDefinition(
+                name="ansi_output",
+                module="test",
+                cwd=Path("."),
+                command=["python", str(script.name)],
+                timeout=30,
+            )
+            result = run_task(task, temp_path, tail_lines=20, default_timeout=30)
+
+        self.assertEqual(result["status"], "passed")
+        self.assertIn("red", result["stdout_tail"])
+        self.assertIn("warn", result["stderr_tail"])
+        self.assertNotIn("\u001b[", result["stdout_tail"])
+        self.assertNotIn("\u001b[", result["stderr_tail"])
 
 
 if __name__ == "__main__":

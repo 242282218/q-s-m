@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,7 @@ from typing import Any
 
 DEFAULT_TASKS_FILE = Path("ops/continuous/tasks.default.json")
 DEFAULT_LOG_DIR = Path("storage/logs/continuous")
+ANSI_ESCAPE_PATTERN = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,10 @@ def tail_text(text: str, tail_lines: int) -> str:
     return "\n".join(lines[-tail_lines:])
 
 
+def strip_ansi_sequences(text: str) -> str:
+    return ANSI_ESCAPE_PATTERN.sub("", text)
+
+
 def normalize_command(command: list[str]) -> list[str]:
     normalized = list(command)
     if normalized and normalized[0] == "python":
@@ -113,8 +119,8 @@ def run_task(
             check=False,
         )
         status = "passed" if completed.returncode == 0 else "failed"
-        stdout_text = completed.stdout
-        stderr_text = completed.stderr
+        stdout_text = strip_ansi_sequences(completed.stdout)
+        stderr_text = strip_ansi_sequences(completed.stderr)
         exit_code = completed.returncode
     except FileNotFoundError as err:
         status = "failed"
@@ -123,8 +129,8 @@ def run_task(
         exit_code = 127
     except subprocess.TimeoutExpired as err:
         status = "timeout"
-        stdout_text = err.stdout or ""
-        stderr_text = (err.stderr or "") + f"\nTask timeout after {timeout}s"
+        stdout_text = strip_ansi_sequences(err.stdout or "")
+        stderr_text = strip_ansi_sequences(err.stderr or "") + f"\nTask timeout after {timeout}s"
         exit_code = 124
     duration_seconds = round(time.perf_counter() - started, 3)
     return {
