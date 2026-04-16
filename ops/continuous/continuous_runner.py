@@ -163,10 +163,18 @@ def load_tasks(tasks_file: Path) -> list[TaskDefinition]:
 
     definitions: list[TaskDefinition] = []
     seen_names: set[str] = set()
+    allowed_task_fields = {"name", "module", "cwd", "command", "timeout", "enabled", "agent"}
     for index, item in enumerate(tasks):
         if not isinstance(item, dict):
             raise ValueError(
                 f"Invalid tasks file '{tasks_file}': tasks[{index}] must be a JSON object."
+            )
+        unknown_fields = sorted(set(item) - allowed_task_fields)
+        if unknown_fields:
+            unknown_list = ", ".join(unknown_fields)
+            raise ValueError(
+                f"Invalid tasks file '{tasks_file}': tasks[{index}] has unsupported fields: "
+                f"{unknown_list}."
             )
         enabled = item.get("enabled", True)
         if not isinstance(enabled, bool):

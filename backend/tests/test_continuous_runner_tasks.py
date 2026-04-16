@@ -274,6 +274,28 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
                     ):
                         load_tasks(tasks_file)
 
+    def test_load_tasks_rejects_unknown_task_top_level_fields(self):
+        payload = {
+            "tasks": [
+                {
+                    "name": "backend_pytest",
+                    "module": "backend",
+                    "cwd": "backend",
+                    "command": ["python", "-m", "pytest"],
+                    "timout": 60,
+                }
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tasks_file = Path(temp_dir) / "tasks.unknown-field.json"
+            tasks_file.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                r"tasks\[0\] has unsupported fields: timout",
+            ):
+                load_tasks(tasks_file)
+
     def test_load_tasks_defaults_agent_and_model(self):
         payload = {
             "tasks": [
@@ -314,6 +336,28 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 ValueError,
                 r"Task field 'agent' must be a JSON object",
+            ):
+                load_tasks(tasks_file)
+
+    def test_load_tasks_rejects_unknown_agent_fields(self):
+        payload = {
+            "tasks": [
+                {
+                    "name": "backend_pytest",
+                    "module": "backend",
+                    "cwd": "backend",
+                    "command": ["python", "-m", "pytest"],
+                    "agent": {"name": "backend-agent", "model": "gpt-5.3-codex", "role": "qa"},
+                }
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tasks_file = Path(temp_dir) / "tasks.invalid-agent-field.json"
+            tasks_file.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                r"only supports keys 'name' and 'model' \(got: role\)",
             ):
                 load_tasks(tasks_file)
 
