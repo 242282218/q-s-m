@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import re
 import shutil
@@ -53,6 +54,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-iterations", type=int, default=0)
     parser.add_argument("--tail-lines", type=int, default=120)
     parser.add_argument("--default-timeout", type=int, default=1200)
+    parser.add_argument("--max-workers", type=int, default=1)
     parser.add_argument("--stop-on-failure", action="store_true")
     return parser.parse_args()
 
@@ -186,6 +188,53 @@ def run_task(
     }
 
 
+def print_task_result(iteration: int, task_name: str, result: dict[str, Any]) -> None:
+    print(
+        f"[{iteration:04d}] {task_name} => {result['status']} "
+        f"({result['duration_seconds']}s)"
+    )
+
+
+def run_tasks_sequential(
+    tasks: list[TaskDefinition],
+    repo_root: Path,
+    tail_lines: int,
+    default_timeout: int,
+    iteration: int,
+    stop_on_failure: bool,
+) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for task in tasks:
+        result = run_task(task, repo_root, tail_lines, default_timeout)
+        results.append(result)
+        print_task_result(iteration, task.name, result)
+        if stop_on_failure and result["status"] != "passed":
+            break
+    return results
+
+
+def run_tasks_parallel(
+    tasks: list[TaskDefinition],
+    repo_root: Path,
+    tail_lines: int,
+    default_timeout: int,
+    iteration: int,
+    max_workers: int,
+) -> list[dict[str, Any]]:
+    ordered_results: list[dict[str, Any] | None] = [None] * len(tasks)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(run_task, task, repo_root, tail_lines, default_timeout): index
+            for index, task in enumerate(tasks)
+        }
+        for future in as_completed(futures):
+            index = futures[future]
+            result = future.result()
+            ordered_results[index] = result
+            print_task_result(iteration, tasks[index].name, result)
+    return [result for result in ordered_results if result is not None]
+
+
 def build_suggestions(task_results: list[dict[str, Any]]) -> list[str]:
     suggestions: list[str] = []
     for result in task_results:
@@ -247,6 +296,13 @@ def run_loop(args: argparse.Namespace) -> int:
     log_dir = args.log_dir if args.log_dir.is_absolute() else repo_root / args.log_dir
     tasks_file = tasks_file.resolve()
     log_dir = log_dir.resolve()
+    max_workers = max(1, int(getattr(args, "max_workers", 1)))
+    if args.stop_on_failure and max_workers > 1:
+        print(
+            "stop-on-failure is enabled; forcing max-workers=1 for deterministic fail-fast.",
+            file=sys.stderr,
+        )
+        max_workers = 1
 
     iteration = infer_next_iteration(log_dir)
     while True:
@@ -261,16 +317,24 @@ def run_loop(args: argparse.Namespace) -> int:
 
         iteration_started = datetime.now().astimezone().isoformat()
         loop_started = time.perf_counter()
-        iteration_results: list[dict[str, Any]] = []
-        for task in tasks:
-            result = run_task(task, repo_root, args.tail_lines, args.default_timeout)
-            iteration_results.append(result)
-            print(
-                f"[{iteration:04d}] {task.name} => {result['status']} "
-                f"({result['duration_seconds']}s)"
+        if max_workers == 1:
+            iteration_results = run_tasks_sequential(
+                tasks=tasks,
+                repo_root=repo_root,
+                tail_lines=args.tail_lines,
+                default_timeout=args.default_timeout,
+                iteration=iteration,
+                stop_on_failure=args.stop_on_failure,
             )
-            if args.stop_on_failure and result["status"] != "passed":
-                break
+        else:
+            iteration_results = run_tasks_parallel(
+                tasks=tasks,
+                repo_root=repo_root,
+                tail_lines=args.tail_lines,
+                default_timeout=args.default_timeout,
+                iteration=iteration,
+                max_workers=max_workers,
+            )
 
         failed_count = sum(item["status"] != "passed" for item in iteration_results)
         payload = {
@@ -286,10 +350,10 @@ def run_loop(args: argparse.Namespace) -> int:
         report_path = persist_iteration(log_dir, payload)
         print(f"[{iteration:04d}] report => {report_path}")
 
-        if args.max_iterations > 0 and iteration >= args.max_iterations:
-            return 0
         if args.stop_on_failure and failed_count > 0:
             return 1
+        if args.max_iterations > 0 and iteration >= args.max_iterations:
+            return 0
 
         elapsed = time.perf_counter() - loop_started
         wait_seconds = max(0.0, args.interval - elapsed)

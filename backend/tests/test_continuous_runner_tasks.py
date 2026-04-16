@@ -1,7 +1,10 @@
+import io
 import json
 from argparse import Namespace
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -359,6 +362,148 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(len(captured), 1)
         self.assertEqual(captured[0]["iteration"], 1)
+
+    def test_run_loop_parallel_workers_execute_tasks_concurrently_and_keep_order(self):
+        first_task = TaskDefinition(
+            name="first_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+        )
+        second_task = TaskDefinition(
+            name="second_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            args = Namespace(
+                repo_root=repo_root,
+                tasks_file=repo_root / "tasks.json",
+                log_dir=repo_root / "logs",
+                interval=0.0,
+                max_iterations=1,
+                tail_lines=20,
+                default_timeout=30,
+                max_workers=2,
+                stop_on_failure=False,
+            )
+            captured: list[dict[str, object]] = []
+            report_path = repo_root / "report.json"
+            lock = threading.Lock()
+            running = 0
+            max_running = 0
+
+            def fake_run_task(*task_args: object, **_kwargs: object) -> dict[str, object]:
+                nonlocal running, max_running
+                task = task_args[0]
+                assert isinstance(task, TaskDefinition)
+                delay = 0.2 if task.name == "first_task" else 0.05
+                with lock:
+                    running += 1
+                    max_running = max(max_running, running)
+                time.sleep(delay)
+                with lock:
+                    running -= 1
+                return self._passed_result(task.name)
+
+            def capture_iteration_payload(_log_dir: Path, payload: dict[str, object]) -> Path:
+                captured.append(payload.copy())
+                return report_path
+
+            with (
+                patch(
+                    "ops.continuous.continuous_runner.load_tasks",
+                    return_value=[first_task, second_task],
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.run_task",
+                    side_effect=fake_run_task,
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.persist_iteration",
+                    side_effect=capture_iteration_payload,
+                ),
+            ):
+                exit_code = run_loop(args)
+
+        self.assertEqual(exit_code, 0)
+        self.assertGreaterEqual(max_running, 2)
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(
+            [task["name"] for task in captured[0]["tasks"]],
+            ["first_task", "second_task"],
+        )
+
+    def test_run_loop_forces_single_worker_for_stop_on_failure(self):
+        first_task = TaskDefinition(
+            name="first_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+        )
+        second_task = TaskDefinition(
+            name="second_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            args = Namespace(
+                repo_root=repo_root,
+                tasks_file=repo_root / "tasks.json",
+                log_dir=repo_root / "logs",
+                interval=0.0,
+                max_iterations=1,
+                tail_lines=20,
+                default_timeout=30,
+                max_workers=4,
+                stop_on_failure=True,
+            )
+            report_path = repo_root / "report.json"
+            run_count = 0
+
+            def fake_run_task(*task_args: object, **_kwargs: object) -> dict[str, object]:
+                nonlocal run_count
+                run_count += 1
+                task = task_args[0]
+                assert isinstance(task, TaskDefinition)
+                if task.name == "first_task":
+                    result = self._passed_result(task.name)
+                    result["status"] = "failed"
+                    result["exit_code"] = 1
+                    result["stderr_tail"] = "failed"
+                    return result
+                return self._passed_result(task.name)
+
+            with (
+                patch(
+                    "ops.continuous.continuous_runner.load_tasks",
+                    return_value=[first_task, second_task],
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.run_task",
+                    side_effect=fake_run_task,
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.persist_iteration",
+                    return_value=report_path,
+                ),
+                patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                    exit_code = run_loop(args)
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(run_count, 1)
+        self.assertIn("forcing max-workers=1", stderr.getvalue())
 
     def test_run_task_strips_ansi_escape_sequences(self):
         with tempfile.TemporaryDirectory() as temp_dir:
