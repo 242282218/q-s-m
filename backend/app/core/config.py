@@ -19,18 +19,39 @@ from .paths import resolve_default_env_path, resolve_runtime_env_path
 logger = logging.getLogger(__name__)
 
 
+def _extract_cors_origin_host(origin: str) -> str:
+    candidate = origin if "://" in origin else f"//{origin}"
+    try:
+        host = (urlsplit(candidate).hostname or "").strip().lower()
+    except ValueError:
+        host = ""
+    if host:
+        return host
+
+    raw = origin.strip().strip("[]")
+    try:
+        return str(ip_address(raw))
+    except ValueError:
+        return ""
+
+
+def _is_loopback_host(host: str) -> bool:
+    if host == "localhost":
+        return True
+    try:
+        return ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def _is_insecure_cors_origin(origin: str) -> bool:
     text = origin.strip()
     if text == "*":
         return True
     if not text:
         return False
-    candidate = text if "://" in text else f"//{text}"
-    try:
-        host = (urlsplit(candidate).hostname or "").lower()
-    except ValueError:
-        return False
-    return host in {"localhost", "127.0.0.1", "::1"}
+    host = _extract_cors_origin_host(text)
+    return _is_loopback_host(host)
 
 
 class CommaFriendlyEnvSettingsSource(EnvSettingsSource):

@@ -216,8 +216,12 @@ class SettingsPersistenceTests(unittest.TestCase):
     def test_validate_production_security_flags_insecure_cors_origins(self):
         for cors_origins in [
             '["http://localhost:5173"]',
+            '["localhost:5173"]',
             '["http://127.0.0.1:5173"]',
+            '["127.0.0.1:5173"]',
+            '["http://127.10.20.30:5173"]',
             '["http://[::1]:5173"]',
+            '["::1"]',
             '["*"]',
         ]:
             with self.subTest(cors_origins=cors_origins):
