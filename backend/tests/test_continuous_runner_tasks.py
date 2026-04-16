@@ -119,6 +119,27 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             ):
                 load_tasks(tasks_file)
 
+    def test_load_tasks_rejects_non_boolean_enabled_field(self):
+        payload = {
+            "tasks": [
+                {
+                    "name": "backend_pytest",
+                    "module": "backend",
+                    "cwd": "backend",
+                    "command": ["python", "-m", "pytest"],
+                    "enabled": "true",
+                }
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tasks_file = Path(temp_dir) / "tasks.invalid.json"
+            tasks_file.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError, r"tasks\[0\]\.enabled must be a boolean"
+            ):
+                load_tasks(tasks_file)
+
     def test_load_tasks_reports_task_index_for_invalid_definition(self):
         payload = {
             "tasks": [
@@ -136,6 +157,52 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             tasks_file.write_text(json.dumps(payload), encoding="utf-8")
             with self.assertRaisesRegex(
                 ValueError, r"tasks\[0\]: Invalid task command"
+            ):
+                load_tasks(tasks_file)
+
+    def test_load_tasks_rejects_empty_task_name(self):
+        payload = {
+            "tasks": [
+                {
+                    "name": " ",
+                    "module": "backend",
+                    "cwd": "backend",
+                    "command": ["python", "-m", "pytest"],
+                }
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tasks_file = Path(temp_dir) / "tasks.invalid.json"
+            tasks_file.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError, r"tasks\[0\]: Task field 'name' must be a non-empty string"
+            ):
+                load_tasks(tasks_file)
+
+    def test_load_tasks_rejects_duplicate_task_names(self):
+        payload = {
+            "tasks": [
+                {
+                    "name": "backend_pytest",
+                    "module": "backend",
+                    "cwd": "backend",
+                    "command": ["python", "-m", "pytest"],
+                },
+                {
+                    "name": "backend_pytest",
+                    "module": "frontend",
+                    "cwd": "frontend",
+                    "command": ["pnpm", "test"],
+                },
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tasks_file = Path(temp_dir) / "tasks.invalid.json"
+            tasks_file.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError, r"duplicate task name 'backend_pytest' at tasks\[1\]"
             ):
                 load_tasks(tasks_file)
 

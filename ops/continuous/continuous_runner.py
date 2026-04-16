@@ -34,12 +34,28 @@ class TaskDefinition:
         command = raw.get("command")
         if not isinstance(command, list) or not command:
             raise ValueError(f"Invalid task command: {raw}")
+        name = raw.get("name")
+        module = raw.get("module", "unknown")
+        cwd = raw.get("cwd", ".")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Task field 'name' must be a non-empty string.")
+        if not isinstance(module, str) or not module.strip():
+            raise ValueError("Task field 'module' must be a non-empty string.")
+        if not isinstance(cwd, str) or not cwd.strip():
+            raise ValueError("Task field 'cwd' must be a non-empty string.")
+        timeout_raw = raw.get("timeout")
+        if timeout_raw is None:
+            timeout = None
+        elif isinstance(timeout_raw, int) and not isinstance(timeout_raw, bool) and timeout_raw > 0:
+            timeout = timeout_raw
+        else:
+            raise ValueError("Task field 'timeout' must be a positive integer.")
         return TaskDefinition(
-            name=str(raw["name"]),
-            module=str(raw.get("module", "unknown")),
-            cwd=Path(str(raw.get("cwd", "."))),
+            name=name.strip(),
+            module=module.strip(),
+            cwd=Path(cwd.strip()),
             command=[str(part) for part in command],
-            timeout=int(raw["timeout"]) if raw.get("timeout") else None,
+            timeout=timeout,
         )
 
 
@@ -81,19 +97,32 @@ def load_tasks(tasks_file: Path) -> list[TaskDefinition]:
         raise ValueError(f"Invalid tasks file '{tasks_file}': 'tasks' must be a list.")
 
     definitions: list[TaskDefinition] = []
+    seen_names: set[str] = set()
     for index, item in enumerate(tasks):
         if not isinstance(item, dict):
             raise ValueError(
                 f"Invalid tasks file '{tasks_file}': tasks[{index}] must be a JSON object."
             )
-        if not item.get("enabled", True):
+        enabled = item.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise ValueError(
+                f"Invalid tasks file '{tasks_file}': tasks[{index}].enabled must be a boolean."
+            )
+        if not enabled:
             continue
         try:
-            definitions.append(TaskDefinition.from_dict(item))
+            definition = TaskDefinition.from_dict(item)
         except (KeyError, TypeError, ValueError) as err:
             raise ValueError(
                 f"Invalid task definition in '{tasks_file}' at tasks[{index}]: {err}"
             ) from err
+        if definition.name in seen_names:
+            raise ValueError(
+                f"Invalid tasks file '{tasks_file}': duplicate task name "
+                f"'{definition.name}' at tasks[{index}]."
+            )
+        seen_names.add(definition.name)
+        definitions.append(definition)
 
     return definitions
 
