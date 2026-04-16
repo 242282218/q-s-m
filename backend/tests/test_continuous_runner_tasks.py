@@ -174,6 +174,27 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             ):
                 load_tasks(tasks_file)
 
+    def test_load_tasks_validates_disabled_task_definition(self):
+        payload = {
+            "tasks": [
+                {
+                    "name": "broken_disabled_task",
+                    "module": "backend",
+                    "cwd": "backend",
+                    "command": "python -m pytest",
+                    "enabled": False,
+                }
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tasks_file = Path(temp_dir) / "tasks.invalid-disabled.json"
+            tasks_file.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError, r"tasks\[0\]: Invalid task command"
+            ):
+                load_tasks(tasks_file)
+
     def test_load_tasks_reports_task_index_for_invalid_definition(self):
         payload = {
             "tasks": [
@@ -234,6 +255,34 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             tasks_file = Path(temp_dir) / "tasks.invalid.json"
+            tasks_file.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError, r"duplicate task name 'backend_pytest' at tasks\[1\]"
+            ):
+                load_tasks(tasks_file)
+
+    def test_load_tasks_rejects_duplicate_task_names_with_disabled_task(self):
+        payload = {
+            "tasks": [
+                {
+                    "name": "backend_pytest",
+                    "module": "backend",
+                    "cwd": "backend",
+                    "command": ["python", "-m", "pytest"],
+                    "enabled": True,
+                },
+                {
+                    "name": "backend_pytest",
+                    "module": "backend",
+                    "cwd": "backend",
+                    "command": ["python", "-m", "pytest"],
+                    "enabled": False,
+                },
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tasks_file = Path(temp_dir) / "tasks.duplicate-disabled.json"
             tasks_file.write_text(json.dumps(payload), encoding="utf-8")
             with self.assertRaisesRegex(
                 ValueError, r"duplicate task name 'backend_pytest' at tasks\[1\]"

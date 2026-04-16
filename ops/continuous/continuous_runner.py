@@ -190,8 +190,6 @@ def load_tasks(tasks_file: Path) -> list[TaskDefinition]:
             raise ValueError(
                 f"Invalid tasks file '{tasks_file}': tasks[{index}].enabled must be a boolean."
             )
-        if not enabled:
-            continue
         try:
             definition = TaskDefinition.from_dict(item)
         except (KeyError, TypeError, ValueError) as err:
@@ -204,7 +202,8 @@ def load_tasks(tasks_file: Path) -> list[TaskDefinition]:
                 f"'{definition.name}' at tasks[{index}]."
             )
         seen_names.add(definition.name)
-        definitions.append(definition)
+        if enabled:
+            definitions.append(definition)
 
     return definitions
 
