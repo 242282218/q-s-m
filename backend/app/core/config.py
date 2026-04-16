@@ -205,7 +205,7 @@ class Settings(BaseSettings):
         if self.api_key and len(self.api_key) < 16:
             warnings.append("API_KEY 长度过短，建议至少 32 字符")
 
-        if any(_is_insecure_cors_origin(origin) for origin in self.cors_origins):
+        if not self.debug and any(_is_insecure_cors_origin(origin) for origin in self.cors_origins):
             warnings.append("生产环境 CORS 配置包含不安全的源")
 
         if not self.tmdb_api_key:

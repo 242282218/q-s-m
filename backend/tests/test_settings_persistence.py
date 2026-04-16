@@ -29,6 +29,7 @@ class SettingsPersistenceTests(unittest.TestCase):
             "QUARK_TRANSFER_COOKIE": os.environ.get("QUARK_TRANSFER_COOKIE"),
             "LOG_LEVEL": os.environ.get("LOG_LEVEL"),
             "CORS_ORIGINS": os.environ.get("CORS_ORIGINS"),
+            "DEBUG": os.environ.get("DEBUG"),
         }
         os.environ["QSM_ENV_FILE"] = str(self.default_env_path)
         os.environ["QSM_RUNTIME_ENV_FILE"] = str(self.runtime_env_path)
@@ -225,6 +226,14 @@ class SettingsPersistenceTests(unittest.TestCase):
 
     def test_validate_production_security_accepts_public_cors_origins(self):
         settings = self._load_settings_with_cors('["https://example.com","https://app.example.com"]')
+
+        warnings = settings.validate_production_security()
+
+        self.assertNotIn("生产环境 CORS 配置包含不安全的源", warnings)
+
+    def test_validate_production_security_skips_cors_warning_in_debug(self):
+        os.environ["DEBUG"] = "true"
+        settings = self._load_settings_with_cors('["http://localhost:5173"]')
 
         warnings = settings.validate_production_security()
 
