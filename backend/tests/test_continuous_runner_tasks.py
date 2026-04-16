@@ -904,6 +904,91 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertEqual(max_same_agent_running, 1)
         self.assertGreaterEqual(max_total_running, 2)
 
+    def test_run_loop_payload_includes_agent_summary(self):
+        backend_task = TaskDefinition(
+            name="backend_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+            agent="backend-agent",
+        )
+        backend_flaky_task = TaskDefinition(
+            name="backend_flaky_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+            agent="backend-agent",
+        )
+        frontend_task = TaskDefinition(
+            name="frontend_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+            agent="frontend-agent",
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            args = Namespace(
+                repo_root=repo_root,
+                tasks_file=repo_root / "tasks.json",
+                log_dir=repo_root / "logs",
+                interval=0.0,
+                max_iterations=1,
+                tail_lines=20,
+                default_timeout=30,
+                max_workers=2,
+                stop_on_failure=False,
+            )
+            captured: list[dict[str, object]] = []
+            report_path = repo_root / "report.json"
+
+            def fake_run_task(*task_args: object, **_kwargs: object) -> dict[str, object]:
+                task = task_args[0]
+                assert isinstance(task, TaskDefinition)
+                if task.name == "backend_flaky_task":
+                    result = self._passed_result(task.name, task.agent, task.model)
+                    result["status"] = "failed"
+                    result["exit_code"] = 1
+                    result["stderr_tail"] = "FAILED"
+                    return result
+                return self._passed_result(task.name, task.agent, task.model)
+
+            def capture_iteration_payload(_log_dir: Path, payload: dict[str, object]) -> Path:
+                captured.append(payload.copy())
+                return report_path
+
+            with (
+                patch(
+                    "ops.continuous.continuous_runner.load_tasks",
+                    return_value=[backend_task, backend_flaky_task, frontend_task],
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.run_task",
+                    side_effect=fake_run_task,
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.persist_iteration",
+                    side_effect=capture_iteration_payload,
+                ),
+            ):
+                exit_code = run_loop(args)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(len(captured), 1)
+        payload = captured[0]
+        self.assertEqual(payload["agent_count"], 2)
+        agents = payload["agents"]
+        assert isinstance(agents, list)
+        summary = {item["agent"]: item for item in agents if isinstance(item, dict)}
+        self.assertEqual(summary["backend-agent"]["task_count"], 2)
+        self.assertEqual(summary["backend-agent"]["failed_count"], 1)
+        self.assertEqual(summary["frontend-agent"]["task_count"], 1)
+        self.assertEqual(summary["frontend-agent"]["failed_count"], 0)
+
     def test_run_loop_forces_single_worker_for_stop_on_failure(self):
         first_task = TaskDefinition(
             name="first_task",

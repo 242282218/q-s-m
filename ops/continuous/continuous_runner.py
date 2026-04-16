@@ -460,6 +460,33 @@ def build_suggestions(task_results: list[dict[str, Any]]) -> list[str]:
     return sorted(set(suggestions))
 
 
+def build_agent_summary(task_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    summary_by_agent: dict[str, dict[str, Any]] = {}
+    ordered_agents: list[str] = []
+    for result in task_results:
+        agent = str(result.get("agent", DEFAULT_AGENT_NAME))
+        model = str(result.get("model", DEFAULT_AGENT_MODEL))
+        if agent not in summary_by_agent:
+            summary_by_agent[agent] = {
+                "agent": agent,
+                "model": model,
+                "task_count": 0,
+                "failed_count": 0,
+                "total_duration_seconds": 0.0,
+            }
+            ordered_agents.append(agent)
+        item = summary_by_agent[agent]
+        item["task_count"] += 1
+        if result["status"] not in {"passed", "skipped"}:
+            item["failed_count"] += 1
+        item["total_duration_seconds"] += float(result["duration_seconds"])
+
+    for agent in ordered_agents:
+        total = float(summary_by_agent[agent]["total_duration_seconds"])
+        summary_by_agent[agent]["total_duration_seconds"] = round(total, 3)
+    return [summary_by_agent[agent] for agent in ordered_agents]
+
+
 def persist_iteration(log_dir: Path, payload: dict[str, Any]) -> Path:
     log_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -545,6 +572,7 @@ def run_loop(args: argparse.Namespace) -> int:
         failed_count = sum(
             item["status"] not in {"passed", "skipped"} for item in iteration_results
         )
+        agent_summary = build_agent_summary(iteration_results)
         payload = {
             "iteration": iteration,
             "started_at": iteration_started,
@@ -552,6 +580,8 @@ def run_loop(args: argparse.Namespace) -> int:
             "overall_status": "passed" if failed_count == 0 else "failed",
             "failed_count": failed_count,
             "task_count": len(iteration_results),
+            "agent_count": len(agent_summary),
+            "agents": agent_summary,
             "tasks": iteration_results,
             "optimization_suggestions": build_suggestions(iteration_results),
         }
