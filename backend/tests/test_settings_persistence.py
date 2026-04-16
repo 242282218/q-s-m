@@ -28,6 +28,7 @@ class SettingsPersistenceTests(unittest.TestCase):
             "TMDB_API_KEY": os.environ.get("TMDB_API_KEY"),
             "QUARK_TRANSFER_COOKIE": os.environ.get("QUARK_TRANSFER_COOKIE"),
             "LOG_LEVEL": os.environ.get("LOG_LEVEL"),
+            "CORS_ORIGINS": os.environ.get("CORS_ORIGINS"),
         }
         os.environ["QSM_ENV_FILE"] = str(self.default_env_path)
         os.environ["QSM_RUNTIME_ENV_FILE"] = str(self.runtime_env_path)
@@ -45,6 +46,12 @@ class SettingsPersistenceTests(unittest.TestCase):
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = value
+
+    def _load_settings_with_cors(self, cors_origins: str):
+        os.environ["CORS_ORIGINS"] = cors_origins
+        self.runtime_env_path.write_text("", encoding="utf-8")
+        get_settings.cache_clear()
+        return get_settings()
 
     def test_update_env_file_writes_to_runtime_settings_file(self):
         update_env_file(
@@ -203,6 +210,25 @@ class SettingsPersistenceTests(unittest.TestCase):
         settings = get_settings()
 
         self.assertEqual(settings.trusted_proxy_ips, ["127.0.0.1", "::1"])
+
+    def test_validate_production_security_flags_insecure_cors_origins(self):
+        for cors_origins in [
+            '["http://localhost:5173"]',
+            '["http://127.0.0.1:5173"]',
+            '["http://[::1]:5173"]',
+            '["*"]',
+        ]:
+            with self.subTest(cors_origins=cors_origins):
+                settings = self._load_settings_with_cors(cors_origins)
+                warnings = settings.validate_production_security()
+                self.assertIn("生产环境 CORS 配置包含不安全的源", warnings)
+
+    def test_validate_production_security_accepts_public_cors_origins(self):
+        settings = self._load_settings_with_cors('["https://example.com","https://app.example.com"]')
+
+        warnings = settings.validate_production_security()
+
+        self.assertNotIn("生产环境 CORS 配置包含不安全的源", warnings)
 
 
 if __name__ == "__main__":

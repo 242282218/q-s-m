@@ -3,6 +3,7 @@ from typing import Optional
 import logging
 import json
 from ipaddress import ip_address
+from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator
 from pydantic_settings import (
@@ -16,6 +17,20 @@ from pydantic_settings import (
 from .paths import resolve_default_env_path, resolve_runtime_env_path
 
 logger = logging.getLogger(__name__)
+
+
+def _is_insecure_cors_origin(origin: str) -> bool:
+    text = origin.strip()
+    if text == "*":
+        return True
+    if not text:
+        return False
+    candidate = text if "://" in text else f"//{text}"
+    try:
+        host = (urlsplit(candidate).hostname or "").lower()
+    except ValueError:
+        return False
+    return host in {"localhost", "127.0.0.1", "::1"}
 
 
 class CommaFriendlyEnvSettingsSource(EnvSettingsSource):
@@ -190,9 +205,8 @@ class Settings(BaseSettings):
         if self.api_key and len(self.api_key) < 16:
             warnings.append("API_KEY 长度过短，建议至少 32 字符")
 
-        if "*" in self.cors_origins or "http://localhost" in str(self.cors_origins):
-            if not self.debug:
-                warnings.append("生产环境 CORS 配置包含不安全的源")
+        if any(_is_insecure_cors_origin(origin) for origin in self.cors_origins):
+            warnings.append("生产环境 CORS 配置包含不安全的源")
 
         if not self.tmdb_api_key:
             warnings.append("未配置 TMDB_API_KEY，TMDB 相关功能将不可用")
