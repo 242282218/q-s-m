@@ -45,6 +45,7 @@ It is pre-split into `backend-agent` and `frontend-agent` lanes:
 - tasks in the same agent run sequentially (stable context, less interference)
 - different agents can run in parallel (controlled by `--max-workers`)
 - `agent.model` is fixed to `gpt-5.3-codex` and invalid models fail fast
+- `enabled=false` only skips execution; task schema + duplicate name checks still fail fast
 
 ## Environment
 
