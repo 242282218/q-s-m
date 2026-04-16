@@ -34,6 +34,11 @@ class TaskDefinition:
         command = raw.get("command")
         if not isinstance(command, list) or not command:
             raise ValueError(f"Invalid task command: {raw}")
+        normalized_command: list[str] = []
+        for part in command:
+            if not isinstance(part, str) or not part.strip():
+                raise ValueError("Task field 'command' must be a non-empty string array.")
+            normalized_command.append(part)
         name = raw.get("name")
         module = raw.get("module", "unknown")
         cwd = raw.get("cwd", ".")
@@ -54,7 +59,7 @@ class TaskDefinition:
             name=name.strip(),
             module=module.strip(),
             cwd=Path(cwd.strip()),
-            command=[str(part) for part in command],
+            command=normalized_command,
             timeout=timeout,
         )
 

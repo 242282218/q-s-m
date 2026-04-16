@@ -232,6 +232,36 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
                     ):
                         load_tasks(tasks_file)
 
+    def test_load_tasks_rejects_non_string_or_empty_command_parts(self):
+        invalid_commands = [
+            ["python", 1],
+            ["python", ""],
+            ["python", "   "],
+            [True],
+        ]
+
+        for command in invalid_commands:
+            payload = {
+                "tasks": [
+                    {
+                        "name": "backend_pytest",
+                        "module": "backend",
+                        "cwd": "backend",
+                        "command": command,
+                    }
+                ]
+            }
+
+            with self.subTest(command=command):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    tasks_file = Path(temp_dir) / "tasks.invalid.json"
+                    tasks_file.write_text(json.dumps(payload), encoding="utf-8")
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        r"Task field 'command' must be a non-empty string array",
+                    ):
+                        load_tasks(tasks_file)
+
     def test_run_loop_returns_error_for_invalid_tasks_file_schema(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_root = Path(temp_dir)
