@@ -1611,6 +1611,31 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertEqual(result["exit_code"], 78)
         self.assertIn("escapes repo root", str(result["stderr_tail"]))
 
+    def test_run_task_rejects_symlink_cwd_escape_outside_repo_root(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            repo_root = temp_path / "workspace"
+            outside_cwd = temp_path / "outside"
+            repo_root.mkdir()
+            outside_cwd.mkdir()
+            escape_link = repo_root / "escape-link"
+            try:
+                escape_link.symlink_to(outside_cwd, target_is_directory=True)
+            except (OSError, NotImplementedError) as err:
+                self.skipTest(f"symlink unavailable in test environment: {err}")
+            task = TaskDefinition(
+                name="cwd_escape_symlink",
+                module="test",
+                cwd=Path("escape-link"),
+                command=["python", "-c", "print('ok')"],
+                timeout=30,
+            )
+            result = run_task(task, repo_root, tail_lines=20, default_timeout=30)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["exit_code"], 78)
+        self.assertIn("escapes repo root", str(result["stderr_tail"]))
+
     def test_run_task_rejects_missing_cwd_inside_repo_root(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
