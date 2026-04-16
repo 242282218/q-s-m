@@ -401,6 +401,33 @@ def build_skipped_task_result(
     }
 
 
+def build_lane_failure_result(
+    task: TaskDefinition,
+    default_timeout: int,
+    tail_lines: int,
+    reason: str,
+) -> dict[str, Any]:
+    timestamp = datetime.now().astimezone().isoformat()
+    timeout = task.timeout or default_timeout
+    stderr_text = strip_ansi_sequences(reason)
+    return {
+        "name": task.name,
+        "module": task.module,
+        "agent": task.agent,
+        "model": task.model,
+        "cwd": str(task.cwd),
+        "command": resolve_command(normalize_command(task.command)),
+        "status": "failed",
+        "exit_code": 70,
+        "timeout_seconds": timeout,
+        "duration_seconds": 0.0,
+        "started_at": timestamp,
+        "finished_at": timestamp,
+        "stdout_tail": "",
+        "stderr_tail": tail_text(stderr_text, tail_lines),
+    }
+
+
 def print_task_result(iteration: int, task_name: str, result: dict[str, Any]) -> None:
     agent_name = str(result.get("agent", DEFAULT_AGENT_NAME))
     print(
@@ -487,7 +514,27 @@ def run_tasks_parallel(
             for lane in lanes
         }
         for future in as_completed(futures):
-            for index, result in future.result():
+            lane = futures[future]
+            try:
+                lane_results = future.result()
+            except Exception as err:
+                error_text = (
+                    "Unhandled agent lane error while awaiting lane results: "
+                    f"{type(err).__name__}: {err}"
+                )
+                for index, task in lane:
+                    if ordered_results[index] is not None:
+                        continue
+                    failed_result = build_lane_failure_result(
+                        task=task,
+                        default_timeout=default_timeout,
+                        tail_lines=tail_lines,
+                        reason=error_text,
+                    )
+                    ordered_results[index] = failed_result
+                    print_task_result(iteration, task.name, failed_result)
+                continue
+            for index, result in lane_results:
                 ordered_results[index] = result
     return [result for result in ordered_results if result is not None]
 
