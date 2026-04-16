@@ -920,6 +920,123 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertEqual(len(captured), 1)
         self.assertEqual(captured[0]["iteration"], 1)
 
+    def test_run_loop_uses_history_when_latest_report_is_broken(self):
+        task = TaskDefinition(
+            name="dynamic_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            log_dir = repo_root / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            (log_dir / "latest.json").write_text("{broken-json", encoding="utf-8")
+            (log_dir / "iteration-0009-20260101-000000.json").write_text(
+                "{}",
+                encoding="utf-8",
+            )
+            (log_dir / "iteration-0012-20260101-000001.json").write_text(
+                "{}",
+                encoding="utf-8",
+            )
+            args = Namespace(
+                repo_root=repo_root,
+                tasks_file=repo_root / "tasks.json",
+                log_dir=log_dir,
+                interval=0.0,
+                max_iterations=1,
+                tail_lines=20,
+                default_timeout=30,
+                stop_on_failure=False,
+            )
+            captured: list[dict[str, object]] = []
+            report_path = repo_root / "report.json"
+
+            def capture_iteration_payload(_log_dir: Path, payload: dict[str, object]) -> Path:
+                captured.append(payload.copy())
+                return report_path
+
+            with (
+                patch(
+                    "ops.continuous.continuous_runner.load_tasks",
+                    return_value=[task],
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.run_task",
+                    return_value=self._passed_result("dynamic_task"),
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.persist_iteration",
+                    side_effect=capture_iteration_payload,
+                ),
+            ):
+                exit_code = run_loop(args)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(captured[0]["iteration"], 13)
+
+    def test_run_loop_uses_higher_iteration_from_history_when_latest_is_stale(self):
+        task = TaskDefinition(
+            name="dynamic_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            log_dir = repo_root / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            (log_dir / "latest.json").write_text(
+                json.dumps({"iteration": 7}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            (log_dir / "iteration-0011-20260101-000001.json").write_text(
+                "{}",
+                encoding="utf-8",
+            )
+            args = Namespace(
+                repo_root=repo_root,
+                tasks_file=repo_root / "tasks.json",
+                log_dir=log_dir,
+                interval=0.0,
+                max_iterations=1,
+                tail_lines=20,
+                default_timeout=30,
+                stop_on_failure=False,
+            )
+            captured: list[dict[str, object]] = []
+            report_path = repo_root / "report.json"
+
+            def capture_iteration_payload(_log_dir: Path, payload: dict[str, object]) -> Path:
+                captured.append(payload.copy())
+                return report_path
+
+            with (
+                patch(
+                    "ops.continuous.continuous_runner.load_tasks",
+                    return_value=[task],
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.run_task",
+                    return_value=self._passed_result("dynamic_task"),
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.persist_iteration",
+                    side_effect=capture_iteration_payload,
+                ),
+            ):
+                exit_code = run_loop(args)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(captured[0]["iteration"], 12)
+
     def test_run_loop_parallel_workers_execute_tasks_concurrently_and_keep_order(self):
         first_task = TaskDefinition(
             name="first_task",

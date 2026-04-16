@@ -21,6 +21,7 @@ DEFAULT_AGENT_MODEL = "gpt-5.3-codex"
 ANSI_CSI_PATTERN = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 ANSI_OSC_PATTERN = re.compile(r"\x1B\][^\x1B\x07]*(?:\x07|\x1B\\)")
 ANSI_SINGLE_ESCAPE_PATTERN = re.compile(r"\x1B(?:[@-Z\\-_]|[78])")
+ITERATION_REPORT_PATTERN = re.compile(r"^iteration-(\d+)-\d{8}-\d{6}\.json$")
 
 
 def parse_agent(raw: Any) -> tuple[str, str]:
@@ -567,22 +568,42 @@ def persist_iteration(log_dir: Path, payload: dict[str, Any]) -> Path:
     return path
 
 
+def infer_next_iteration_from_history(log_dir: Path) -> int | None:
+    highest_iteration = 0
+    for candidate in log_dir.glob("iteration-*.json"):
+        if not candidate.is_file():
+            continue
+        match = ITERATION_REPORT_PATTERN.match(candidate.name)
+        if not match:
+            continue
+        iteration = int(match.group(1))
+        if iteration > highest_iteration:
+            highest_iteration = iteration
+    if highest_iteration > 0:
+        return highest_iteration + 1
+    return None
+
+
 def infer_next_iteration(log_dir: Path) -> int:
+    history_next = infer_next_iteration_from_history(log_dir)
     latest_path = log_dir / "latest.json"
     try:
         raw_content = latest_path.read_text(encoding="utf-8")
     except OSError:
-        return 1
+        return history_next or 1
     try:
         payload = json.loads(raw_content)
     except json.JSONDecodeError:
-        return 1
+        return history_next or 1
     if not isinstance(payload, dict):
-        return 1
+        return history_next or 1
     iteration = payload.get("iteration")
     if type(iteration) is int and iteration > 0:
-        return iteration + 1
-    return 1
+        next_iteration = iteration + 1
+        if history_next is not None:
+            return max(next_iteration, history_next)
+        return next_iteration
+    return history_next or 1
 
 
 def run_loop(args: argparse.Namespace) -> int:
