@@ -48,7 +48,7 @@ It is pre-split into `backend-agent` and `frontend-agent` lanes:
 - `enabled=false` only skips execution; task schema + duplicate name checks still fail fast
 - `task.cwd` must stay inside `repo_root`; absolute path / `..` escape is rejected
 - `task.cwd` must resolve to an existing directory; missing/non-directory paths fail fast
-- unhandled task errors and unexpected lane-level errors are downgraded to failed task results (`exit_code=70`); finished lane tasks are preserved and only the current/remaining tasks are backfilled on lane crashes
+- unhandled task errors and unexpected lane-level errors are downgraded to failed task results (`exit_code=70`); finished lane tasks are preserved, incomplete lane result sets only backfill missing tasks, and invalid lane indexes are treated as lane-level failures
 - next iteration id resumes from `latest.json`; if `latest.json` is broken/stale, runner falls back to highest `iteration-*.json`
 - runners that share the same `log_dir` reserve iteration ids through a lock-backed counter, so updated processes do not reuse the same iteration number concurrently
 

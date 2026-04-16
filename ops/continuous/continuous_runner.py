@@ -524,6 +524,44 @@ def run_agent_lane(
     return lane_results
 
 
+def merge_lane_results(
+    lane: list[tuple[int, TaskDefinition]],
+    lane_results: list[tuple[int, dict[str, Any]]],
+    ordered_results: list[dict[str, Any] | None],
+    default_timeout: int,
+    tail_lines: int,
+    iteration: int,
+) -> None:
+    expected_indices = {index for index, _task in lane}
+    normalized_results: dict[int, dict[str, Any]] = {}
+    for index, result in lane_results:
+        if index not in expected_indices:
+            raise ValueError(f"Agent lane returned unexpected task index {index}.")
+        if index in normalized_results:
+            raise ValueError(f"Agent lane returned duplicate task index {index}.")
+        normalized_results[index] = result
+
+    for index, result in normalized_results.items():
+        ordered_results[index] = result
+
+    missing_lane = [(index, task) for index, task in lane if index not in normalized_results]
+    if not missing_lane:
+        return
+
+    error_text = (
+        "Unhandled agent lane error while awaiting lane results: "
+        "lane returned incomplete results."
+    )
+    for index, task, failed_result in build_lane_failure_results(
+        lane=missing_lane,
+        default_timeout=default_timeout,
+        tail_lines=tail_lines,
+        reason=error_text,
+    ):
+        ordered_results[index] = failed_result
+        emit_task_result(iteration, task.name, failed_result)
+
+
 def run_tasks_sequential(
     tasks: list[TaskDefinition],
     repo_root: Path,
@@ -581,6 +619,14 @@ def run_tasks_parallel(
             lane = futures[future]
             try:
                 lane_results = future.result()
+                merge_lane_results(
+                    lane=lane,
+                    lane_results=lane_results,
+                    ordered_results=ordered_results,
+                    default_timeout=default_timeout,
+                    tail_lines=tail_lines,
+                    iteration=iteration,
+                )
             except Exception as err:
                 error_text = (
                     "Unhandled agent lane error while awaiting lane results: "
@@ -597,8 +643,6 @@ def run_tasks_parallel(
                     ordered_results[index] = failed_result
                     emit_task_result(iteration, task.name, failed_result)
                 continue
-            for index, result in lane_results:
-                ordered_results[index] = result
     return [result for result in ordered_results if result is not None]
 
 
