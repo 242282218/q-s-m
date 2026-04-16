@@ -51,6 +51,8 @@ cp .env.example .env
    Example: `["127.0.0.1","::1"]` or `127.0.0.1,::1`.
    The limiter resolves `X-Forwarded-For` from right to left and skips trusted proxy hops.
    Non-IP or malformed header values are ignored and fallback to the connection source IP.
+6. Keep `CORS_ORIGINS` production-safe by default (for example `["https://your-domain.com"]`).
+   For local split frontend/backend development, temporarily set it to localhost origins and enable `DEBUG=true`.
 
 Runtime settings updates are persisted to `storage/config/settings.env` by default. Existing local deployments that still use `backend/data/settings.env` remain compatible until migrated.
 

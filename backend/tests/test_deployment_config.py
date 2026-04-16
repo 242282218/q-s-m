@@ -9,6 +9,7 @@ class DeploymentConfigTests(unittest.TestCase):
     def setUp(self) -> None:
         self.compose_content = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
         self.dockerfile_content = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        self.env_example_content = (ROOT / ".env.example").read_text(encoding="utf-8")
 
     def test_compose_uses_env_file_instead_of_bind_mounting_dotenv(self):
         self.assertIn("env_file:", self.compose_content)
@@ -23,6 +24,19 @@ class DeploymentConfigTests(unittest.TestCase):
     def test_frontend_builder_accepts_vite_api_key_build_arg(self):
         self.assertIn("ARG VITE_API_KEY", self.dockerfile_content)
         self.assertIn("ENV VITE_API_KEY=$VITE_API_KEY", self.dockerfile_content)
+
+    def test_env_example_uses_safe_cors_default_when_debug_disabled(self):
+        self.assertIn("DEBUG=false", self.env_example_content)
+        cors_line = next(
+            line
+            for line in self.env_example_content.splitlines()
+            if line.startswith("CORS_ORIGINS=")
+        )
+
+        self.assertNotIn("localhost", cors_line.lower())
+        self.assertNotIn("127.0.0.1", cors_line)
+        self.assertNotIn("::1", cors_line)
+        self.assertNotIn('"*"', cors_line)
 
 
 if __name__ == "__main__":
