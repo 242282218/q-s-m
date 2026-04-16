@@ -1474,6 +1474,44 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertEqual(result["exit_code"], 78)
         self.assertIn("escapes repo root", str(result["stderr_tail"]))
 
+    def test_run_task_rejects_missing_cwd_inside_repo_root(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            repo_root = temp_path / "workspace"
+            repo_root.mkdir()
+            task = TaskDefinition(
+                name="cwd_missing",
+                module="test",
+                cwd=Path("missing-dir"),
+                command=["python", "-c", "print('ok')"],
+                timeout=30,
+            )
+            result = run_task(task, repo_root, tail_lines=20, default_timeout=30)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["exit_code"], 78)
+        self.assertIn("does not exist", str(result["stderr_tail"]))
+
+    def test_run_task_rejects_non_directory_cwd_inside_repo_root(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            repo_root = temp_path / "workspace"
+            repo_root.mkdir()
+            not_directory = repo_root / "task.cwd"
+            not_directory.write_text("not a dir", encoding="utf-8")
+            task = TaskDefinition(
+                name="cwd_not_directory",
+                module="test",
+                cwd=Path("task.cwd"),
+                command=["python", "-c", "print('ok')"],
+                timeout=30,
+            )
+            result = run_task(task, repo_root, tail_lines=20, default_timeout=30)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["exit_code"], 78)
+        self.assertIn("not a directory", str(result["stderr_tail"]))
+
     def test_run_task_strips_ansi_escape_sequences(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)

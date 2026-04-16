@@ -256,6 +256,14 @@ def resolve_task_cwd(repo_root: Path, task_cwd: Path) -> Path:
         raise ValueError(
             f"Task cwd '{task_cwd}' escapes repo root '{resolved_repo_root}'."
         ) from err
+    if not resolved_cwd.exists():
+        raise ValueError(
+            f"Task cwd '{task_cwd}' does not exist under repo root '{resolved_repo_root}'."
+        )
+    if not resolved_cwd.is_dir():
+        raise ValueError(
+            f"Task cwd '{task_cwd}' is not a directory under repo root '{resolved_repo_root}'."
+        )
     return resolved_cwd
 
 
