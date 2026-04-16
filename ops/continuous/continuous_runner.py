@@ -457,6 +457,20 @@ def print_task_result(iteration: int, task_name: str, result: dict[str, Any]) ->
     )
 
 
+def emit_task_result(iteration: int, task_name: str, result: dict[str, Any]) -> None:
+    try:
+        print_task_result(iteration, task_name, result)
+    except Exception as err:
+        try:
+            print(
+                f"[{iteration:04d}] result logging failed for {task_name}: "
+                f"{type(err).__name__}: {err}",
+                file=sys.stderr,
+            )
+        except Exception:
+            return
+
+
 def build_agent_lanes(
     tasks: list[TaskDefinition],
 ) -> list[list[tuple[int, TaskDefinition]]]:
@@ -482,7 +496,7 @@ def run_agent_lane(
             result = run_task_safe(task, repo_root, tail_lines, default_timeout)
             lane_results.append((index, result))
             result_recorded = True
-            print_task_result(iteration, task.name, result)
+            emit_task_result(iteration, task.name, result)
         except Exception as err:
             error_text = (
                 "Unhandled agent lane error while executing lane: "
@@ -496,10 +510,7 @@ def run_agent_lane(
                 reason=error_text,
             ):
                 lane_results.append((failed_index, failed_result))
-                try:
-                    print_task_result(iteration, failed_task.name, failed_result)
-                except Exception:
-                    continue
+                emit_task_result(iteration, failed_task.name, failed_result)
             return lane_results
     return lane_results
 
@@ -516,7 +527,7 @@ def run_tasks_sequential(
     for index, task in enumerate(tasks):
         result = run_task_safe(task, repo_root, tail_lines, default_timeout)
         results.append(result)
-        print_task_result(iteration, task.name, result)
+        emit_task_result(iteration, task.name, result)
         if stop_on_failure and result["status"] != "passed":
             skipped_reason = (
                 "Skipped because stop-on-failure halted the iteration after "
@@ -529,7 +540,7 @@ def run_tasks_sequential(
                     skipped_reason,
                 )
                 results.append(skipped_result)
-                print_task_result(iteration, skipped_task.name, skipped_result)
+                emit_task_result(iteration, skipped_task.name, skipped_result)
             break
     return results
 
@@ -575,7 +586,7 @@ def run_tasks_parallel(
                     if ordered_results[index] is not None:
                         continue
                     ordered_results[index] = failed_result
-                    print_task_result(iteration, task.name, failed_result)
+                    emit_task_result(iteration, task.name, failed_result)
                 continue
             for index, result in lane_results:
                 ordered_results[index] = result
