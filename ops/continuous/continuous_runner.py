@@ -188,6 +188,38 @@ def run_task(
     }
 
 
+def run_task_safe(
+    task: TaskDefinition,
+    repo_root: Path,
+    tail_lines: int,
+    default_timeout: int,
+) -> dict[str, Any]:
+    started_at = datetime.now().astimezone().isoformat()
+    started = time.perf_counter()
+    try:
+        return run_task(task, repo_root, tail_lines, default_timeout)
+    except Exception as err:
+        duration_seconds = round(time.perf_counter() - started, 3)
+        timeout = task.timeout or default_timeout
+        stderr_text = strip_ansi_sequences(
+            f"Unhandled task runner error: {type(err).__name__}: {err}"
+        )
+        return {
+            "name": task.name,
+            "module": task.module,
+            "cwd": str(task.cwd),
+            "command": resolve_command(normalize_command(task.command)),
+            "status": "failed",
+            "exit_code": 70,
+            "timeout_seconds": timeout,
+            "duration_seconds": duration_seconds,
+            "started_at": started_at,
+            "finished_at": datetime.now().astimezone().isoformat(),
+            "stdout_tail": "",
+            "stderr_tail": tail_text(stderr_text, tail_lines),
+        }
+
+
 def print_task_result(iteration: int, task_name: str, result: dict[str, Any]) -> None:
     print(
         f"[{iteration:04d}] {task_name} => {result['status']} "
@@ -205,7 +237,7 @@ def run_tasks_sequential(
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for task in tasks:
-        result = run_task(task, repo_root, tail_lines, default_timeout)
+        result = run_task_safe(task, repo_root, tail_lines, default_timeout)
         results.append(result)
         print_task_result(iteration, task.name, result)
         if stop_on_failure and result["status"] != "passed":
@@ -224,7 +256,7 @@ def run_tasks_parallel(
     ordered_results: list[dict[str, Any] | None] = [None] * len(tasks)
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {
-            executor.submit(run_task, task, repo_root, tail_lines, default_timeout): index
+            executor.submit(run_task_safe, task, repo_root, tail_lines, default_timeout): index
             for index, task in enumerate(tasks)
         }
         for future in as_completed(futures):
