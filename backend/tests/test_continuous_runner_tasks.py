@@ -1,6 +1,7 @@
 import io
 import json
 from argparse import Namespace
+import subprocess
 import sys
 import tempfile
 import threading
@@ -21,7 +22,9 @@ from ops.continuous.continuous_runner import (
     TaskDefinition,
     build_suggestions,
     load_tasks,
+    normalize_command,
     reserve_next_iteration,
+    resolve_command,
     run_loop,
     run_task,
 )
@@ -113,6 +116,38 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         )
         self.assertEqual(performance_task.agent, "performance-agent")
         self.assertEqual(performance_task.model, DEFAULT_AGENT_MODEL)
+
+    def test_normalize_command_rewrites_python_to_current_interpreter(self):
+        normalized = normalize_command(["python", "-m", "pytest"])
+
+        self.assertEqual(normalized, [sys.executable, "-m", "pytest"])
+
+    def test_resolve_command_prefers_pnpm_binary_before_corepack(self):
+        with patch("ops.continuous.continuous_runner.shutil.which") as which_mock:
+            which_mock.side_effect = lambda name: {
+                "pnpm.cmd": "C:/node/pnpm.cmd",
+                "pnpm": "C:/node/pnpm",
+                "corepack.cmd": "C:/node/corepack.cmd",
+                "corepack": "C:/node/corepack",
+            }.get(name)
+
+            resolved = resolve_command(["pnpm", "run", "lint:check"])
+
+        self.assertEqual(resolved, ["C:/node/pnpm.cmd", "run", "lint:check"])
+
+    def test_resolve_command_falls_back_to_corepack_for_pnpm(self):
+        with patch("ops.continuous.continuous_runner.shutil.which") as which_mock:
+            which_mock.side_effect = lambda name: {
+                "corepack.cmd": "C:/node/corepack.cmd",
+                "corepack": "C:/node/corepack",
+            }.get(name)
+
+            resolved = resolve_command(["pnpm", "run", "test:coverage"])
+
+        self.assertEqual(
+            resolved,
+            ["C:/node/corepack.cmd", "pnpm", "run", "test:coverage"],
+        )
 
     def test_load_tasks_supports_utf8_bom(self):
         payload = {
@@ -566,6 +601,25 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         failed["status"] = "failed"
         failed["exit_code"] = 127
         failed["stderr_tail"] = "[WinError 2] The system cannot find the file specified"
+
+        suggestions = build_suggestions([failed])
+
+        self.assertIn(
+            "frontend_lint_check: install pnpm and rerun frontend tasks.",
+            suggestions,
+        )
+        self.assertNotIn(
+            "frontend_lint_check: fix the reported ESLint violations in frontend sources before rerunning.",
+            suggestions,
+        )
+
+    def test_build_suggestions_detects_missing_pnpm_on_posix(self):
+        failed = self._passed_result("frontend_lint_check", agent="frontend-agent")
+        failed["module"] = "frontend"
+        failed["command"] = ["pnpm", "run", "lint:check"]
+        failed["status"] = "failed"
+        failed["exit_code"] = 127
+        failed["stderr_tail"] = "[Errno 2] No such file or directory: 'pnpm'"
 
         suggestions = build_suggestions([failed])
 
@@ -2510,6 +2564,55 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertEqual(result["status"], "failed")
         self.assertEqual(result["exit_code"], 78)
         self.assertIn("not a directory", str(result["stderr_tail"]))
+
+    def test_run_task_reports_command_not_found_as_failed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            task = TaskDefinition(
+                name="missing_command",
+                module="frontend",
+                cwd=Path("."),
+                command=["missing-runner-42c6f0e4", "--version"],
+                timeout=30,
+            )
+            result = run_task(task, temp_path, tail_lines=20, default_timeout=30)
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["exit_code"], 127)
+        self.assertEqual(result["stdout_tail"], "")
+        stderr_text = str(result["stderr_tail"])
+        self.assertTrue(
+            "WinError 2" in stderr_text or "No such file or directory" in stderr_text
+        )
+
+    def test_run_task_reports_timeout_and_strips_ansi_sequences(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            task = TaskDefinition(
+                name="timeout_task",
+                module="frontend",
+                cwd=Path("."),
+                command=["python", "-c", "print('timeout')"],
+                timeout=1,
+            )
+            with patch(
+                "ops.continuous.continuous_runner.subprocess.run",
+                side_effect=subprocess.TimeoutExpired(
+                    cmd=[sys.executable, "-c", "print('timeout')"],
+                    timeout=1,
+                    output="\u001b[31mstart\u001b[0m\n",
+                    stderr="\u001b[33mstill running\u001b[0m\n",
+                ),
+            ):
+                result = run_task(task, temp_path, tail_lines=20, default_timeout=30)
+
+        self.assertEqual(result["status"], "timeout")
+        self.assertEqual(result["exit_code"], 124)
+        self.assertIn("Task timeout after 1s", str(result["stderr_tail"]))
+        self.assertIn("start", str(result["stdout_tail"]))
+        self.assertIn("still running", str(result["stderr_tail"]))
+        self.assertNotIn("\u001b[", str(result["stdout_tail"]))
+        self.assertNotIn("\u001b[", str(result["stderr_tail"]))
 
     def test_run_task_strips_ansi_escape_sequences(self):
         with tempfile.TemporaryDirectory() as temp_dir:

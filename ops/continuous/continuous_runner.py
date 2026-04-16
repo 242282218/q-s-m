@@ -658,6 +658,22 @@ def command_tokens(command: Any) -> list[str]:
     return tokens
 
 
+def command_contains_executable(command: Any, executable: str) -> bool:
+    if not isinstance(command, list):
+        return False
+    expected = executable.lower()
+    for part in command:
+        text = str(part).strip()
+        if text and Path(text).stem.lower() == expected:
+            return True
+    return False
+
+
+def is_missing_executable_error(text: str) -> bool:
+    lower_text = text.lower()
+    return "winerror 2" in lower_text or "no such file or directory" in lower_text
+
+
 def infer_frontend_suggestion(result: dict[str, Any], text: str) -> str | None:
     if str(result.get("module", "")).strip() != "frontend":
         return None
@@ -724,7 +740,11 @@ def build_suggestions(task_results: list[dict[str, Any]]) -> list[str]:
             suggestions.append(f"{name}: install missing Python dependencies.")
         if "No module named 'app'" in text:
             suggestions.append(f"{name}: run benchmark with backend as working directory.")
-        missing_pnpm = "pnpm" in resolved_command and ("not recognized" in text or "WinError 2" in text)
+        missing_pnpm = (
+            result.get("exit_code") == 127
+            and command_contains_executable(result.get("command"), "pnpm")
+            and is_missing_executable_error(text)
+        )
         if missing_pnpm:
             suggestions.append(f"{name}: install pnpm and rerun frontend tasks.")
         frontend_suggestion = None if missing_pnpm else infer_frontend_suggestion(result, text)
