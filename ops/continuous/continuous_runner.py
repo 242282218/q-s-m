@@ -305,6 +305,7 @@ def run_loop(args: argparse.Namespace) -> int:
         max_workers = 1
 
     iteration = infer_next_iteration(log_dir)
+    executed_iterations = 0
     while True:
         try:
             tasks = load_tasks(tasks_file)
@@ -350,9 +351,10 @@ def run_loop(args: argparse.Namespace) -> int:
         report_path = persist_iteration(log_dir, payload)
         print(f"[{iteration:04d}] report => {report_path}")
 
+        executed_iterations += 1
         if args.stop_on_failure and failed_count > 0:
             return 1
-        if args.max_iterations > 0 and iteration >= args.max_iterations:
+        if args.max_iterations > 0 and executed_iterations >= args.max_iterations:
             return 0
 
         elapsed = time.perf_counter() - loop_started
