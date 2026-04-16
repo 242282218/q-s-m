@@ -46,6 +46,7 @@ It is pre-split into `backend-agent`, `frontend-agent`, and `performance-agent` 
 - different agents can run in parallel (controlled by `--max-workers`)
 - the default performance benchmark runs in its own lane, fails on threshold breaches, and writes its latest JSON artifact to `storage/logs/continuous/performance/latest.json`
 - the default frontend lane uses read-only `lint:check` + `format:check`, so continuous checks fail on drift instead of auto-rewriting the worktree
+- `frontend_vitest` now includes a `happy-dom` smoke test that mounts `App.vue`, switches routes, and submits search, so basic Vue runtime/router regressions fail in the default lane
 - `agent.model` is fixed to `gpt-5.4` and invalid models fail fast
 - `enabled=false` only skips execution; task schema + duplicate name checks still fail fast
 - `task.cwd` must stay inside `repo_root`; absolute path / `..` escape is rejected
