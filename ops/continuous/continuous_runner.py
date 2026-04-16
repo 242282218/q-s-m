@@ -477,24 +477,30 @@ def run_agent_lane(
     remaining_lane = list(lane)
     while remaining_lane:
         index, task = remaining_lane.pop(0)
+        result_recorded = False
         try:
             result = run_task_safe(task, repo_root, tail_lines, default_timeout)
+            lane_results.append((index, result))
+            result_recorded = True
+            print_task_result(iteration, task.name, result)
         except Exception as err:
             error_text = (
                 "Unhandled agent lane error while executing lane: "
                 f"{type(err).__name__}: {err}"
             )
+            failed_lane = remaining_lane if result_recorded else [(index, task), *remaining_lane]
             for failed_index, failed_task, failed_result in build_lane_failure_results(
-                lane=[(index, task), *remaining_lane],
+                lane=failed_lane,
                 default_timeout=default_timeout,
                 tail_lines=tail_lines,
                 reason=error_text,
             ):
                 lane_results.append((failed_index, failed_result))
-                print_task_result(iteration, failed_task.name, failed_result)
+                try:
+                    print_task_result(iteration, failed_task.name, failed_result)
+                except Exception:
+                    continue
             return lane_results
-        lane_results.append((index, result))
-        print_task_result(iteration, task.name, result)
     return lane_results
 
 

@@ -1625,6 +1625,120 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertIn("RuntimeError: lane exploded", str(second_result["stderr_tail"]))
         self.assertIn("RuntimeError: lane exploded", str(third_result["stderr_tail"]))
 
+    def test_run_loop_parallel_lane_postprocess_exception_keeps_recorded_results(self):
+        first_task = TaskDefinition(
+            name="first_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+            agent="broken-agent",
+        )
+        second_task = TaskDefinition(
+            name="second_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+            agent="broken-agent",
+        )
+        third_task = TaskDefinition(
+            name="third_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+            agent="broken-agent",
+        )
+        fourth_task = TaskDefinition(
+            name="fourth_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+            agent="healthy-agent",
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            args = Namespace(
+                repo_root=repo_root,
+                tasks_file=repo_root / "tasks.json",
+                log_dir=repo_root / "logs",
+                interval=0.0,
+                max_iterations=1,
+                tail_lines=20,
+                default_timeout=30,
+                max_workers=2,
+                stop_on_failure=False,
+            )
+            captured: list[dict[str, object]] = []
+            report_path = repo_root / "report.json"
+            run_calls: list[str] = []
+
+            def fake_run_task_safe(
+                task: TaskDefinition,
+                *_args: object,
+                **_kwargs: object,
+            ) -> dict[str, object]:
+                run_calls.append(task.name)
+                return self._passed_result(task.name, task.agent, task.model)
+
+            def fake_print_task_result(
+                _iteration: int,
+                task_name: str,
+                _result: dict[str, object],
+            ) -> None:
+                if task_name == "second_task":
+                    raise RuntimeError("result printer exploded")
+
+            def capture_iteration_payload(_log_dir: Path, payload: dict[str, object]) -> Path:
+                captured.append(payload.copy())
+                return report_path
+
+            with (
+                patch(
+                    "ops.continuous.continuous_runner.load_tasks",
+                    return_value=[first_task, second_task, third_task, fourth_task],
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.run_task_safe",
+                    side_effect=fake_run_task_safe,
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.print_task_result",
+                    side_effect=fake_print_task_result,
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.persist_iteration",
+                    side_effect=capture_iteration_payload,
+                ),
+            ):
+                exit_code = run_loop(args)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(len(captured), 1)
+        self.assertEqual(captured[0]["overall_status"], "failed")
+        self.assertEqual(captured[0]["failed_count"], 1)
+        self.assertNotIn("third_task", run_calls)
+        first_result = captured[0]["tasks"][0]
+        second_result = captured[0]["tasks"][1]
+        third_result = captured[0]["tasks"][2]
+        fourth_result = captured[0]["tasks"][3]
+        assert isinstance(first_result, dict)
+        assert isinstance(second_result, dict)
+        assert isinstance(third_result, dict)
+        assert isinstance(fourth_result, dict)
+        self.assertEqual(first_result["status"], "passed")
+        self.assertEqual(second_result["status"], "passed")
+        self.assertEqual(third_result["status"], "failed")
+        self.assertEqual(third_result["exit_code"], 70)
+        self.assertEqual(fourth_result["status"], "passed")
+        self.assertIn(
+            "RuntimeError: result printer exploded",
+            str(third_result["stderr_tail"]),
+        )
+
     def test_run_loop_parallel_worker_exception_turns_into_failed_task(self):
         first_task = TaskDefinition(
             name="first_task",
