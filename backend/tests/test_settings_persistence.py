@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from pydantic import ValidationError
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,7 +13,7 @@ if str(ROOT) not in sys.path:
 
 from app.api.endpoints.settings import get_current_settings, update_env_file
 from app.api.endpoints.settings import SettingsUpdate, update_settings
-from app.core.config import get_settings
+from app.core.config import emit_security_warnings, get_settings
 
 
 class SettingsPersistenceTests(unittest.TestCase):
@@ -223,6 +224,32 @@ class SettingsPersistenceTests(unittest.TestCase):
                 settings = self._load_settings_with_cors(cors_origins)
                 warnings = settings.validate_production_security()
                 self.assertIn("生产环境 CORS 配置包含不安全的源", warnings)
+
+    def test_get_settings_does_not_emit_security_warnings_implicitly(self):
+        self._load_settings_with_cors('["http://localhost:5173"]')
+
+        with patch("app.core.config.logger.warning") as warning_logger:
+            get_settings.cache_clear()
+            get_settings()
+
+        warning_logger.assert_not_called()
+
+    def test_emit_security_warnings_logs_insecure_cors_in_production(self):
+        settings = self._load_settings_with_cors('["http://localhost:5173"]')
+
+        with patch("app.core.config.logger.warning") as warning_logger:
+            emit_security_warnings(settings)
+
+        warning_logger.assert_any_call("安全警告: 生产环境 CORS 配置包含不安全的源")
+
+    def test_emit_security_warnings_skips_debug_mode(self):
+        os.environ["DEBUG"] = "true"
+        settings = self._load_settings_with_cors('["http://localhost:5173"]')
+
+        with patch("app.core.config.logger.warning") as warning_logger:
+            emit_security_warnings(settings)
+
+        warning_logger.assert_not_called()
 
     def test_validate_production_security_accepts_public_cors_origins(self):
         settings = self._load_settings_with_cors('["https://example.com","https://app.example.com"]')

@@ -224,11 +224,13 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    settings = Settings()
+    return Settings()
 
-    if not settings.debug:
-        warnings = settings.validate_production_security()
-        for warning in warnings:
-            logger.warning(f"安全警告: {warning}")
 
-    return settings
+def emit_security_warnings(settings: Settings) -> None:
+    """Log production security warnings explicitly at application boundaries."""
+    if settings.debug:
+        return
+
+    for warning in settings.validate_production_security():
+        logger.warning(f"安全警告: {warning}")

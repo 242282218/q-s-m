@@ -15,7 +15,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from .core.config import get_settings
+from .core.config import emit_security_warnings, get_settings
 from .core.logging import setup_logging
 from .db.session import init_db, get_query_stats, reset_query_stats
 from .api.router import api_router
@@ -33,6 +33,7 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 settings = get_settings()
+emit_security_warnings(settings)
 
 
 def resolve_frontend_dist_dir(app_dir: Path) -> Path:
