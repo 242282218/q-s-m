@@ -229,17 +229,18 @@ def run_loop(args: argparse.Namespace) -> int:
     log_dir = args.log_dir if args.log_dir.is_absolute() else repo_root / args.log_dir
     tasks_file = tasks_file.resolve()
     log_dir = log_dir.resolve()
-    try:
-        tasks = load_tasks(tasks_file)
-    except ValueError as err:
-        print(f"Failed to load tasks: {err}", file=sys.stderr)
-        return 1
-    if not tasks:
-        print("No enabled tasks found.")
-        return 1
 
     iteration = 1
     while True:
+        try:
+            tasks = load_tasks(tasks_file)
+        except ValueError as err:
+            print(f"Failed to load tasks: {err}", file=sys.stderr)
+            return 1
+        if not tasks:
+            print("No enabled tasks found.")
+            return 1
+
         iteration_started = datetime.now().astimezone().isoformat()
         loop_started = time.perf_counter()
         iteration_results: list[dict[str, Any]] = []

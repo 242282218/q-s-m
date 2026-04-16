@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,6 +21,23 @@ from ops.continuous.continuous_runner import (
 
 
 class ContinuousRunnerTaskFileTests(unittest.TestCase):
+    @staticmethod
+    def _passed_result(name: str) -> dict[str, object]:
+        return {
+            "name": name,
+            "module": "test",
+            "cwd": ".",
+            "command": ["python", "-m", "pytest"],
+            "status": "passed",
+            "exit_code": 0,
+            "timeout_seconds": 30,
+            "duration_seconds": 0.01,
+            "started_at": "2026-01-01T00:00:00+00:00",
+            "finished_at": "2026-01-01T00:00:01+00:00",
+            "stdout_tail": "",
+            "stderr_tail": "",
+        }
+
     def test_default_tasks_cover_quality_and_performance_gates(self):
         tasks = load_tasks(ROOT / DEFAULT_TASKS_FILE)
         tasks_by_name = {task.name: task for task in tasks}
@@ -154,6 +172,88 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             exit_code = run_loop(args)
 
         self.assertEqual(exit_code, 1)
+
+    def test_run_loop_reload_tasks_every_iteration(self):
+        task = TaskDefinition(
+            name="dynamic_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            args = Namespace(
+                repo_root=repo_root,
+                tasks_file=repo_root / "tasks.json",
+                log_dir=repo_root / "logs",
+                interval=0.0,
+                max_iterations=2,
+                tail_lines=20,
+                default_timeout=30,
+                stop_on_failure=False,
+            )
+
+            with (
+                patch(
+                    "ops.continuous.continuous_runner.load_tasks",
+                    side_effect=[[task], [task]],
+                ) as load_tasks_mock,
+                patch(
+                    "ops.continuous.continuous_runner.run_task",
+                    return_value=self._passed_result("dynamic_task"),
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.persist_iteration",
+                    return_value=repo_root / "report.json",
+                ),
+            ):
+                exit_code = run_loop(args)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(load_tasks_mock.call_count, 2)
+
+    def test_run_loop_returns_error_when_task_reload_fails_midway(self):
+        task = TaskDefinition(
+            name="dynamic_task",
+            module="test",
+            cwd=Path("."),
+            command=["python", "-m", "pytest"],
+            timeout=30,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            args = Namespace(
+                repo_root=repo_root,
+                tasks_file=repo_root / "tasks.json",
+                log_dir=repo_root / "logs",
+                interval=0.0,
+                max_iterations=2,
+                tail_lines=20,
+                default_timeout=30,
+                stop_on_failure=False,
+            )
+
+            with (
+                patch(
+                    "ops.continuous.continuous_runner.load_tasks",
+                    side_effect=[[task], ValueError("broken schema")],
+                ) as load_tasks_mock,
+                patch(
+                    "ops.continuous.continuous_runner.run_task",
+                    return_value=self._passed_result("dynamic_task"),
+                ),
+                patch(
+                    "ops.continuous.continuous_runner.persist_iteration",
+                    return_value=repo_root / "report.json",
+                ),
+            ):
+                exit_code = run_loop(args)
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(load_tasks_mock.call_count, 2)
 
     def test_run_task_strips_ansi_escape_sequences(self):
         with tempfile.TemporaryDirectory() as temp_dir:
