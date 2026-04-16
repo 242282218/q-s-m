@@ -54,6 +54,7 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
     def test_default_tasks_cover_quality_and_performance_gates(self):
         tasks = load_tasks(ROOT / DEFAULT_TASKS_FILE)
         tasks_by_name = {task.name: task for task in tasks}
+        agent_names = {task.agent for task in tasks}
 
         self.assertTrue(
             {
@@ -64,6 +65,10 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
                 "frontend_build",
                 "performance_benchmark",
             }.issubset(tasks_by_name)
+        )
+        self.assertEqual(
+            agent_names,
+            {"backend-agent", "frontend-agent", "performance-agent"},
         )
         frontend_lint_check = tasks_by_name["frontend_lint_check"]
         self.assertEqual(frontend_lint_check.cwd, Path("frontend"))
@@ -92,7 +97,7 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             performance_task.command,
             ["python", "../tests/performance/benchmark.py", "--output-json"],
         )
-        self.assertEqual(performance_task.agent, "backend-agent")
+        self.assertEqual(performance_task.agent, "performance-agent")
         self.assertEqual(performance_task.model, DEFAULT_AGENT_MODEL)
 
     def test_load_tasks_supports_utf8_bom(self):

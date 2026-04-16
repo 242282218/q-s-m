@@ -36,14 +36,15 @@ pnpm dev
 Use the built-in continuous runner to execute default backend/frontend checks in a loop:
 
 ```bash
-python ops/continuous/continuous_runner.py --max-workers 2 --interval 60
+python ops/continuous/continuous_runner.py --max-workers 3 --interval 60
 ```
 
 Default task config lives in `ops/continuous/tasks.default.json`.
-It is pre-split into `backend-agent` and `frontend-agent` lanes:
+It is pre-split into `backend-agent`, `frontend-agent`, and `performance-agent` lanes:
 
 - tasks in the same agent run sequentially (stable context, less interference)
 - different agents can run in parallel (controlled by `--max-workers`)
+- the default performance benchmark runs in its own lane, so backend regression tests do not block performance sampling
 - the default frontend lane uses read-only `lint:check` + `format:check`, so continuous checks fail on drift instead of auto-rewriting the worktree
 - `agent.model` is fixed to `gpt-5.4` and invalid models fail fast
 - `enabled=false` only skips execution; task schema + duplicate name checks still fail fast

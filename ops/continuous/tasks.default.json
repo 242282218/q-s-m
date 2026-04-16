@@ -66,7 +66,7 @@
       "cwd": "backend",
       "command": ["python", "../tests/performance/benchmark.py", "--output-json"],
       "agent": {
-        "name": "backend-agent",
+        "name": "performance-agent",
         "model": "gpt-5.4"
       },
       "timeout": 900,
