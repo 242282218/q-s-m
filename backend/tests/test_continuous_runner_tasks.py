@@ -18,19 +18,30 @@ from ops.continuous.continuous_runner import (
 
 
 class ContinuousRunnerTaskFileTests(unittest.TestCase):
-    def test_default_tasks_cover_frontend_build_quality_gate(self):
+    def test_default_tasks_cover_quality_and_performance_gates(self):
         tasks = load_tasks(ROOT / DEFAULT_TASKS_FILE)
         tasks_by_name = {task.name: task for task in tasks}
 
         self.assertTrue(
-            {"backend_pytest", "frontend_lint_fix", "frontend_vitest", "frontend_build"}.issubset(
-                tasks_by_name
-            )
+            {
+                "backend_pytest",
+                "frontend_lint_fix",
+                "frontend_vitest",
+                "frontend_build",
+                "performance_benchmark",
+            }.issubset(tasks_by_name)
         )
         frontend_build = tasks_by_name["frontend_build"]
         self.assertEqual(frontend_build.cwd, Path("frontend"))
         self.assertEqual(frontend_build.command, ["pnpm", "build"])
         self.assertEqual(frontend_build.timeout, 900)
+
+        performance_task = tasks_by_name["performance_benchmark"]
+        self.assertEqual(performance_task.cwd, Path("backend"))
+        self.assertEqual(
+            performance_task.command,
+            ["python", "../tests/performance/benchmark.py", "--output-json"],
+        )
 
     def test_load_tasks_supports_utf8_bom(self):
         payload = {
