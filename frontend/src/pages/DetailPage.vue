@@ -315,7 +315,7 @@ onMounted(() => {
   .resources-section .section-header {
     padding: 0 var(--spacing-6);
   }
-  
+
   .resources-section .section-title {
     font-size: var(--font-size-2xl);
   }
@@ -325,7 +325,7 @@ onMounted(() => {
   .resources-section .section-header {
     padding: 0 var(--spacing-12);
   }
-  
+
   .resources-section .section-title {
     font-size: var(--font-size-3xl);
   }
@@ -341,7 +341,7 @@ onMounted(() => {
     <template v-if="item">
       <!-- 详情介绍区块 -->
       <DetailHero :item="item" :loading="false" />
-      
+
       <!-- 资源列表区块（在详情介绍之下） -->
       <section class="detail-section resources-section">
         <ResourceList
@@ -356,7 +356,7 @@ onMounted(() => {
           @retry="onRetrySearch"
         />
       </section>
-      
+
       <!-- 其他区块 -->
       <CastList :cast="item.cast" />
       <VideoList :videos="item.videos" />

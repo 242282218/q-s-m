@@ -32,7 +32,11 @@ export interface UseApiCacheReturn<T> {
   /** 错误信息 */
   error: Ref<Error | null>;
   /** 执行请求（带缓存） */
-  execute: (key: string, fetcher: (signal: AbortSignal) => Promise<T>, options?: CacheRequestOptions) => Promise<T>;
+  execute: (
+    key: string,
+    fetcher: (signal: AbortSignal) => Promise<T>,
+    options?: CacheRequestOptions
+  ) => Promise<T>;
   /** 手动设置缓存 */
   setCache: (key: string, data: T, ttl?: number) => void;
   /** 获取缓存 */
@@ -235,10 +239,7 @@ class RequestDeduplicator<T = unknown> {
    * @param fetcher 请求函数
    * @returns 请求结果
    */
-  async getOrCreate(
-    key: string,
-    fetcher: (signal: AbortSignal) => Promise<T>
-  ): Promise<T> {
+  async getOrCreate(key: string, fetcher: (signal: AbortSignal) => Promise<T>): Promise<T> {
     const existingRequest = this.pendingRequests.get(key);
 
     if (existingRequest) {
@@ -351,9 +352,7 @@ const globalDeduplicator = new RequestDeduplicator<unknown>();
  * );
  * ```
  */
-export function useApiCache<T = unknown>(
-  options: UseApiCacheOptions = {}
-): UseApiCacheReturn<T> {
+export function useApiCache<T = unknown>(options: UseApiCacheOptions = {}): UseApiCacheReturn<T> {
   const {
     defaultTtl = 5 * 60 * 1000, // 默认 5 分钟
     maxEntries = 100,
@@ -503,10 +502,7 @@ export function useApiCache<T = unknown>(
  * @param params 请求参数
  * @returns 缓存键
  */
-export function createCacheKey(
-  endpoint: string,
-  params?: Record<string, unknown>
-): string {
+export function createCacheKey(endpoint: string, params?: Record<string, unknown>): string {
   if (!params || Object.keys(params).length === 0) {
     return endpoint;
   }

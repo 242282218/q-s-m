@@ -42,7 +42,10 @@ const nextCursor = () => {
 
 <template>
   <!-- 传统页码分页 -->
-  <div class="pager pagination" v-if="mode !== 'cursor' && pagination && pagination.total_pages > 1">
+  <div
+    class="pager pagination"
+    v-if="mode !== 'cursor' && pagination && pagination.total_pages > 1"
+  >
     <button class="btn-page" :disabled="loading || pagination.page <= 1" @click="prevPage">
       上一页
     </button>
@@ -72,11 +75,7 @@ const nextCursor = () => {
       <span>每页 {{ cursorPagination.limit }} 项</span>
       <span v-if="cursorPagination.has_more" class="has-more">（还有更多）</span>
     </div>
-    <button
-      class="btn-page"
-      :disabled="loading || !cursorPagination.has_more"
-      @click="nextCursor"
-    >
+    <button class="btn-page" :disabled="loading || !cursorPagination.has_more" @click="nextCursor">
       下一页
     </button>
   </div>

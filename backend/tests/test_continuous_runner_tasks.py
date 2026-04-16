@@ -58,12 +58,27 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertTrue(
             {
                 "backend_pytest",
-                "frontend_lint_fix",
+                "frontend_lint_check",
+                "frontend_format_check",
                 "frontend_vitest",
                 "frontend_build",
                 "performance_benchmark",
             }.issubset(tasks_by_name)
         )
+        frontend_lint_check = tasks_by_name["frontend_lint_check"]
+        self.assertEqual(frontend_lint_check.cwd, Path("frontend"))
+        self.assertEqual(frontend_lint_check.command, ["pnpm", "run", "lint:check"])
+        self.assertEqual(frontend_lint_check.timeout, 900)
+        self.assertEqual(frontend_lint_check.agent, "frontend-agent")
+        self.assertEqual(frontend_lint_check.model, DEFAULT_AGENT_MODEL)
+
+        frontend_format_check = tasks_by_name["frontend_format_check"]
+        self.assertEqual(frontend_format_check.cwd, Path("frontend"))
+        self.assertEqual(frontend_format_check.command, ["pnpm", "run", "format:check"])
+        self.assertEqual(frontend_format_check.timeout, 900)
+        self.assertEqual(frontend_format_check.agent, "frontend-agent")
+        self.assertEqual(frontend_format_check.model, DEFAULT_AGENT_MODEL)
+
         frontend_build = tasks_by_name["frontend_build"]
         self.assertEqual(frontend_build.cwd, Path("frontend"))
         self.assertEqual(frontend_build.command, ["pnpm", "build"])

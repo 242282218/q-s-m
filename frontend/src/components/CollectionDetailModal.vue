@@ -2,7 +2,6 @@
 import { computed } from 'vue';
 import type { CollectionItem } from '@/types/api';
 
-
 const props = defineProps<{
   visible: boolean;
   item: CollectionItem | null;

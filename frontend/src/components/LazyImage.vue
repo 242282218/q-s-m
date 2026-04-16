@@ -48,14 +48,18 @@ const { src, srcset, loaded, error, loading, observeElement, unobserveElement } 
 });
 
 // 当元素进入视口时开始加载图片
-watch(hasIntersected, (intersected) => {
-  if (intersected && props.loading === 'lazy') {
-    isInViewport.value = true;
-    if (imgRef.value) {
-      observeElement(imgRef.value);
+watch(
+  hasIntersected,
+  (intersected) => {
+    if (intersected && props.loading === 'lazy') {
+      isInViewport.value = true;
+      if (imgRef.value) {
+        observeElement(imgRef.value);
+      }
     }
-  }
-}, { immediate: true });
+  },
+  { immediate: true }
+);
 
 // 非懒加载模式直接加载
 onMounted(() => {
@@ -133,7 +137,9 @@ watch(error, (hasError) => {
   width: 100%;
   height: 100%;
   display: block;
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
 }
 
 .lazy-image-wrapper.is-loading .lazy-image {

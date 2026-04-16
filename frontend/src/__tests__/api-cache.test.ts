@@ -1,10 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { request } from '@/shared/lib/http';
-import {
-  globalCache,
-  MemoryCache,
-  RequestDeduplicator,
-} from '@/composables/useApiCache';
+import { globalCache, MemoryCache, RequestDeduplicator } from '@/composables/useApiCache';
 import { getHomeFeed } from '@/api';
 
 vi.mock('@/shared/lib/http', () => ({
@@ -43,7 +39,7 @@ describe('API Caching and Deduplication', () => {
 
     it('should evict oldest entry when max size exceeded', () => {
       const smallCache = new MemoryCache(10);
-      
+
       for (let i = 0; i < 12; i++) {
         smallCache.set(`key-${i}`, { data: i }, 60000);
       }

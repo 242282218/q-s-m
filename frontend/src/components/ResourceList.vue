@@ -32,7 +32,7 @@ const filteredResources = computed(() => {
 
   // 筛选最佳资源
   if (showOnlyBest.value) {
-    result = result.filter(r => r.is_best);
+    result = result.filter((r) => r.is_best);
   }
 
   // 排序
@@ -64,12 +64,13 @@ const sortOptions = [
 </script>
 
 <template>
-  <section class="section detail-section resource-list-section" aria-labelledby="resource-list-title">
+  <section
+    class="section detail-section resource-list-section"
+    aria-labelledby="resource-list-title"
+  >
     <div class="section-header">
       <IconPackage class="section-icon" aria-hidden="true" />
-      <h2 class="section-title" id="resource-list-title">
-        资源列表
-      </h2>
+      <h2 class="section-title" id="resource-list-title">资源列表</h2>
     </div>
     <div class="section-body">
       <!-- 加载中 - 骨架屏 -->
@@ -141,11 +142,7 @@ const sortOptions = [
           <div class="toolbar-right">
             <!-- 最佳资源筛选 -->
             <label class="filter-toggle">
-              <input
-                type="checkbox"
-                v-model="showOnlyBest"
-                class="filter-checkbox"
-              />
+              <input type="checkbox" v-model="showOnlyBest" class="filter-checkbox" />
               <span class="filter-label">
                 <span class="filter-icon">⭐</span>
                 仅显示最佳
@@ -155,16 +152,8 @@ const sortOptions = [
             <!-- 排序下拉框 -->
             <div class="sort-control">
               <label for="sort-select" class="sort-label">排序:</label>
-              <select
-                id="sort-select"
-                v-model="sortBy"
-                class="sort-select"
-              >
-                <option
-                  v-for="option in sortOptions"
-                  :key="option.value"
-                  :value="option.value"
-                >
+              <select id="sort-select" v-model="sortBy" class="sort-select">
+                <option v-for="option in sortOptions" :key="option.value" :value="option.value">
                   {{ option.label }}
                 </option>
               </select>
@@ -178,7 +167,12 @@ const sortOptions = [
             <ResourceCard
               v-for="(resource, index) in filteredResources"
               :key="resource.link"
-              v-memo="[resource.link, collectedMap[resource.link], savingMap[resource.link], statusMap[resource.link]]"
+              v-memo="[
+                resource.link,
+                collectedMap[resource.link],
+                savingMap[resource.link],
+                statusMap[resource.link],
+              ]"
               :resource="resource"
               :index="index"
               :is-collected="collectedMap[resource.link]"
@@ -243,11 +237,7 @@ const sortOptions = [
   flex-shrink: 0;
   width: 300px;
   max-width: 320px;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.05) 0%,
-    rgba(255, 255, 255, 0.02) 100%
-  );
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-2xl);
   overflow: hidden;
@@ -264,11 +254,7 @@ const sortOptions = [
   flex-wrap: wrap;
   gap: var(--spacing-3);
   padding: var(--spacing-3) var(--spacing-4);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.03) 0%,
-    rgba(255, 255, 255, 0.01) 100%
-  );
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-xl);
   backdrop-filter: blur(8px);
@@ -399,11 +385,7 @@ const sortOptions = [
    ============================================ */
 .resource-scroll-wrapper :deep(.scrollable-row-container) {
   padding: var(--spacing-4);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.02) 0%,
-    rgba(255, 255, 255, 0.01) 100%
-  );
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0.01) 100%);
   border-radius: var(--radius-xl);
 }
 
@@ -458,11 +440,7 @@ const sortOptions = [
   align-items: center;
   justify-content: space-between;
   padding: var(--spacing-3) var(--spacing-4);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.03) 0%,
-    rgba(255, 255, 255, 0.01) 100%
-  );
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-xl);
 }
@@ -505,11 +483,7 @@ const sortOptions = [
 
 /* 骨架卡片 */
 .skeleton-card {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.05) 0%,
-    rgba(255, 255, 255, 0.02) 100%
-  );
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-2xl);
   overflow: hidden;
@@ -571,11 +545,7 @@ const sortOptions = [
 
 .skeleton-score {
   padding: var(--spacing-3);
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.03) 0%,
-    rgba(255, 255, 255, 0.01) 100%
-  );
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-lg);
   display: flex;

@@ -48,7 +48,7 @@ class ImageLoadQueue {
   }
 
   cancel(src: string): void {
-    const index = this.queue.findIndex(item => item.src === src);
+    const index = this.queue.findIndex((item) => item.src === src);
     if (index > -1) {
       const item = this.queue[index];
       item.abortController.abort();
@@ -122,9 +122,7 @@ const imageQueue = ImageLoadQueue.getInstance();
  * // onMounted(() => observeElement(imgRef.value))
  * ```
  */
-export function useImageLoader(
-  options: UseImageLoaderOptions = {}
-): UseImageLoaderReturn {
+export function useImageLoader(options: UseImageLoaderOptions = {}): UseImageLoaderReturn {
   const { src: initialSrc, placeholder, lazy = false, srcset: initialSrcset } = options;
 
   const src = ref<string | null>(initialSrc || null);

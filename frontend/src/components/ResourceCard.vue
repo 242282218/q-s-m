@@ -28,18 +28,11 @@ const emit = defineEmits<{
           {{ resource.name }}
         </h4>
         <div class="resource-badges">
-          <span
-            v-if="resource.is_best"
-            class="badge-best"
-            title="最佳资源"
-          >
+          <span v-if="resource.is_best" class="badge-best" title="最佳资源">
             <span class="badge-icon">🏆</span>
             最佳
           </span>
-          <span
-            v-if="resource.resolution || resource.quality_level"
-            class="badge-quality"
-          >
+          <span v-if="resource.resolution || resource.quality_level" class="badge-quality">
             {{ resource.resolution || resource.quality_level }}
           </span>
         </div>
@@ -47,11 +40,7 @@ const emit = defineEmits<{
 
       <!-- 标签区域 -->
       <div v-if="resource.tags?.length" class="resource-tags">
-        <span
-          v-for="tag in resource.tags.slice(0, 5)"
-          :key="tag"
-          class="resource-tag"
-        >
+        <span v-for="tag in resource.tags.slice(0, 5)" :key="tag" class="resource-tag">
           {{ tag.toUpperCase() }}
         </span>
       </div>
@@ -67,7 +56,7 @@ const emit = defineEmits<{
             <span class="score-max">/10</span>
           </div>
         </div>
-        
+
         <!-- 评分进度条 -->
         <div class="score-progress">
           <div
@@ -76,7 +65,7 @@ const emit = defineEmits<{
             :class="{
               'score-excellent': resource.overall_score >= 0.8,
               'score-good': resource.overall_score >= 0.6 && resource.overall_score < 0.8,
-              'score-average': resource.overall_score < 0.6
+              'score-average': resource.overall_score < 0.6,
             }"
           />
         </div>
@@ -158,11 +147,7 @@ const emit = defineEmits<{
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.05) 0%,
-    rgba(255, 255, 255, 0.02) 100%
-  );
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-2xl);
   overflow: hidden;
@@ -481,20 +466,20 @@ const emit = defineEmits<{
   .card-body {
     padding: var(--spacing-3);
   }
-  
+
   .card-actions {
     padding: var(--spacing-3);
   }
-  
+
   .action-row {
     flex-direction: column;
   }
-  
+
   .resource-title {
     font-size: var(--font-size-xs);
     -webkit-line-clamp: 1;
   }
-  
+
   .score-value {
     font-size: var(--font-size-lg);
   }

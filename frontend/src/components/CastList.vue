@@ -37,7 +37,7 @@ const { handleImageLoad, handleImageError, isLoaded, hasError } = useSimpleImage
                 decoding="async"
                 @load="handleImageLoad"
                 @error="handleImageError"
-                :class="{ 'fade-in': isLoaded, 'hidden': hasError }"
+                :class="{ 'fade-in': isLoaded, hidden: hasError }"
               />
               <div v-else class="poster-skeleton" aria-hidden="true" />
             </div>
@@ -66,11 +66,7 @@ const { handleImageLoad, handleImageError, isLoaded, hasError } = useSimpleImage
 .cast-card {
   flex-shrink: 0;
   width: 140px;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.05) 0%,
-    rgba(255, 255, 255, 0.02) 100%
-  );
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-xl);
   overflow: hidden;
@@ -89,11 +85,7 @@ const { handleImageLoad, handleImageError, isLoaded, hasError } = useSimpleImage
   position: relative;
   aspect-ratio: 2/3;
   overflow: hidden;
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.03) 0%,
-    rgba(255, 255, 255, 0.01) 100%
-  );
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
 }
 
 .cast-avatar img {

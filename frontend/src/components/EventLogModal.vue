@@ -24,7 +24,7 @@ const logRef = ref<HTMLElement | null>(null);
 const filters = ref({
   info: true,
   warning: true,
-  error: true
+  error: true,
 });
 
 // 自动滚动开关
@@ -65,15 +65,20 @@ const groupedLogs = computed(() => {
   const stagePatterns = [
     { stage: 'init', pattern: /^开始 (独立 | 重命名)/, title: '初始化', icon: '🚀' },
     { stage: 'locate', pattern: /^定位目录/, title: '定位目录', icon: '📍' },
-    { stage: 'reorganize', pattern: /^(重组 | 创建目录 | 移动文件 | 根目录改名)/, title: '重组结构', icon: '📁' },
+    {
+      stage: 'reorganize',
+      pattern: /^(重组 | 创建目录 | 移动文件 | 根目录改名)/,
+      title: '重组结构',
+      icon: '📁',
+    },
     { stage: 'cleanup', pattern: /^(清理 | 删除)/, title: '清理优化', icon: '🧹' },
-    { stage: 'complete', pattern: /^(完成汇总 | 重命名完成 | 完成)/, title: '完成', icon: '✅' }
+    { stage: 'complete', pattern: /^(完成汇总 | 重命名完成 | 完成)/, title: '完成', icon: '✅' },
   ];
 
   for (const line of props.lines) {
     // 检查是否是新阶段的开始
-    const matchedStage = stagePatterns.find(s => s.pattern.test(line.text));
-    
+    const matchedStage = stagePatterns.find((s) => s.pattern.test(line.text));
+
     if (matchedStage) {
       // 保存当前组
       if (currentGroup && currentGroup.logs.length > 0) {
@@ -84,7 +89,7 @@ const groupedLogs = computed(() => {
         title: matchedStage.title,
         icon: matchedStage.icon,
         stage: matchedStage.stage,
-        logs: [line]
+        logs: [line],
       };
     } else {
       // 添加到当前组
@@ -93,7 +98,7 @@ const groupedLogs = computed(() => {
           title: '其他',
           icon: '📄',
           stage: 'other',
-          logs: []
+          logs: [],
         };
       }
       currentGroup.logs.push(line);
@@ -110,21 +115,21 @@ const groupedLogs = computed(() => {
 
 // 过滤后的日志
 const filteredLogs = computed(() => {
-  return groupedLogs.value.map(group => ({
+  return groupedLogs.value.map((group) => ({
     ...group,
-    logs: group.logs.filter(log => {
+    logs: group.logs.filter((log) => {
       if (log.level === 'info' && !filters.value.info) return false;
       if (log.level === 'warning' && !filters.value.warning) return false;
       if (log.level === 'error' && !filters.value.error) return false;
       return true;
-    })
+    }),
   }));
 });
 
 // 统计信息
 const logStats = computed(() => {
   const stats = { info: 0, warning: 0, error: 0 };
-  props.lines.forEach(line => {
+  props.lines.forEach((line) => {
     if (line.level === 'info') stats.info++;
     else if (line.level === 'warning') stats.warning++;
     else if (line.level === 'error') stats.error++;
@@ -137,14 +142,15 @@ const copyLogs = async () => {
   copying.value = true;
   try {
     const logText = props.lines
-      .map(line => {
-        const timestamp = line.timestamp || new Date().toLocaleTimeString('zh-CN', { hour12: false });
+      .map((line) => {
+        const timestamp =
+          line.timestamp || new Date().toLocaleTimeString('zh-CN', { hour12: false });
         return `[${timestamp}] [${line.level.toUpperCase()}] ${line.text}`;
       })
       .join('\n');
-    
+
     await navigator.clipboard.writeText(logText);
-    
+
     // 显示成功提示
     const toast = document.createElement('div');
     toast.textContent = '✅ 日志已复制到剪贴板';
@@ -172,12 +178,12 @@ const copyLogs = async () => {
 // 下载日志功能
 const downloadLogs = () => {
   const logContent = props.lines
-    .map(line => {
+    .map((line) => {
       const timestamp = line.timestamp || new Date().toLocaleTimeString('zh-CN', { hour12: false });
       return `[${timestamp}] [${line.level.toUpperCase()}] ${line.text}`;
     })
     .join('\n');
-  
+
   const blob = new Blob([logContent], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -198,12 +204,12 @@ watch(
   () => props.lines.length,
   async () => {
     if (!autoScroll.value) return;
-    
+
     await nextTick();
     if (logRef.value) {
       const { scrollTop, scrollHeight, clientHeight } = logRef.value;
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-      
+
       if (isNearBottom) {
         logRef.value.scrollTop = scrollHeight;
       }
@@ -226,9 +232,7 @@ const close = () => {
           <button class="header-btn" @click="copyLogs" :disabled="copying" title="复制日志">
             {{ copying ? '复制中...' : '📋 复制' }}
           </button>
-          <button class="header-btn" @click="downloadLogs" title="下载日志">
-            💾 下载
-          </button>
+          <button class="header-btn" @click="downloadLogs" title="下载日志">💾 下载</button>
           <button class="header-btn close-btn" @click="close">×</button>
         </div>
       </div>
@@ -278,11 +282,7 @@ const close = () => {
           <span>暂无日志</span>
         </div>
         <div v-else class="log-groups">
-          <div 
-            v-for="(group, index) in filteredLogs" 
-            :key="index"
-            class="log-group"
-          >
+          <div v-for="(group, index) in filteredLogs" :key="index" class="log-group">
             <div class="group-header">
               <span class="group-icon">{{ group.icon }}</span>
               <span class="group-title">{{ group.title }}</span>
@@ -295,7 +295,9 @@ const close = () => {
                 class="log-line"
                 :class="['level-' + line.level]"
               >
-                <span class="log-timestamp">{{ line.timestamp || new Date().toLocaleTimeString('zh-CN', { hour12: false }) }}</span>
+                <span class="log-timestamp">{{
+                  line.timestamp || new Date().toLocaleTimeString('zh-CN', { hour12: false })
+                }}</span>
                 <span class="log-level" :class="'level-' + line.level">
                   [{{ line.level.toUpperCase() }}]
                 </span>
@@ -456,7 +458,7 @@ const close = () => {
       color: var(--color-text-secondary, rgba(255, 255, 255, 0.7));
       user-select: none;
 
-      input[type="checkbox"] {
+      input[type='checkbox'] {
         cursor: pointer;
       }
 
@@ -465,9 +467,15 @@ const close = () => {
         height: 8px;
         border-radius: 50%;
 
-        &.level-info { background: #3b82f6; }
-        &.level-warning { background: #f59e0b; }
-        &.level-error { background: #ef4444; }
+        &.level-info {
+          background: #3b82f6;
+        }
+        &.level-warning {
+          background: #f59e0b;
+        }
+        &.level-error {
+          background: #ef4444;
+        }
       }
     }
   }
@@ -482,7 +490,7 @@ const close = () => {
       color: var(--color-text-secondary, rgba(255, 255, 255, 0.7));
       user-select: none;
 
-      input[type="checkbox"] {
+      input[type='checkbox'] {
         cursor: pointer;
       }
     }
@@ -582,9 +590,15 @@ const close = () => {
             font-weight: 700;
             font-size: 11px;
 
-            &.level-info { color: #3b82f6; }
-            &.level-warning { color: #f59e0b; }
-            &.level-error { color: #ef4444; }
+            &.level-info {
+              color: #3b82f6;
+            }
+            &.level-warning {
+              color: #f59e0b;
+            }
+            &.level-error {
+              color: #ef4444;
+            }
           }
 
           .log-text {
@@ -659,8 +673,12 @@ const close = () => {
 
 /* 动画 */
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slideUp {

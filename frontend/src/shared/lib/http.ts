@@ -316,11 +316,7 @@ export async function del<T>(
   path: string,
   options: Omit<RequestOptions, 'cache'> = {}
 ): Promise<ApiResponse<T>> {
-  return request<T>(
-    path,
-    { method: 'DELETE' },
-    { cache: false, ...options }
-  );
+  return request<T>(path, { method: 'DELETE' }, { cache: false, ...options });
 }
 
 /**

@@ -44,6 +44,7 @@ It is pre-split into `backend-agent` and `frontend-agent` lanes:
 
 - tasks in the same agent run sequentially (stable context, less interference)
 - different agents can run in parallel (controlled by `--max-workers`)
+- the default frontend lane uses read-only `lint:check` + `format:check`, so continuous checks fail on drift instead of auto-rewriting the worktree
 - `agent.model` is fixed to `gpt-5.4` and invalid models fail fast
 - `enabled=false` only skips execution; task schema + duplicate name checks still fail fast
 - `task.cwd` must stay inside `repo_root`; absolute path / `..` escape is rejected

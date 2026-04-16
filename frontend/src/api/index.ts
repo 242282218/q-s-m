@@ -155,7 +155,11 @@ export function getCollections(page: number, pageSize: number) {
 export function getCollectionsCursor(cursor?: string | null, limit: number = 20) {
   // 限制 limit 最大为 100
   const pageSize = Math.min(limit, 100);
-  const params: Record<string, string | number> = { limit: pageSize, sort_by: 'saved_at', order: 'desc' };
+  const params: Record<string, string | number> = {
+    limit: pageSize,
+    sort_by: 'saved_at',
+    order: 'desc',
+  };
   if (cursor) {
     params.cursor = cursor;
   }

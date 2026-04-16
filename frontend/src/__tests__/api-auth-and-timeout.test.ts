@@ -115,26 +115,28 @@ describe('api auth and timeout', () => {
 
   it('times out the retry attempt with a fresh timeout budget', async () => {
     let attempt = 0;
-    const fetchMock = vi.fn().mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
-      attempt += 1;
+    const fetchMock = vi
+      .fn()
+      .mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+        attempt += 1;
 
-      if (attempt === 1) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ code: 503, message: 'retry', data: null }), {
-            status: 503,
-            headers: { 'content-type': 'application/json' },
-          })
-        );
-      }
+        if (attempt === 1) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ code: 503, message: 'retry', data: null }), {
+              status: 503,
+              headers: { 'content-type': 'application/json' },
+            })
+          );
+        }
 
-      return new Promise((_resolve, reject) => {
-        init?.signal?.addEventListener(
-          'abort',
-          () => reject(new DOMException('Aborted', 'AbortError')),
-          { once: true }
-        );
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true }
+          );
+        });
       });
-    });
     vi.stubGlobal('fetch', fetchMock);
 
     const outcome = await Promise.race([

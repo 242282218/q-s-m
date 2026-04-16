@@ -30,7 +30,12 @@ const heroStyle = (item: DetailItem | null) => {
 
 <template>
   <!-- 详情模式 -->
-  <section v-if="item && !loading" class="detail-hero" aria-labelledby="detail-title" :style="heroStyle(item)">
+  <section
+    v-if="item && !loading"
+    class="detail-hero"
+    aria-labelledby="detail-title"
+    :style="heroStyle(item)"
+  >
     <div class="detail-shell">
       <div class="detail-poster">
         <img

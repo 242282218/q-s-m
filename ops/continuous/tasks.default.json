@@ -13,10 +13,22 @@
       "enabled": true
     },
     {
-      "name": "frontend_lint_fix",
+      "name": "frontend_lint_check",
       "module": "frontend",
       "cwd": "frontend",
-      "command": ["pnpm", "run", "lint"],
+      "command": ["pnpm", "run", "lint:check"],
+      "agent": {
+        "name": "frontend-agent",
+        "model": "gpt-5.4"
+      },
+      "timeout": 900,
+      "enabled": true
+    },
+    {
+      "name": "frontend_format_check",
+      "module": "frontend",
+      "cwd": "frontend",
+      "command": ["pnpm", "run", "format:check"],
       "agent": {
         "name": "frontend-agent",
         "model": "gpt-5.4"
