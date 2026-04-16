@@ -80,6 +80,33 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def validate_runtime_args(args: argparse.Namespace) -> tuple[float, int, int, int, int]:
+    interval_raw = getattr(args, "interval", 60.0)
+    if isinstance(interval_raw, bool) or not isinstance(interval_raw, (int, float)):
+        raise ValueError("Argument 'interval' must be a non-negative number.")
+    interval = float(interval_raw)
+    if interval < 0:
+        raise ValueError("Argument 'interval' must be a non-negative number.")
+
+    max_iterations = getattr(args, "max_iterations", 0)
+    if type(max_iterations) is not int or max_iterations < 0:
+        raise ValueError("Argument 'max_iterations' must be a non-negative integer.")
+
+    tail_lines = getattr(args, "tail_lines", 120)
+    if type(tail_lines) is not int or tail_lines <= 0:
+        raise ValueError("Argument 'tail_lines' must be a positive integer.")
+
+    default_timeout = getattr(args, "default_timeout", 1200)
+    if type(default_timeout) is not int or default_timeout <= 0:
+        raise ValueError("Argument 'default_timeout' must be a positive integer.")
+
+    max_workers = getattr(args, "max_workers", 1)
+    if type(max_workers) is not int or max_workers <= 0:
+        raise ValueError("Argument 'max_workers' must be a positive integer.")
+
+    return interval, max_iterations, tail_lines, default_timeout, max_workers
+
+
 def load_tasks(tasks_file: Path) -> list[TaskDefinition]:
     try:
         raw_content = tasks_file.read_text(encoding="utf-8-sig")
@@ -391,12 +418,19 @@ def infer_next_iteration(log_dir: Path) -> int:
 
 
 def run_loop(args: argparse.Namespace) -> int:
+    try:
+        interval, max_iterations, tail_lines, default_timeout, max_workers = (
+            validate_runtime_args(args)
+        )
+    except ValueError as err:
+        print(f"Invalid runtime arguments: {err}", file=sys.stderr)
+        return 1
+
     repo_root = args.repo_root.resolve()
     tasks_file = args.tasks_file if args.tasks_file.is_absolute() else repo_root / args.tasks_file
     log_dir = args.log_dir if args.log_dir.is_absolute() else repo_root / args.log_dir
     tasks_file = tasks_file.resolve()
     log_dir = log_dir.resolve()
-    max_workers = max(1, int(getattr(args, "max_workers", 1)))
     if args.stop_on_failure and max_workers > 1:
         print(
             "stop-on-failure is enabled; forcing max-workers=1 for deterministic fail-fast.",
@@ -422,8 +456,8 @@ def run_loop(args: argparse.Namespace) -> int:
             iteration_results = run_tasks_sequential(
                 tasks=tasks,
                 repo_root=repo_root,
-                tail_lines=args.tail_lines,
-                default_timeout=args.default_timeout,
+                tail_lines=tail_lines,
+                default_timeout=default_timeout,
                 iteration=iteration,
                 stop_on_failure=args.stop_on_failure,
             )
@@ -431,8 +465,8 @@ def run_loop(args: argparse.Namespace) -> int:
             iteration_results = run_tasks_parallel(
                 tasks=tasks,
                 repo_root=repo_root,
-                tail_lines=args.tail_lines,
-                default_timeout=args.default_timeout,
+                tail_lines=tail_lines,
+                default_timeout=default_timeout,
                 iteration=iteration,
                 max_workers=max_workers,
             )
@@ -456,11 +490,11 @@ def run_loop(args: argparse.Namespace) -> int:
         executed_iterations += 1
         if args.stop_on_failure and failed_count > 0:
             return 1
-        if args.max_iterations > 0 and executed_iterations >= args.max_iterations:
+        if max_iterations > 0 and executed_iterations >= max_iterations:
             return 0
 
         elapsed = time.perf_counter() - loop_started
-        wait_seconds = max(0.0, args.interval - elapsed)
+        wait_seconds = max(0.0, interval - elapsed)
         if wait_seconds > 0:
             time.sleep(wait_seconds)
         iteration += 1

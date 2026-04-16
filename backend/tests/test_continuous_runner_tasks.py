@@ -299,6 +299,131 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 1)
 
+    def test_run_loop_returns_error_for_negative_max_iterations(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            tasks_file = repo_root / "tasks.json"
+            args = Namespace(
+                repo_root=repo_root,
+                tasks_file=tasks_file,
+                log_dir=repo_root / "logs",
+                interval=1.0,
+                max_iterations=-1,
+                tail_lines=20,
+                default_timeout=30,
+                max_workers=1,
+                stop_on_failure=False,
+            )
+            with (
+                patch("ops.continuous.continuous_runner.load_tasks") as load_tasks_mock,
+                patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                exit_code = run_loop(args)
+
+        self.assertEqual(exit_code, 1)
+        load_tasks_mock.assert_not_called()
+        self.assertIn("max_iterations", stderr.getvalue())
+
+    def test_run_loop_returns_error_for_negative_interval(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            tasks_file = repo_root / "tasks.json"
+            args = Namespace(
+                repo_root=repo_root,
+                tasks_file=tasks_file,
+                log_dir=repo_root / "logs",
+                interval=-0.1,
+                max_iterations=1,
+                tail_lines=20,
+                default_timeout=30,
+                max_workers=1,
+                stop_on_failure=False,
+            )
+            with (
+                patch("ops.continuous.continuous_runner.load_tasks") as load_tasks_mock,
+                patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                exit_code = run_loop(args)
+
+        self.assertEqual(exit_code, 1)
+        load_tasks_mock.assert_not_called()
+        self.assertIn("interval", stderr.getvalue())
+
+    def test_run_loop_returns_error_for_non_positive_tail_lines(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            tasks_file = repo_root / "tasks.json"
+            args = Namespace(
+                repo_root=repo_root,
+                tasks_file=tasks_file,
+                log_dir=repo_root / "logs",
+                interval=1.0,
+                max_iterations=1,
+                tail_lines=0,
+                default_timeout=30,
+                max_workers=1,
+                stop_on_failure=False,
+            )
+            with (
+                patch("ops.continuous.continuous_runner.load_tasks") as load_tasks_mock,
+                patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                exit_code = run_loop(args)
+
+        self.assertEqual(exit_code, 1)
+        load_tasks_mock.assert_not_called()
+        self.assertIn("tail_lines", stderr.getvalue())
+
+    def test_run_loop_returns_error_for_non_positive_default_timeout(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            tasks_file = repo_root / "tasks.json"
+            args = Namespace(
+                repo_root=repo_root,
+                tasks_file=tasks_file,
+                log_dir=repo_root / "logs",
+                interval=1.0,
+                max_iterations=1,
+                tail_lines=20,
+                default_timeout=0,
+                max_workers=1,
+                stop_on_failure=False,
+            )
+            with (
+                patch("ops.continuous.continuous_runner.load_tasks") as load_tasks_mock,
+                patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                exit_code = run_loop(args)
+
+        self.assertEqual(exit_code, 1)
+        load_tasks_mock.assert_not_called()
+        self.assertIn("default_timeout", stderr.getvalue())
+
+    def test_run_loop_returns_error_for_non_positive_max_workers(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            tasks_file = repo_root / "tasks.json"
+            args = Namespace(
+                repo_root=repo_root,
+                tasks_file=tasks_file,
+                log_dir=repo_root / "logs",
+                interval=1.0,
+                max_iterations=1,
+                tail_lines=20,
+                default_timeout=30,
+                max_workers=0,
+                stop_on_failure=False,
+            )
+            with (
+                patch("ops.continuous.continuous_runner.load_tasks") as load_tasks_mock,
+                patch("sys.stderr", new_callable=io.StringIO) as stderr,
+            ):
+                exit_code = run_loop(args)
+
+        self.assertEqual(exit_code, 1)
+        load_tasks_mock.assert_not_called()
+        self.assertIn("max_workers", stderr.getvalue())
+
     def test_run_loop_reload_tasks_every_iteration(self):
         task = TaskDefinition(
             name="dynamic_task",
