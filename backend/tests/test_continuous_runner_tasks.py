@@ -420,7 +420,7 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
                     "module": "backend",
                     "cwd": "backend",
                     "command": ["python", "-m", "pytest"],
-                    "agent": {"name": "backend-agent", "model": "gpt-5.3-codex", "role": "qa"},
+                    "agent": {"name": "backend-agent", "model": "gpt-5.4", "role": "qa"},
                 }
             ]
         }
@@ -434,7 +434,7 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             ):
                 load_tasks(tasks_file)
 
-    def test_load_tasks_rejects_non_gpt_53_codex_agent_model(self):
+    def test_load_tasks_rejects_non_gpt_54_agent_model(self):
         payload = {
             "tasks": [
                 {
@@ -452,7 +452,7 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             tasks_file.write_text(json.dumps(payload), encoding="utf-8")
             with self.assertRaisesRegex(
                 ValueError,
-                r"Task field 'agent.model' must be 'gpt-5.3-codex'",
+                r"Task field 'agent.model' must be 'gpt-5.4'",
             ):
                 load_tasks(tasks_file)
 

@@ -7,7 +7,7 @@
       "command": ["python", "-m", "pytest"],
       "agent": {
         "name": "backend-agent",
-        "model": "gpt-5.3-codex"
+        "model": "gpt-5.4"
       },
       "timeout": 1800,
       "enabled": true
@@ -19,7 +19,7 @@
       "command": ["pnpm", "run", "lint"],
       "agent": {
         "name": "frontend-agent",
-        "model": "gpt-5.3-codex"
+        "model": "gpt-5.4"
       },
       "timeout": 900,
       "enabled": true
@@ -31,7 +31,7 @@
       "command": ["pnpm", "test"],
       "agent": {
         "name": "frontend-agent",
-        "model": "gpt-5.3-codex"
+        "model": "gpt-5.4"
       },
       "timeout": 1200,
       "enabled": true
@@ -43,7 +43,7 @@
       "command": ["pnpm", "build"],
       "agent": {
         "name": "frontend-agent",
-        "model": "gpt-5.3-codex"
+        "model": "gpt-5.4"
       },
       "timeout": 900,
       "enabled": true
@@ -55,7 +55,7 @@
       "command": ["python", "../tests/performance/benchmark.py", "--output-json"],
       "agent": {
         "name": "backend-agent",
-        "model": "gpt-5.3-codex"
+        "model": "gpt-5.4"
       },
       "timeout": 900,
       "enabled": true

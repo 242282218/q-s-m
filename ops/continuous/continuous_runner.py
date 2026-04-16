@@ -19,7 +19,7 @@ from typing import Any, Iterator
 DEFAULT_TASKS_FILE = Path("ops/continuous/tasks.default.json")
 DEFAULT_LOG_DIR = Path("storage/logs/continuous")
 DEFAULT_AGENT_NAME = "default"
-DEFAULT_AGENT_MODEL = "gpt-5.3-codex"
+DEFAULT_AGENT_MODEL = "gpt-5.4"
 ITERATION_COUNTER_FILE = ".iteration-counter"
 ITERATION_LOCK_FILE = ".iteration-lock"
 ANSI_CSI_PATTERN = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
