@@ -246,6 +246,19 @@ def resolve_command(command: list[str]) -> list[str]:
     return command
 
 
+def resolve_task_cwd(repo_root: Path, task_cwd: Path) -> Path:
+    resolved_repo_root = repo_root.resolve()
+    candidate = task_cwd if task_cwd.is_absolute() else resolved_repo_root / task_cwd
+    resolved_cwd = candidate.resolve()
+    try:
+        resolved_cwd.relative_to(resolved_repo_root)
+    except ValueError as err:
+        raise ValueError(
+            f"Task cwd '{task_cwd}' escapes repo root '{resolved_repo_root}'."
+        ) from err
+    return resolved_cwd
+
+
 def run_task(
     task: TaskDefinition,
     repo_root: Path,
@@ -257,9 +270,30 @@ def run_task(
     timeout = task.timeout or default_timeout
     started = time.perf_counter()
     try:
+        task_cwd = resolve_task_cwd(repo_root, task.cwd)
+    except ValueError as err:
+        duration_seconds = round(time.perf_counter() - started, 3)
+        stderr_text = strip_ansi_sequences(str(err))
+        return {
+            "name": task.name,
+            "module": task.module,
+            "agent": task.agent,
+            "model": task.model,
+            "cwd": str(task.cwd),
+            "command": command,
+            "status": "failed",
+            "exit_code": 78,
+            "timeout_seconds": timeout,
+            "duration_seconds": duration_seconds,
+            "started_at": started_at,
+            "finished_at": datetime.now().astimezone().isoformat(),
+            "stdout_tail": "",
+            "stderr_tail": tail_text(stderr_text, tail_lines),
+        }
+    try:
         completed = subprocess.run(
             command,
-            cwd=repo_root / task.cwd,
+            cwd=task_cwd,
             capture_output=True,
             text=True,
             encoding="utf-8",

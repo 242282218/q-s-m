@@ -46,6 +46,7 @@ It is pre-split into `backend-agent` and `frontend-agent` lanes:
 - different agents can run in parallel (controlled by `--max-workers`)
 - `agent.model` is fixed to `gpt-5.3-codex` and invalid models fail fast
 - `enabled=false` only skips execution; task schema + duplicate name checks still fail fast
+- `task.cwd` must stay inside `repo_root`; absolute path / `..` escape is rejected
 
 ## Environment
 
