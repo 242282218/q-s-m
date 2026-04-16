@@ -428,6 +428,27 @@ def build_lane_failure_result(
     }
 
 
+def build_lane_failure_results(
+    lane: list[tuple[int, TaskDefinition]],
+    default_timeout: int,
+    tail_lines: int,
+    reason: str,
+) -> list[tuple[int, TaskDefinition, dict[str, Any]]]:
+    return [
+        (
+            index,
+            task,
+            build_lane_failure_result(
+                task=task,
+                default_timeout=default_timeout,
+                tail_lines=tail_lines,
+                reason=reason,
+            ),
+        )
+        for index, task in lane
+    ]
+
+
 def print_task_result(iteration: int, task_name: str, result: dict[str, Any]) -> None:
     agent_name = str(result.get("agent", DEFAULT_AGENT_NAME))
     print(
@@ -453,8 +474,25 @@ def run_agent_lane(
     iteration: int,
 ) -> list[tuple[int, dict[str, Any]]]:
     lane_results: list[tuple[int, dict[str, Any]]] = []
-    for index, task in lane:
-        result = run_task_safe(task, repo_root, tail_lines, default_timeout)
+    remaining_lane = list(lane)
+    while remaining_lane:
+        index, task = remaining_lane.pop(0)
+        try:
+            result = run_task_safe(task, repo_root, tail_lines, default_timeout)
+        except Exception as err:
+            error_text = (
+                "Unhandled agent lane error while executing lane: "
+                f"{type(err).__name__}: {err}"
+            )
+            for failed_index, failed_task, failed_result in build_lane_failure_results(
+                lane=[(index, task), *remaining_lane],
+                default_timeout=default_timeout,
+                tail_lines=tail_lines,
+                reason=error_text,
+            ):
+                lane_results.append((failed_index, failed_result))
+                print_task_result(iteration, failed_task.name, failed_result)
+            return lane_results
         lane_results.append((index, result))
         print_task_result(iteration, task.name, result)
     return lane_results
@@ -522,15 +560,14 @@ def run_tasks_parallel(
                     "Unhandled agent lane error while awaiting lane results: "
                     f"{type(err).__name__}: {err}"
                 )
-                for index, task in lane:
+                for index, task, failed_result in build_lane_failure_results(
+                    lane=lane,
+                    default_timeout=default_timeout,
+                    tail_lines=tail_lines,
+                    reason=error_text,
+                ):
                     if ordered_results[index] is not None:
                         continue
-                    failed_result = build_lane_failure_result(
-                        task=task,
-                        default_timeout=default_timeout,
-                        tail_lines=tail_lines,
-                        reason=error_text,
-                    )
                     ordered_results[index] = failed_result
                     print_task_result(iteration, task.name, failed_result)
                 continue
