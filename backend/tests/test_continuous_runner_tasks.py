@@ -111,6 +111,28 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, r"Unable to read tasks file"):
                 load_tasks(missing_file)
 
+    def test_load_tasks_rejects_missing_tasks_field(self):
+        payload = {"version": 1}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tasks_file = Path(temp_dir) / "tasks.invalid.json"
+            tasks_file.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError, r"missing required 'tasks' field"
+            ):
+                load_tasks(tasks_file)
+
+    def test_load_tasks_rejects_unknown_root_fields(self):
+        payload = {"tasks": [], "version": 1}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tasks_file = Path(temp_dir) / "tasks.invalid.json"
+            tasks_file.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError, r"root has unsupported fields: version"
+            ):
+                load_tasks(tasks_file)
+
     def test_load_tasks_rejects_non_list_tasks_field(self):
         payload = {"tasks": {"name": "invalid"}}
 

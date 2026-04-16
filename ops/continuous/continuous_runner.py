@@ -157,7 +157,16 @@ def load_tasks(tasks_file: Path) -> list[TaskDefinition]:
     if not isinstance(payload, dict):
         raise ValueError(f"Invalid tasks file '{tasks_file}': root must be a JSON object.")
 
-    tasks = payload.get("tasks", [])
+    if "tasks" not in payload:
+        raise ValueError(f"Invalid tasks file '{tasks_file}': missing required 'tasks' field.")
+    unknown_root_fields = sorted(set(payload) - {"tasks"})
+    if unknown_root_fields:
+        unknown_list = ", ".join(unknown_root_fields)
+        raise ValueError(
+            f"Invalid tasks file '{tasks_file}': root has unsupported fields: {unknown_list}."
+        )
+
+    tasks = payload["tasks"]
     if not isinstance(tasks, list):
         raise ValueError(f"Invalid tasks file '{tasks_file}': 'tasks' must be a list.")
 
