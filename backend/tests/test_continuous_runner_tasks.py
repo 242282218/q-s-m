@@ -1,4 +1,5 @@
 import json
+from argparse import Namespace
 import sys
 import tempfile
 import unittest
@@ -13,6 +14,7 @@ from ops.continuous.continuous_runner import (
     DEFAULT_TASKS_FILE,
     TaskDefinition,
     load_tasks,
+    run_loop,
     run_task,
 )
 
@@ -69,6 +71,65 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertEqual(tasks[0].name, "backend_pytest")
         self.assertEqual(tasks[0].cwd, Path("backend"))
         self.assertEqual(tasks[0].command, ["python", "-m", "pytest"])
+
+    def test_load_tasks_rejects_non_list_tasks_field(self):
+        payload = {"tasks": {"name": "invalid"}}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tasks_file = Path(temp_dir) / "tasks.invalid.json"
+            tasks_file.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, r"'tasks' must be a list"):
+                load_tasks(tasks_file)
+
+    def test_load_tasks_rejects_non_object_task_item(self):
+        payload = {"tasks": ["invalid-item"]}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tasks_file = Path(temp_dir) / "tasks.invalid.json"
+            tasks_file.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError, r"tasks\[0\] must be a JSON object"
+            ):
+                load_tasks(tasks_file)
+
+    def test_load_tasks_reports_task_index_for_invalid_definition(self):
+        payload = {
+            "tasks": [
+                {
+                    "name": "bad_task",
+                    "module": "backend",
+                    "cwd": "backend",
+                    "command": "python -m pytest",
+                }
+            ]
+        }
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tasks_file = Path(temp_dir) / "tasks.invalid.json"
+            tasks_file.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError, r"tasks\[0\]: Invalid task command"
+            ):
+                load_tasks(tasks_file)
+
+    def test_run_loop_returns_error_for_invalid_tasks_file_schema(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+            tasks_file = repo_root / "tasks.invalid.json"
+            tasks_file.write_text(json.dumps({"tasks": {}}), encoding="utf-8")
+            args = Namespace(
+                repo_root=repo_root,
+                tasks_file=tasks_file,
+                log_dir=repo_root / "logs",
+                interval=1.0,
+                max_iterations=1,
+                tail_lines=20,
+                default_timeout=30,
+                stop_on_failure=False,
+            )
+            exit_code = run_loop(args)
+
+        self.assertEqual(exit_code, 1)
 
     def test_run_task_strips_ansi_escape_sequences(self):
         with tempfile.TemporaryDirectory() as temp_dir:

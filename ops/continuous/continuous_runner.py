@@ -58,9 +58,37 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_tasks(tasks_file: Path) -> list[TaskDefinition]:
-    payload = json.loads(tasks_file.read_text(encoding="utf-8-sig"))
+    try:
+        payload = json.loads(tasks_file.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError as err:
+        raise ValueError(
+            f"Invalid JSON in tasks file '{tasks_file}': "
+            f"{err.msg} (line {err.lineno}, column {err.colno})"
+        ) from err
+
+    if not isinstance(payload, dict):
+        raise ValueError(f"Invalid tasks file '{tasks_file}': root must be a JSON object.")
+
     tasks = payload.get("tasks", [])
-    return [TaskDefinition.from_dict(item) for item in tasks if item.get("enabled", True)]
+    if not isinstance(tasks, list):
+        raise ValueError(f"Invalid tasks file '{tasks_file}': 'tasks' must be a list.")
+
+    definitions: list[TaskDefinition] = []
+    for index, item in enumerate(tasks):
+        if not isinstance(item, dict):
+            raise ValueError(
+                f"Invalid tasks file '{tasks_file}': tasks[{index}] must be a JSON object."
+            )
+        if not item.get("enabled", True):
+            continue
+        try:
+            definitions.append(TaskDefinition.from_dict(item))
+        except (KeyError, TypeError, ValueError) as err:
+            raise ValueError(
+                f"Invalid task definition in '{tasks_file}' at tasks[{index}]: {err}"
+            ) from err
+
+    return definitions
 
 
 def tail_text(text: str, tail_lines: int) -> str:
@@ -196,7 +224,11 @@ def run_loop(args: argparse.Namespace) -> int:
     log_dir = args.log_dir if args.log_dir.is_absolute() else repo_root / args.log_dir
     tasks_file = tasks_file.resolve()
     log_dir = log_dir.resolve()
-    tasks = load_tasks(tasks_file)
+    try:
+        tasks = load_tasks(tasks_file)
+    except ValueError as err:
+        print(f"Failed to load tasks: {err}", file=sys.stderr)
+        return 1
     if not tasks:
         print("No enabled tasks found.")
         return 1
