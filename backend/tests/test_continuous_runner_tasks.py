@@ -9,10 +9,29 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ops.continuous.continuous_runner import TaskDefinition, load_tasks, run_task
+from ops.continuous.continuous_runner import (
+    DEFAULT_TASKS_FILE,
+    TaskDefinition,
+    load_tasks,
+    run_task,
+)
 
 
 class ContinuousRunnerTaskFileTests(unittest.TestCase):
+    def test_default_tasks_cover_frontend_build_quality_gate(self):
+        tasks = load_tasks(ROOT / DEFAULT_TASKS_FILE)
+        tasks_by_name = {task.name: task for task in tasks}
+
+        self.assertTrue(
+            {"backend_pytest", "frontend_lint_fix", "frontend_vitest", "frontend_build"}.issubset(
+                tasks_by_name
+            )
+        )
+        frontend_build = tasks_by_name["frontend_build"]
+        self.assertEqual(frontend_build.cwd, Path("frontend"))
+        self.assertEqual(frontend_build.command, ["pnpm", "build"])
+        self.assertEqual(frontend_build.timeout, 900)
+
     def test_load_tasks_supports_utf8_bom(self):
         payload = {
             "tasks": [

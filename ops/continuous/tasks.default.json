@@ -25,6 +25,14 @@
       "enabled": true
     },
     {
+      "name": "frontend_build",
+      "module": "frontend",
+      "cwd": "frontend",
+      "command": ["pnpm", "build"],
+      "timeout": 900,
+      "enabled": true
+    },
+    {
       "name": "performance_benchmark",
       "module": "performance",
       "cwd": "backend",
