@@ -64,7 +64,14 @@
       "name": "performance_benchmark",
       "module": "performance",
       "cwd": "backend",
-      "command": ["python", "../tests/performance/benchmark.py", "--output-json"],
+      "command": [
+        "python",
+        "../tests/performance/benchmark.py",
+        "--output-json",
+        "--output-path",
+        "storage/logs/continuous/performance/latest.json",
+        "--fail-on-threshold-breach"
+      ],
       "agent": {
         "name": "performance-agent",
         "model": "gpt-5.4"

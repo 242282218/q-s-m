@@ -26,6 +26,7 @@ ANSI_CSI_PATTERN = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 ANSI_OSC_PATTERN = re.compile(r"\x1B\][^\x1B\x07]*(?:\x07|\x1B\\)")
 ANSI_SINGLE_ESCAPE_PATTERN = re.compile(r"\x1B(?:[@-Z\\-_]|[78])")
 ITERATION_REPORT_PATTERN = re.compile(r"^iteration-(\d+)-\d{8}-\d{6}\.json$")
+PERFORMANCE_THRESHOLD_PATTERN = re.compile(r"阈值未达标:\s*(.+)")
 
 if os.name == "nt":
     import msvcrt
@@ -673,6 +674,24 @@ def infer_frontend_suggestion(result: dict[str, Any]) -> str | None:
     return None
 
 
+def infer_performance_suggestion(result: dict[str, Any], text: str) -> str | None:
+    if str(result.get("module", "")).strip() != "performance":
+        return None
+
+    match = PERFORMANCE_THRESHOLD_PATTERN.search(text)
+    if not match:
+        return None
+
+    metrics = [item.strip() for item in match.group(1).split(",") if item.strip()]
+    name = result["name"]
+    if metrics:
+        return (
+            f"{name}: investigate breached performance thresholds: "
+            f"{', '.join(metrics)}."
+        )
+    return f"{name}: investigate the reported performance threshold breaches."
+
+
 def build_suggestions(task_results: list[dict[str, Any]]) -> list[str]:
     suggestions: list[str] = []
     for result in task_results:
@@ -703,6 +722,9 @@ def build_suggestions(task_results: list[dict[str, Any]]) -> list[str]:
         frontend_suggestion = None if missing_pnpm else infer_frontend_suggestion(result)
         if frontend_suggestion:
             suggestions.append(frontend_suggestion)
+        performance_suggestion = infer_performance_suggestion(result, text)
+        if performance_suggestion:
+            suggestions.append(performance_suggestion)
         if "FAILED" in text and "pytest" in " ".join(result["command"]):
             suggestions.append(f"{name}: prioritize failing pytest cases and isolate regressions.")
         if result["status"] == "timeout":

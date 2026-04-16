@@ -44,7 +44,7 @@ It is pre-split into `backend-agent`, `frontend-agent`, and `performance-agent` 
 
 - tasks in the same agent run sequentially (stable context, less interference)
 - different agents can run in parallel (controlled by `--max-workers`)
-- the default performance benchmark runs in its own lane, so backend regression tests do not block performance sampling
+- the default performance benchmark runs in its own lane, fails on threshold breaches, and writes its latest JSON artifact to `storage/logs/continuous/performance/latest.json`
 - the default frontend lane uses read-only `lint:check` + `format:check`, so continuous checks fail on drift instead of auto-rewriting the worktree
 - `agent.model` is fixed to `gpt-5.4` and invalid models fail fast
 - `enabled=false` only skips execution; task schema + duplicate name checks still fail fast
@@ -52,6 +52,7 @@ It is pre-split into `backend-agent`, `frontend-agent`, and `performance-agent` 
 - `task.cwd` must resolve to an existing directory; missing/non-directory paths fail fast
 - unhandled task errors and unexpected lane-level errors are downgraded to failed task results (`exit_code=70`); finished lane tasks are preserved, incomplete lane result sets only backfill missing tasks, and invalid lane indexes are treated as lane-level failures
 - `optimization_suggestions` adds task-specific guidance for the default frontend quality gates, so lint / format / test / build failures point to the next fix path instead of a generic fallback
+- `optimization_suggestions` also surfaces breached performance thresholds from the default benchmark lane, so degradations point to the exact metric family to optimize next
 - next iteration id resumes from `latest.json`; if `latest.json` is broken/stale, runner falls back to highest `iteration-*.json`
 - runners that share the same `log_dir` reserve iteration ids through a lock-backed counter, so updated processes do not reuse the same iteration number concurrently
 

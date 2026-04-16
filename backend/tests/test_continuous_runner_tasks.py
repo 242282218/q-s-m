@@ -95,7 +95,14 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertEqual(performance_task.cwd, Path("backend"))
         self.assertEqual(
             performance_task.command,
-            ["python", "../tests/performance/benchmark.py", "--output-json"],
+            [
+                "python",
+                "../tests/performance/benchmark.py",
+                "--output-json",
+                "--output-path",
+                "storage/logs/continuous/performance/latest.json",
+                "--fail-on-threshold-breach",
+            ],
         )
         self.assertEqual(performance_task.agent, "performance-agent")
         self.assertEqual(performance_task.model, DEFAULT_AGENT_MODEL)
@@ -546,6 +553,29 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         )
         self.assertNotIn(
             "frontend_lint_check: fix the reported ESLint violations in frontend sources before rerunning.",
+            suggestions,
+        )
+
+    def test_build_suggestions_includes_performance_threshold_guidance(self):
+        failed = self._passed_result("performance_benchmark", agent="performance-agent")
+        failed["module"] = "performance"
+        failed["command"] = [
+            "python",
+            "../tests/performance/benchmark.py",
+            "--output-json",
+            "--output-path",
+            "storage/logs/continuous/performance/latest.json",
+            "--fail-on-threshold-breach",
+        ]
+        failed["status"] = "failed"
+        failed["exit_code"] = 2
+        failed["stdout_tail"] = "阈值未达标: cache.write_ops_per_sec, database.queries_per_sec"
+
+        suggestions = build_suggestions([failed])
+
+        self.assertIn(
+            "performance_benchmark: investigate breached performance thresholds: "
+            "cache.write_ops_per_sec, database.queries_per_sec.",
             suggestions,
         )
 
