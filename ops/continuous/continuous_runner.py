@@ -223,6 +223,24 @@ def persist_iteration(log_dir: Path, payload: dict[str, Any]) -> Path:
     return path
 
 
+def infer_next_iteration(log_dir: Path) -> int:
+    latest_path = log_dir / "latest.json"
+    try:
+        raw_content = latest_path.read_text(encoding="utf-8")
+    except OSError:
+        return 1
+    try:
+        payload = json.loads(raw_content)
+    except json.JSONDecodeError:
+        return 1
+    if not isinstance(payload, dict):
+        return 1
+    iteration = payload.get("iteration")
+    if type(iteration) is int and iteration > 0:
+        return iteration + 1
+    return 1
+
+
 def run_loop(args: argparse.Namespace) -> int:
     repo_root = args.repo_root.resolve()
     tasks_file = args.tasks_file if args.tasks_file.is_absolute() else repo_root / args.tasks_file
@@ -230,7 +248,7 @@ def run_loop(args: argparse.Namespace) -> int:
     tasks_file = tasks_file.resolve()
     log_dir = log_dir.resolve()
 
-    iteration = 1
+    iteration = infer_next_iteration(log_dir)
     while True:
         try:
             tasks = load_tasks(tasks_file)
