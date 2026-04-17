@@ -29,6 +29,11 @@ class MediaFetcher:
                 language=settings.default_language,
             )
         return self._internal_client
+
+    async def close(self) -> None:
+        if self._internal_client:
+            await self._internal_client.close()
+            self._internal_client = None
     
     async def fetch_by_tmdb_id(self, tmdb_id: int, media_type: str = "movie") -> Optional[Any]:
         """

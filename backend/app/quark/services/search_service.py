@@ -63,6 +63,12 @@ class SearchService:
         if self._internal_media_fetcher:
             await self._internal_media_fetcher.close()
 
+    @staticmethod
+    def _resolve_page_size(max_results: int) -> int:
+        if max_results > 0:
+            return max_results
+        return get_settings().quark_search_max_results
+
     async def search_by_tmdb_id(
         self,
         tmdb_id: int,
@@ -228,10 +234,11 @@ class SearchService:
     async def _search_direct(self, keyword: str, max_results: int) -> SearchResponse:
         """直接搜索（无媒体信息）"""
         start = time.time()
+        page_size = self._resolve_page_size(max_results)
 
         resources = await self.quark_client.search_resources(
             keyword,
-            page_size=max_results or settings.quark_search_max_results
+            page_size=page_size
         )
 
         if not resources:
@@ -265,10 +272,11 @@ class SearchService:
         logger.info(f"_search_common called: keyword={keyword}, max_results={max_results}")
 
         start = time.time()
+        page_size = self._resolve_page_size(max_results)
 
         resources = await self.quark_client.search_resources(
             keyword,
-            page_size=max_results or settings.quark_search_max_results
+            page_size=page_size
         )
         logger.info(f"Quark client returned: {len(resources)} resources")
 

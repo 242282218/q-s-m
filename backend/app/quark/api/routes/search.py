@@ -107,7 +107,8 @@ async def search_by_tmdb_id(
     RESTful 路径：GET /quark/searches/tmdb/{tmdb_id}
     """
     settings = get_settings()
-    if not settings.tmdb_api_key:
+    tmdb_client = getattr(request.app.state, "tmdb_client", None)
+    if tmdb_client is None and not settings.tmdb_api_key:
         payload = SearchData(media=None, resources=[], total=0, query_time=None)
         return business_error(
             payload,
@@ -119,19 +120,21 @@ async def search_by_tmdb_id(
     logger.info(f"API called: tmdb_id={tmdb_id}, media_type={media_type}, max_results={max_results}")
 
     quark_client = getattr(request.app.state, "quark_client", None)
-    service = SearchService(quark_client=quark_client)
-
-    result = await service.search_by_tmdb_id(tmdb_id, max_results, media_type)
-    logger.info(f"API returned: total={result.total}, resources={len(result.resources)}")
-    payload = as_search_data(result)
-    if result.success:
-        return ok(payload, message=result.message or "OK")
-    return business_error(
-        payload,
-        message=result.message or "搜索失败",
-        code=ErrorCode.SEARCH_FAILED,
-        error=ErrorDetail(field="tmdb_id", value=tmdb_id, reason=result.message),
-    )
+    service = SearchService(tmdb_client=tmdb_client, quark_client=quark_client)
+    try:
+        result = await service.search_by_tmdb_id(tmdb_id, max_results, media_type)
+        logger.info(f"API returned: total={result.total}, resources={len(result.resources)}")
+        payload = as_search_data(result)
+        if result.success:
+            return ok(payload, message=result.message or "OK")
+        return business_error(
+            payload,
+            message=result.message or "搜索失败",
+            code=ErrorCode.SEARCH_FAILED,
+            error=ErrorDetail(field="tmdb_id", value=tmdb_id, reason=result.message),
+        )
+    finally:
+        await service.close()
 
 
 
@@ -153,18 +156,22 @@ async def search_by_title(
     
     RESTful 路径：GET /quark/searches/by-title?title=xxx
     """
+    tmdb_client = getattr(request.app.state, "tmdb_client", None)
     quark_client = getattr(request.app.state, "quark_client", None)
-    service = SearchService(quark_client=quark_client)
-    result = await service.search_by_title(title, year, max_results)
-    payload = as_search_data(result)
-    if result.success:
-        return ok(payload, message=result.message or "OK")
-    return business_error(
-        payload,
-        message=result.message or "搜索失败",
-        code=ErrorCode.SEARCH_FAILED,
-        error=ErrorDetail(field="title", value=title, reason=result.message),
-    )
+    service = SearchService(tmdb_client=tmdb_client, quark_client=quark_client)
+    try:
+        result = await service.search_by_title(title, year, max_results)
+        payload = as_search_data(result)
+        if result.success:
+            return ok(payload, message=result.message or "OK")
+        return business_error(
+            payload,
+            message=result.message or "搜索失败",
+            code=ErrorCode.SEARCH_FAILED,
+            error=ErrorDetail(field="title", value=title, reason=result.message),
+        )
+    finally:
+        await service.close()
 
 
 
