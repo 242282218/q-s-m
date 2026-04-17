@@ -41,6 +41,7 @@ const statusMap = reactive<Record<string, { level: 'success' | 'error' | 'info';
   {}
 );
 const isSearching = ref(false);
+let activeDetailLoadId = 0;
 
 // 空状态计算
 const isEmptyState = computed(() => {
@@ -72,19 +73,40 @@ function clearStatus(link: string) {
   delete statusMap[link];
 }
 
+function clearReactiveRecord<T>(record: Record<string, T>) {
+  Object.keys(record).forEach((key) => delete record[key]);
+}
+
+function isStaleDetailLoad(loadId: number) {
+  return loadId !== activeDetailLoadId;
+}
+
+function resetDetailState() {
+  loading.value = false;
+  item.value = null;
+  recommendations.value = [];
+  resourceLoading.value = false;
+  resourceError.value = '';
+  resources.value = [];
+  isSearching.value = false;
+  clearReactiveRecord(collectedMap);
+  clearReactiveRecord(savingMap);
+  clearReactiveRecord(statusMap);
+}
+
 /**
  * 加载链接收藏状态
  */
-async function loadLinkStatus(links: string[]) {
-  if (links.length === 0) {
+async function loadLinkStatus(links: string[], loadId: number) {
+  if (links.length === 0 || isStaleDetailLoad(loadId)) {
     return;
   }
   try {
     const res = await checkLinks({ links });
-    if (res.code !== 0) {
+    if (isStaleDetailLoad(loadId) || res.code !== 0) {
       return;
     }
-    Object.keys(collectedMap).forEach((key) => delete collectedMap[key]);
+    clearReactiveRecord(collectedMap);
     res.data.results.forEach((row) => {
       collectedMap[row.link] = row.collected;
     });
@@ -96,20 +118,27 @@ async function loadLinkStatus(links: string[]) {
 /**
  * 搜索资源
  */
-async function searchResources() {
-  if (!item.value || isSearching.value) {
+async function searchResources(detailItem: DetailItem, loadId: number) {
+  if (isSearching.value || isStaleDetailLoad(loadId)) {
     return;
   }
   isSearching.value = true;
   resourceLoading.value = true;
   resourceError.value = '';
   resources.value = [];
-  Object.keys(collectedMap).forEach((key) => delete collectedMap[key]);
+  clearReactiveRecord(collectedMap);
+  clearReactiveRecord(statusMap);
 
   try {
-    let res = await searchByTmdb(item.value.id, item.value.media_type, 100);
+    let res = await searchByTmdb(detailItem.id, detailItem.media_type, 100);
+    if (isStaleDetailLoad(loadId)) {
+      return;
+    }
     if (res.code !== 0 || res.data.resources.length === 0) {
-      res = await searchByTitle(item.value.title, item.value.year ?? undefined, 100);
+      res = await searchByTitle(detailItem.title, detailItem.year ?? undefined, 100);
+      if (isStaleDetailLoad(loadId)) {
+        return;
+      }
     }
     if (res.code !== 0) {
       resourceError.value = res.message || '未找到相关资源';
@@ -120,12 +149,19 @@ async function searchResources() {
       resourceError.value = '未找到相关资源';
       return;
     }
-    await loadLinkStatus(resources.value.map((resource) => resource.link));
+    await loadLinkStatus(
+      resources.value.map((resource) => resource.link),
+      loadId
+    );
   } catch (error) {
-    resourceError.value = error instanceof Error ? error.message : '资源搜索失败';
+    if (!isStaleDetailLoad(loadId)) {
+      resourceError.value = error instanceof Error ? error.message : '资源搜索失败';
+    }
   } finally {
-    resourceLoading.value = false;
-    isSearching.value = false;
+    if (!isStaleDetailLoad(loadId)) {
+      resourceLoading.value = false;
+      isSearching.value = false;
+    }
   }
 }
 
@@ -133,27 +169,34 @@ async function searchResources() {
  * 加载详情页数据
  */
 async function loadDetailPage() {
+  const loadId = ++activeDetailLoadId;
+  resetDetailState();
+
   if (!Number.isFinite(props.itemId) || props.itemId <= 0) {
     push('无效的详情参数', 'error');
-    item.value = null;
-    recommendations.value = [];
-    resources.value = [];
     return;
   }
   loading.value = true;
   try {
     const res = await getDetailPageData(props.mediaType, props.itemId);
+    if (isStaleDetailLoad(loadId)) {
+      return;
+    }
     if (res.code !== 0) {
       push(res.message || '加载详情失败', 'error');
       return;
     }
     item.value = res.data.item;
     recommendations.value = res.data.recommendations;
-    await searchResources();
+    await searchResources(res.data.item, loadId);
   } catch (error) {
-    push(error instanceof Error ? error.message : '加载详情失败', 'error');
+    if (!isStaleDetailLoad(loadId)) {
+      push(error instanceof Error ? error.message : '加载详情失败', 'error');
+    }
   } finally {
-    loading.value = false;
+    if (!isStaleDetailLoad(loadId)) {
+      loading.value = false;
+    }
   }
 }
 
@@ -242,7 +285,10 @@ function onSave(resource: ResourceDto) {
 }
 
 function onRetrySearch() {
-  void searchResources();
+  if (!item.value) {
+    return;
+  }
+  void searchResources(item.value, activeDetailLoadId);
 }
 
 // 监听路由参数变化

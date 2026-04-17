@@ -16,6 +16,7 @@ const { push } = useToast();
 
 const loading = ref(false);
 const person = ref<PersonData | null>(null);
+let activePersonLoadId = 0;
 
 const visibleCredits = computed(() => {
   return (person.value?.all_credits || []).slice(0, 10);
@@ -29,24 +30,42 @@ function mediaLink(mediaType: string, id: number) {
   return `/${mediaType}/${id}`;
 }
 
+function isStalePersonLoad(loadId: number) {
+  return loadId !== activePersonLoadId;
+}
+
+function resetPersonState() {
+  loading.value = false;
+  person.value = null;
+}
+
 async function loadPersonPage() {
+  const loadId = ++activePersonLoadId;
+  resetPersonState();
+
   if (!Number.isFinite(props.personId) || props.personId <= 0) {
     push('无效的人物参数', 'error');
-    person.value = null;
     return;
   }
   loading.value = true;
   try {
     const res = await getPersonPageData(props.personId);
+    if (isStalePersonLoad(loadId)) {
+      return;
+    }
     if (res.code !== 0) {
       push(res.message || '加载人物信息失败', 'error');
       return;
     }
     person.value = res.data;
   } catch (error) {
-    push(error instanceof Error ? error.message : '加载人物信息失败', 'error');
+    if (!isStalePersonLoad(loadId)) {
+      push(error instanceof Error ? error.message : '加载人物信息失败', 'error');
+    }
   } finally {
-    loading.value = false;
+    if (!isStalePersonLoad(loadId)) {
+      loading.value = false;
+    }
   }
 }
 
