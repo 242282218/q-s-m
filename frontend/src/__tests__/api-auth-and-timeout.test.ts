@@ -1,10 +1,13 @@
+// @vitest-environment happy-dom
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/lib/sse', () => ({
+vi.mock('@/shared/lib/sse', () => ({
   consumeSse: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { startVerifySse } from '@/api';
+import { AUTH_REQUIRED_EVENT, type AuthRequiredDetail } from '@/shared/lib/auth-prompt';
 import { ApiError, cancelAllHttpRequests, request } from '@/lib/http';
 
 interface StorageShape {
@@ -39,6 +42,17 @@ function createStorage(): StorageShape {
       store.set(key, value);
     },
   };
+}
+
+function captureNextAuthRequiredEvent() {
+  return new Promise<AuthRequiredDetail>((resolve) => {
+    const handler = (event: Event) => {
+      window.removeEventListener(AUTH_REQUIRED_EVENT, handler as EventListener);
+      resolve((event as CustomEvent<AuthRequiredDetail>).detail);
+    };
+
+    window.addEventListener(AUTH_REQUIRED_EVENT, handler as EventListener);
+  });
 }
 
 describe('api auth and timeout', () => {
@@ -111,6 +125,50 @@ describe('api auth and timeout', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0];
     expect(new Headers(init?.headers).get('X-API-Key')).toBe('secret-key');
+  });
+
+  it('emits an auth prompt event when a regular request is rejected with 401', async () => {
+    globalThis.localStorage.setItem('qsm_api_key', 'expired-key');
+
+    const authPromptEvent = captureNextAuthRequiredEvent();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ code: 401, message: '无效或缺失 API Key', data: null }), {
+          status: 401,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+    );
+
+    await expect(request('/secure', { method: 'GET' }, { cache: false })).rejects.toBeInstanceOf(
+      ApiError
+    );
+
+    await expect(authPromptEvent).resolves.toEqual({
+      message: '无效或缺失 API Key',
+      hasStoredKey: true,
+    });
+  });
+
+  it('emits an auth prompt event when an SSE request is rejected with 401', async () => {
+    const authPromptEvent = captureNextAuthRequiredEvent();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ code: 401, message: '需要 API Key', data: null }), {
+          status: 401,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+    );
+
+    await expect(startVerifySse({}, () => undefined)).rejects.toBeInstanceOf(ApiError);
+
+    await expect(authPromptEvent).resolves.toEqual({
+      message: '需要 API Key',
+      hasStoredKey: false,
+    });
   });
 
   it('times out the retry attempt with a fresh timeout budget', async () => {

@@ -1,5 +1,6 @@
 import type { ApiResponse } from '@/types/api';
 import { globalCache, globalDeduplicator, createCacheKey } from '@/composables/useApiCache';
+import { emitAuthRequired } from '@/shared/lib/auth-prompt';
 import { withApiKeyHeader } from '@/shared/lib/api-key';
 
 export const API_BASE = import.meta.env.VITE_API_BASE || '/api/v1';
@@ -269,6 +270,10 @@ async function executeRequest<T>(
 
       return payload;
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        emitAuthRequired(err.message);
+      }
+
       if (err instanceof Error && err.name === 'AbortError') {
         if (abortedByCaller) {
           throw normalizeAbortError(err);

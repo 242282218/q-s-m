@@ -146,14 +146,11 @@ docker compose up -d
 ### First-time API Key setup
 
 If `API_KEY` is set in the environment, the frontend needs to know it too.
-Open the browser console on `http://your-server:8000` and run:
+On the first `401`, QSM now shows an in-app API Key prompt. Enter the key once,
+and the frontend stores it in `localStorage` and reloads the current page automatically.
 
-```javascript
-localStorage.setItem('qsm_api_key', 'your-api-key')
-```
-
-Then refresh the page. Alternatively, go to **Settings**, enter the key in the
-"API 访问 Key" field, and save — this persists it to `localStorage` automatically.
+If you prefer to avoid the runtime prompt entirely, you can still build the frontend
+with `VITE_API_KEY` set to the same value as `API_KEY`.
 
 ### Persistent data
 

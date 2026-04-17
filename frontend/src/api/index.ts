@@ -1,4 +1,5 @@
 import { consumeSse } from '@/shared/lib/sse';
+import { emitAuthRequired } from '@/shared/lib/auth-prompt';
 import { withApiKeyHeader } from '@/shared/lib/api-key';
 import { ApiError, API_BASE, request, toQuery } from '@/shared/lib/http';
 import { globalCache } from '@/composables/useApiCache';
@@ -323,6 +324,10 @@ async function startSse<T>(
       errorDetails = errorData;
     } catch {
       // 响应体不是 JSON，使用默认错误信息
+    }
+
+    if (response.status === 401) {
+      emitAuthRequired(errorMessage);
     }
 
     throw new ApiError(errorMessage, errorCode, response.status, errorDetails);

@@ -32,6 +32,10 @@ export function setConfiguredApiKey(value: string | null | undefined): void {
   }
 }
 
+export function hasStoredApiKey(): boolean {
+  return readStoredApiKey() !== null;
+}
+
 export function getConfiguredApiKey(): string | null {
   return readStoredApiKey() ?? normalizeApiKey(import.meta.env.VITE_API_KEY);
 }

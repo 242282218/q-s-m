@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory } from 'vue-router';
 import { nextTick } from 'vue';
+import { AUTH_REQUIRED_EVENT } from '@/shared/lib/auth-prompt';
 
 const apiMocks = vi.hoisted(() => ({
   getCollections: vi.fn(),
@@ -199,5 +200,63 @@ describe('App browser smoke', () => {
     expect(host!.textContent).toContain('"Alien" 的搜索结果');
     expect(apiMocks.searchTmdbPosters).toHaveBeenCalledWith('Alien');
     expect(consoleErrorSpy).not.toHaveBeenCalled();
+  });
+
+  it('shows the API key gate on auth prompt events and persists a replacement key', async () => {
+    const { app, router } = createQsmApp(createMemoryHistory());
+
+    await router.push('/');
+    await router.isReady();
+    app.mount(host!);
+    cleanup = () => app.unmount();
+
+    await flushUi();
+    await flushUi();
+
+    localStorage.setItem('qsm_api_key', 'stale-key');
+    const reloadSpy = vi.spyOn(window.location, 'reload').mockImplementation(() => undefined);
+
+    window.dispatchEvent(
+      new CustomEvent(AUTH_REQUIRED_EVENT, {
+        detail: {
+          message: '需要 API Key',
+          hasStoredKey: true,
+        },
+      })
+    );
+
+    await flushUi();
+
+    expect(host!.textContent).toContain('输入 API Key 后继续');
+    expect(host!.textContent).toContain('检测到浏览器里已有本地 Key');
+
+    const clearButton = Array.from(host!.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('清除本地 Key')
+    );
+    expect(clearButton).toBeTruthy();
+    clearButton!.click();
+
+    await flushUi();
+
+    expect(localStorage.getItem('qsm_api_key')).toBeNull();
+    expect(host!.textContent).toContain('本地保存的 API Key 已清除');
+
+    const apiKeyInput = host!.querySelector<HTMLInputElement>('#api-key-gate-input');
+    const saveButton = Array.from(host!.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('保存并重试')
+    );
+
+    expect(apiKeyInput).toBeTruthy();
+    expect(saveButton).toBeTruthy();
+
+    apiKeyInput!.value = 'fresh-key';
+    apiKeyInput!.dispatchEvent(new Event('input', { bubbles: true }));
+    await nextTick();
+    saveButton!.click();
+
+    expect(localStorage.getItem('qsm_api_key')).toBe('fresh-key');
+    expect(reloadSpy).toHaveBeenCalledTimes(1);
+
+    reloadSpy.mockRestore();
   });
 });
