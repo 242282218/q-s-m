@@ -41,9 +41,7 @@ function ok<T>(data: T) {
   };
 }
 
-function createSettingsSnapshot(
-  overrides: Partial<SettingsCurrentData> = {}
-): SettingsCurrentData {
+function createSettingsSnapshot(overrides: Partial<SettingsCurrentData> = {}): SettingsCurrentData {
   return {
     LOG_LEVEL: 'INFO',
     HTTP_PROXY: '',

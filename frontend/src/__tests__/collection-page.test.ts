@@ -260,7 +260,10 @@ describe('CollectionPage', () => {
     );
 
     apiMocks.startVerifySse.mockImplementationOnce(
-      async (_payload: { collection_ids?: number[] | null }, onEnvelope: (event: SseEnvelope) => void) => {
+      async (
+        _payload: { collection_ids?: number[] | null },
+        onEnvelope: (event: SseEnvelope) => void
+      ) => {
         onEnvelope({
           type: 'log',
           level: 'info',

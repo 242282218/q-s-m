@@ -164,10 +164,9 @@ describe('HTTP Layer Tests', () => {
   it('supports clearing a targeted HTTP cache entry by path substring', async () => {
     const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
-      const payload =
-        url.includes('/collections')
-          ? { code: 0, message: 'OK', data: { items: ['Alien'] } }
-          : { code: 0, message: 'OK', data: { hero_items: [], sections: {}, section_order: [] } };
+      const payload = url.includes('/collections')
+        ? { code: 0, message: 'OK', data: { items: ['Alien'] } }
+        : { code: 0, message: 'OK', data: { hero_items: [], sections: {}, section_order: [] } };
 
       return Promise.resolve(
         new Response(JSON.stringify(payload), {

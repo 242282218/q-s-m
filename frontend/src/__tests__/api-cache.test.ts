@@ -155,7 +155,9 @@ describe('API Caching and Deduplication', () => {
             headers: { 'content-type': 'application/json' },
           })
         )
-        .mockResolvedValueOnce(new Response('nope', { status: 503, statusText: 'Service Unavailable' }));
+        .mockResolvedValueOnce(
+          new Response('nope', { status: 503, statusText: 'Service Unavailable' })
+        );
       vi.stubGlobal('fetch', fetchMock);
 
       const first = await cachedFetch<{ data: string }>('/cached-endpoint');
@@ -221,7 +223,8 @@ describe('API Caching and Deduplication', () => {
   describe('useApiCache composable', () => {
     it('should reuse local cache, honor forceRefresh, and expose manual cache helpers', async () => {
       const cache = useApiCache<string>({ defaultTtl: 60000 });
-      const fetcher = vi.fn<() => Promise<string>>()
+      const fetcher = vi
+        .fn<() => Promise<string>>()
         .mockResolvedValueOnce('Alien')
         .mockResolvedValueOnce('Aliens');
 

@@ -210,8 +210,8 @@ describe('DetailPage', () => {
   }
 
   function resourceCard(name: string) {
-    const card = Array.from(host!.querySelectorAll<HTMLElement>('.quark-resource-card')).find((node) =>
-      node.textContent?.includes(name)
+    const card = Array.from(host!.querySelectorAll<HTMLElement>('.quark-resource-card')).find(
+      (node) => node.textContent?.includes(name)
     );
     expect(card).toBeTruthy();
     return card as HTMLElement;
@@ -301,7 +301,9 @@ describe('DetailPage', () => {
       );
     apiMocks.checkLinks.mockResolvedValueOnce(
       ok({
-        results: [{ link: 'https://pan.quark.cn/s/alien', collected: false, id: null, status: null }],
+        results: [
+          { link: 'https://pan.quark.cn/s/alien', collected: false, id: null, status: null },
+        ],
       })
     );
 
@@ -309,8 +311,8 @@ describe('DetailPage', () => {
 
     expect(host!.textContent).toContain('tmdb search failed');
 
-    const retryButton = Array.from(host!.querySelectorAll<HTMLButtonElement>('button')).find((node) =>
-      node.textContent?.includes('重试')
+    const retryButton = Array.from(host!.querySelectorAll<HTMLButtonElement>('button')).find(
+      (node) => node.textContent?.includes('重试')
     );
     expect(retryButton).toBeTruthy();
 
@@ -325,7 +327,7 @@ describe('DetailPage', () => {
 
   it('debounces collect/save actions and normalizes the target folder name', async () => {
     const resource = createResource({
-      name: '01. Alien: Director\'s Cut / 4K',
+      name: "01. Alien: Director's Cut / 4K",
       link: 'https://pan.quark.cn/s/alien-special',
     });
 
@@ -383,7 +385,7 @@ describe('DetailPage', () => {
         media_type: 'movie',
         title: 'Alien',
         resource_name: resource.name,
-        to_dir_name: 'Alien Director\'s Cut 4K',
+        to_dir_name: "Alien Director's Cut 4K",
       })
     );
     expect(card.textContent).toContain('保存成功');

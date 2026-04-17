@@ -60,6 +60,8 @@ It is pre-split into `backend-agent`, `frontend-agent`, and `performance-agent` 
 - next iteration id resumes from `latest.json`; if `latest.json` is broken/stale, runner falls back to highest `iteration-*.json`
 - runners that share the same `log_dir` reserve iteration ids through a lock-backed counter, so updated processes do not reuse the same iteration number concurrently
 
+GitHub Actions mirrors the same baseline on pull requests and pushes to `main` via `.github/workflows/quality-gates.yml`: backend `pytest -m "not performance"` plus frontend `lint:check`, `format:check`, `test:coverage`, and `build`.
+
 ## Environment
 
 1. Copy the template:

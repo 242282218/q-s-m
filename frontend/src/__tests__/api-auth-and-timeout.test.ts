@@ -151,15 +151,17 @@ describe('api auth and timeout', () => {
   });
 
   it('propagates global request cancellation as AbortError instead of timeout', async () => {
-    const fetchMock = vi.fn().mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
-      return new Promise((_resolve, reject) => {
-        init?.signal?.addEventListener(
-          'abort',
-          () => reject(new DOMException('Aborted', 'AbortError')),
-          { once: true }
-        );
+    const fetchMock = vi
+      .fn()
+      .mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true }
+          );
+        });
       });
-    });
     vi.stubGlobal('fetch', fetchMock);
 
     const pending = request('/cancel-me', { method: 'GET' }, { cache: false, timeout: 5000 });

@@ -182,8 +182,8 @@ describe('HomePage', () => {
     expect(host!.textContent).toContain('请检查后端 TMDB 配置后重试');
     expect(toastPush).toHaveBeenCalledWith('TMDB 暂时不可用', 'error');
 
-    const retryButton = Array.from(host!.querySelectorAll<HTMLButtonElement>('button')).find((node) =>
-      node.textContent?.includes('重新加载')
+    const retryButton = Array.from(host!.querySelectorAll<HTMLButtonElement>('button')).find(
+      (node) => node.textContent?.includes('重新加载')
     );
     expect(retryButton).toBeTruthy();
 
@@ -199,15 +199,15 @@ describe('HomePage', () => {
   it('replaces failed hero images with the built-in fallback view', async () => {
     await mountHomePage();
 
-    const heroImage = host!.querySelector<HTMLImageElement>('.hero-slide.active .hero-background img');
+    const heroImage = host!.querySelector<HTMLImageElement>(
+      '.hero-slide.active .hero-background img'
+    );
     expect(heroImage).toBeTruthy();
 
     heroImage!.dispatchEvent(new Event('error'));
     await flushUi();
 
-    expect(
-      host!.querySelector('.hero-slide.active .hero-background img')
-    ).toBeNull();
+    expect(host!.querySelector('.hero-slide.active .hero-background img')).toBeNull();
     expect(host!.querySelector('.hero-slide.active .hero-image-fallback')).toBeTruthy();
   });
 });
