@@ -24,6 +24,7 @@ export default defineConfig(({ mode }) => {
         reporter: ["text-summary", "json-summary"],
         include: [
           "src/App.vue",
+          "src/app/**/*.ts",
           "src/api/**/*.ts",
           "src/composables/useApiCache.ts",
           "src/lib/**/*.ts",

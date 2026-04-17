@@ -1,31 +1,50 @@
 // @vitest-environment happy-dom
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createApp, defineComponent, h, nextTick } from 'vue';
-import { createMemoryHistory, createRouter, useRoute } from 'vue-router';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createMemoryHistory } from 'vue-router';
+import { nextTick } from 'vue';
 
-import App from '@/App.vue';
+const apiMocks = vi.hoisted(() => ({
+  getCollections: vi.fn(),
+  getDetailPageData: vi.fn(),
+  getHomeFeed: vi.fn(),
+  searchByTitle: vi.fn(),
+  searchByTmdb: vi.fn(),
+  searchTmdbPosters: vi.fn(),
+}));
 
-const SearchProbe = defineComponent({
-  name: 'SearchProbe',
-  setup() {
-    const route = useRoute();
-    return () =>
-      h('div', { 'data-testid': 'search-probe' }, `search:${String(route.query.q || '')}`);
-  },
-});
+vi.mock('@/api', () => ({
+  addCollection: vi.fn(),
+  checkLinks: vi.fn(),
+  deleteCollection: vi.fn(),
+  getCollections: apiMocks.getCollections,
+  getDetailPageData: apiMocks.getDetailPageData,
+  getHomeFeed: apiMocks.getHomeFeed,
+  getTmdbDetails: vi.fn(),
+  saveResource: vi.fn(),
+  searchByTitle: apiMocks.searchByTitle,
+  searchByTmdb: apiMocks.searchByTmdb,
+  searchTmdbPosters: apiMocks.searchTmdbPosters,
+  startRenameSse: vi.fn(),
+  startVerifySse: vi.fn(),
+  transferCollection: vi.fn(),
+  verifySingleCollection: vi.fn(),
+}));
 
-const routes = [
-  { path: '/', component: defineComponent(() => () => h('div', 'home page')) },
-  { path: '/collections', component: defineComponent(() => () => h('div', 'collections page')) },
-  { path: '/settings', component: defineComponent(() => () => h('div', 'settings page')) },
-  { path: '/search', component: SearchProbe },
-];
+import { createQsmApp } from '@/app/bootstrap';
 
 class ResizeObserverStub {
   observe() {}
 
   disconnect() {}
+}
+
+function ok<T>(data: T) {
+  return {
+    code: 0,
+    message: '',
+    data,
+  };
 }
 
 async function flushUi() {
@@ -38,12 +57,81 @@ async function flushUi() {
 describe('App browser smoke', () => {
   let host: HTMLDivElement | null = null;
   let cleanup: (() => void) | null = null;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     host = document.createElement('div');
     document.body.appendChild(host);
     document.title = '影视墙';
     globalThis.ResizeObserver = ResizeObserverStub as typeof ResizeObserver;
+
+    apiMocks.getHomeFeed.mockResolvedValue(
+      ok({
+        hero_items: [],
+        sections: {},
+        section_order: [],
+        generated_at: '2026-04-17T00:00:00Z',
+      })
+    );
+    apiMocks.getCollections.mockResolvedValue(
+      ok({
+        items: [],
+        pagination: {
+          page: 1,
+          page_size: 20,
+          total: 0,
+          total_pages: 0,
+        },
+      })
+    );
+    apiMocks.getDetailPageData.mockResolvedValue(
+      ok({
+        item: {
+          id: 42,
+          media_type: 'movie',
+          title: 'Alien',
+          year: 1979,
+          genres: ['科幻'],
+          runtime: 117,
+          vote: 8.5,
+          tagline: '',
+          overview: 'In space no one can hear you scream.',
+          poster_url: null,
+          backdrop_url: null,
+          poster_path: null,
+          backdrop_path: null,
+          cast: [],
+          videos: [],
+        },
+        recommendations: [],
+      })
+    );
+    apiMocks.searchByTmdb.mockResolvedValue(
+      ok({
+        media: null,
+        resources: [],
+        total: 0,
+        query_time: 0,
+      })
+    );
+    apiMocks.searchByTitle.mockResolvedValue(
+      ok({
+        media: null,
+        resources: [],
+        total: 0,
+        query_time: 0,
+      })
+    );
+    apiMocks.searchTmdbPosters.mockResolvedValue(
+      ok({
+        query: 'Alien',
+        posters: [],
+      })
+    );
+
+    consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
   });
 
   afterEach(() => {
@@ -53,34 +141,44 @@ describe('App browser smoke', () => {
     host = null;
     document.body.innerHTML = '';
     localStorage.clear();
+    vi.clearAllMocks();
+    consoleLogSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
   });
 
-  it('mounts the shell, switches routes, and submits search through the router', async () => {
-    const router = createRouter({
-      history: createMemoryHistory(),
-      routes,
-    });
-    const app = createApp(App);
+  it('mounts the real bootstrap, follows redirects, loads a lazy route, and submits search', async () => {
+    const { app, router } = createQsmApp(createMemoryHistory());
 
-    app.use(router);
-    await router.push('/');
+    await router.push('/collection');
     await router.isReady();
     app.mount(host!);
     cleanup = () => app.unmount();
 
     await flushUi();
-
-    expect(host!.textContent).toContain('影视墙');
-    expect(host!.textContent).toContain('首页');
-    expect(host!.textContent).toContain('home page');
-
-    const settingsLink = host!.querySelector('a[href="/settings"]');
-    expect(settingsLink).toBeTruthy();
-    await router.push('/settings');
-
     await flushUi();
 
-    expect(router.currentRoute.value.path).toBe('/settings');
+    expect(router.currentRoute.value.path).toBe('/collections');
+    expect(document.title).toBe('收藏 - 影视墙');
+    expect(host!.textContent).toContain('我的收藏');
+
+    await router.push('/missing');
+    await flushUi();
+    await flushUi();
+
+    expect(router.currentRoute.value.path).toBe('/');
+    expect(document.title).toBe('首页 - 影视墙');
+    expect(apiMocks.getHomeFeed).toHaveBeenCalled();
+
+    await router.push('/movie/42');
+    await flushUi();
+    await flushUi();
+    await flushUi();
+
+    expect(router.currentRoute.value.path).toBe('/movie/42');
+    expect(document.title).toBe('电影详情 - 影视墙');
+    expect(host!.textContent).toContain('Alien');
+    expect(apiMocks.getDetailPageData).toHaveBeenCalledWith('movie', 42);
+    expect(consoleLogSpy).toHaveBeenCalledWith('Navigated to: /movie/42');
 
     const searchInput = host!.querySelector<HTMLInputElement>('input[name="q"]');
     const searchForm = host!.querySelector<HTMLFormElement>('form[role="search"]');
@@ -97,6 +195,9 @@ describe('App browser smoke', () => {
     await flushUi();
 
     expect(router.currentRoute.value.fullPath).toBe('/search?q=Alien');
-    expect(host!.querySelector('[data-testid="search-probe"]')?.textContent).toBe('search:Alien');
+    expect(document.title).toBe('搜索 - 影视墙');
+    expect(host!.textContent).toContain('"Alien" 的搜索结果');
+    expect(apiMocks.searchTmdbPosters).toHaveBeenCalledWith('Alien');
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
 });
