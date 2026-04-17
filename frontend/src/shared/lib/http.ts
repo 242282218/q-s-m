@@ -10,6 +10,7 @@ const RETRY_DELAY_MS = 500;
 // 默认缓存配置
 const DEFAULT_CACHE_TTL = 5 * 60 * 1000; // 5 分钟
 const CACHEABLE_METHODS = ['GET', 'HEAD'];
+const HTTP_CACHE_KEY_PREFIX = /^(GET|HEAD):/;
 
 // 请求拦截器类型
 export interface RequestInterceptor {
@@ -85,6 +86,10 @@ async function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function normalizeAbortError(error: Error): DOMException | Error {
+  return error instanceof DOMException ? error : new DOMException(error.message, 'AbortError');
+}
+
 async function parseJsonResponse<T>(response: Response): Promise<ApiResponse<T>> {
   const contentType = response.headers.get('content-type');
   const isJson = contentType?.includes('application/json') ?? false;
@@ -134,6 +139,10 @@ function generateRequestCacheKey(path: string, init: RequestInit): string {
   return createCacheKey(`${method}:${path}`, { body });
 }
 
+function isHttpCacheKey(key: string): boolean {
+  return HTTP_CACHE_KEY_PREFIX.test(key);
+}
+
 export interface RequestOptions {
   /** 是否启用缓存（仅对 GET/HEAD 请求有效） */
   cache?: boolean;
@@ -172,10 +181,18 @@ export async function request<T>(
   // 使用去重器执行请求
   const requestKey = cacheKey || `${init.method || 'GET'}:${path}:${Date.now()}`;
 
-  return globalDeduplicator.getOrCreate(requestKey, async (_signal) => {
+  return globalDeduplicator.getOrCreate(requestKey, async (dedupeSignal) => {
     // 执行请求拦截器
     const processedInit = await interceptorManager.executeRequestInterceptors(init);
-    return executeRequest<T>(path, processedInit, cacheKey, cacheTtl, canUseCache, timeout);
+    return executeRequest<T>(
+      path,
+      processedInit,
+      cacheKey,
+      cacheTtl,
+      canUseCache,
+      timeout,
+      dedupeSignal
+    );
   });
 }
 
@@ -188,7 +205,8 @@ async function executeRequest<T>(
   cacheKey: string | null,
   cacheTtl: number,
   canUseCache: boolean,
-  timeout: number
+  timeout: number,
+  dedupeSignal?: AbortSignal
 ): Promise<ApiResponse<T>> {
   let error: Error | null = null;
   const externalSignal = processedInit.signal;
@@ -196,10 +214,21 @@ async function executeRequest<T>(
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
-    const abortHandler = () => controller.abort();
+    let abortedByCaller = false;
+    const linkedSignals = [externalSignal, dedupeSignal].filter(
+      (signal): signal is AbortSignal => signal !== undefined
+    );
+    const abortHandler = () => {
+      abortedByCaller = true;
+      controller.abort();
+    };
 
-    if (externalSignal) {
-      externalSignal.addEventListener('abort', abortHandler, { once: true });
+    for (const signal of linkedSignals) {
+      if (signal.aborted) {
+        abortHandler();
+        break;
+      }
+      signal.addEventListener('abort', abortHandler, { once: true });
     }
 
     try {
@@ -241,6 +270,9 @@ async function executeRequest<T>(
       return payload;
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
+        if (abortedByCaller) {
+          throw normalizeAbortError(err);
+        }
         error = new ApiError(`请求超时`, -1, 0);
       } else {
         error = err as Error;
@@ -254,8 +286,8 @@ async function executeRequest<T>(
       throw error;
     } finally {
       clearTimeout(timeoutId);
-      if (externalSignal) {
-        externalSignal.removeEventListener('abort', abortHandler);
+      for (const signal of linkedSignals) {
+        signal.removeEventListener('abort', abortHandler);
       }
     }
   }
@@ -357,14 +389,11 @@ export function toQuery(
  */
 export function clearHttpCache(pattern?: string): void {
   if (!pattern) {
-    // 清除所有 GET 请求缓存
-    // 注意：这里我们只能清除新格式的缓存键
+    globalCache.clearMatching((key) => isHttpCacheKey(key));
     return;
   }
 
-  // 根据模式清除缓存（需要实现更复杂的逻辑）
-  // 目前简单实现：清除所有缓存
-  console.warn('Pattern-based cache clearing not fully implemented');
+  globalCache.clearMatching((key) => isHttpCacheKey(key) && key.includes(pattern));
 }
 
 /**

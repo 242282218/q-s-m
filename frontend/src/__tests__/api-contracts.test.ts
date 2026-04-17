@@ -21,11 +21,18 @@ vi.mock('@/shared/lib/sse', () => ({
 }));
 
 import {
+  batchAddCollections,
+  batchDeleteCollections,
+  batchTransfer,
   getCollectionsCursor,
   getSettingsWithApiKey,
   saveResource,
+  startBatchAddSse,
+  startBatchTransferSse,
   startRenameSse,
+  startVerifySse,
 } from '@/api';
+import { ApiError } from '@/shared/lib/http';
 
 interface StorageShape {
   clear: () => void;
@@ -162,5 +169,184 @@ describe('API wrapper contracts', () => {
     expect(sseMocks.consumeSse).not.toHaveBeenCalled();
     const [, init] = fetchMock.mock.calls[0];
     expect(new Headers(init?.headers).get('X-API-Key')).toBe('secret-key');
+  });
+
+  it('keeps user-triggered SSE aborts as AbortError instead of wrapping them as API failures', async () => {
+    const abortError = new DOMException('Aborted', 'AbortError');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abortError));
+
+    await expect(startVerifySse({}, () => {})).rejects.toBe(abortError);
+    await expect(startVerifySse({}, () => {})).rejects.not.toBeInstanceOf(ApiError);
+    expect(sseMocks.consumeSse).not.toHaveBeenCalled();
+  });
+
+  it('passes batch add payloads through unchanged', async () => {
+    httpMocks.request.mockResolvedValue({
+      code: 0,
+      message: 'OK',
+      data: { total: 1, success_count: 1, failed_count: 0, results: [] },
+    });
+
+    await batchAddCollections({
+      items: [
+        {
+          tmdb_id: 42,
+          media_type: 'movie',
+          title: 'Alien',
+          year: 1979,
+          poster_path: null,
+          backdrop_path: null,
+          share_url: 'https://example.com/share',
+          share_pwd: null,
+          file_structure: {},
+          category: null,
+        },
+      ],
+    });
+
+    expect(httpMocks.request).toHaveBeenCalledWith('/collections/batch', {
+      method: 'POST',
+      body: JSON.stringify({
+        items: [
+          {
+            tmdb_id: 42,
+            media_type: 'movie',
+            title: 'Alien',
+            year: 1979,
+            poster_path: null,
+            backdrop_path: null,
+            share_url: 'https://example.com/share',
+            share_pwd: null,
+            file_structure: {},
+            category: null,
+          },
+        ],
+      }),
+    });
+  });
+
+  it('uses DELETE with a JSON body for batch deletion', async () => {
+    httpMocks.request.mockResolvedValue({
+      code: 0,
+      message: 'OK',
+      data: { total: 2, success_count: 2, failed_count: 0, results: [] },
+    });
+
+    await batchDeleteCollections({ ids: [1, 2] });
+
+    expect(httpMocks.request).toHaveBeenCalledWith('/collections/batch', {
+      method: 'DELETE',
+      body: JSON.stringify({ ids: [1, 2] }),
+    });
+  });
+
+  it('passes batch transfer payloads through unchanged', async () => {
+    httpMocks.request.mockResolvedValue({
+      code: 0,
+      message: 'OK',
+      data: { total: 1, success_count: 1, failed_count: 0, results: [] },
+    });
+
+    await batchTransfer({
+      items: [{ collection_id: 9, target_folder: 'Movies', auto_rename: true }],
+    });
+
+    expect(httpMocks.request).toHaveBeenCalledWith('/transfers/batch', {
+      method: 'POST',
+      body: JSON.stringify({
+        items: [{ collection_id: 9, target_folder: 'Movies', auto_rename: true }],
+      }),
+    });
+  });
+
+  it('posts batch add SSE payloads to the expected endpoint and forwards the signal', async () => {
+    globalThis.localStorage.setItem('qsm_api_key', 'secret-key');
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('', {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+    const onEnvelope = vi.fn();
+
+    await startBatchAddSse(
+      {
+        items: [
+          {
+            tmdb_id: 7,
+            media_type: 'tv',
+            title: 'Andor',
+            year: 2022,
+            poster_path: null,
+            backdrop_path: null,
+            share_url: 'https://example.com/andor',
+            share_pwd: '1234',
+            file_structure: {},
+            category: 'Sci-Fi',
+          },
+        ],
+      },
+      onEnvelope,
+      controller.signal
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/collections/batch/sse'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          items: [
+            {
+              tmdb_id: 7,
+              media_type: 'tv',
+              title: 'Andor',
+              year: 2022,
+              poster_path: null,
+              backdrop_path: null,
+              share_url: 'https://example.com/andor',
+              share_pwd: '1234',
+              file_structure: {},
+              category: 'Sci-Fi',
+            },
+          ],
+        }),
+        signal: controller.signal,
+      })
+    );
+    expect(sseMocks.consumeSse).toHaveBeenCalledOnce();
+    expect(sseMocks.consumeSse).toHaveBeenCalledWith(expect.any(Response), onEnvelope);
+  });
+
+  it('posts batch transfer SSE payloads to the expected endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('', {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const onEnvelope = vi.fn();
+
+    await startBatchTransferSse(
+      {
+        items: [{ collection_id: 11, target_folder: null, auto_rename: false }],
+      },
+      onEnvelope
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/transfers/batch/sse'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          items: [{ collection_id: 11, target_folder: null, auto_rename: false }],
+        }),
+      })
+    );
+    expect(sseMocks.consumeSse).toHaveBeenCalledWith(expect.any(Response), onEnvelope);
   });
 });

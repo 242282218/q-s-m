@@ -3,7 +3,6 @@ import { withApiKeyHeader } from '@/shared/lib/api-key';
 import { ApiError, API_BASE, request, toQuery } from '@/shared/lib/http';
 import { globalCache } from '@/composables/useApiCache';
 import type {
-  ApiResponse,
   CollectionAddData,
   CollectionAddRequest,
   CollectionBatchAddData,
@@ -35,63 +34,12 @@ import type {
   TransferExecRequest,
 } from '@/types/api';
 
-const cache = new Map<string, { data: unknown; timestamp: number }>();
-const CACHE_TTL = 5 * 60 * 1000; // 5分钟
-const MAX_CACHE_SIZE = 50; // 最大缓存条目数
+const HOME_FEED_CACHE_TTL = 5 * 60 * 1000;
 
 export const enhancedCache = globalCache;
 
 export function getCacheStats() {
   return globalCache.getStats();
-}
-
-/**
- * 清理过期的缓存条目
- */
-function cleanExpiredCache(): void {
-  const now = Date.now();
-  for (const [key, entry] of cache.entries()) {
-    if (now - entry.timestamp > CACHE_TTL) {
-      cache.delete(key);
-    }
-  }
-}
-
-/**
- * 清理最旧的缓存条目（当超过最大数量时）
- */
-function evictOldestEntries(): void {
-  if (cache.size <= MAX_CACHE_SIZE) {
-    return;
-  }
-
-  // 按时间戳排序，删除最旧的条目
-  const entries = Array.from(cache.entries()).sort((a, b) => a[1].timestamp - b[1].timestamp);
-  const toDelete = entries.slice(0, cache.size - MAX_CACHE_SIZE);
-  for (const [key] of toDelete) {
-    cache.delete(key);
-  }
-}
-
-async function cachedRequest<T>(
-  key: string,
-  fetcher: () => Promise<ApiResponse<T>>
-): Promise<ApiResponse<T>> {
-  cleanExpiredCache();
-
-  const cached = cache.get(key);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return cached.data as ApiResponse<T>;
-  }
-
-  const result = await fetcher();
-
-  if (result.code === 0) {
-    cache.set(key, { data: result, timestamp: Date.now() });
-    evictOldestEntries();
-  }
-
-  return result;
 }
 
 /**
@@ -129,7 +77,7 @@ export function getSettingsWithApiKey(apiKey: string) {
  * @returns 包含轮播图和内容分区的首页数据
  */
 export function getHomeFeed() {
-  return cachedRequest<HomeData>('/home', () => request<HomeData>('/home'));
+  return request<HomeData>('/home', {}, { cacheTtl: HOME_FEED_CACHE_TTL });
 }
 
 /**
@@ -356,6 +304,9 @@ async function startSse<T>(
       signal,
     });
   } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw error instanceof DOMException ? error : new DOMException(error.message, 'AbortError');
+    }
     const message = error instanceof Error ? error.message : '网络请求失败';
     throw new ApiError(message, -1, 0);
   }

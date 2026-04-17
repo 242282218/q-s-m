@@ -5,7 +5,7 @@ vi.mock('@/lib/sse', () => ({
 }));
 
 import { startVerifySse } from '@/api';
-import { ApiError, request } from '@/lib/http';
+import { ApiError, cancelAllHttpRequests, request } from '@/lib/http';
 
 interface StorageShape {
   clear: () => void;
@@ -148,5 +148,34 @@ describe('api auth and timeout', () => {
 
     expect(outcome).toBe('rejected');
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('propagates global request cancellation as AbortError instead of timeout', async () => {
+    const fetchMock = vi.fn().mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          'abort',
+          () => reject(new DOMException('Aborted', 'AbortError')),
+          { once: true }
+        );
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const pending = request('/cancel-me', { method: 'GET' }, { cache: false, timeout: 5000 });
+    await Promise.resolve();
+
+    cancelAllHttpRequests();
+
+    const outcome = await Promise.race([
+      pending
+        .then(() => 'resolved')
+        .catch((error) =>
+          error instanceof DOMException && error.name === 'AbortError' ? 'aborted' : 'other'
+        ),
+      new Promise((resolve) => setTimeout(() => resolve('timedout'), 200)),
+    ]);
+
+    expect(outcome).toBe('aborted');
   });
 });

@@ -1,21 +1,30 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { request } from '@/shared/lib/http';
-import { globalCache, MemoryCache, RequestDeduplicator } from '@/composables/useApiCache';
-import { getHomeFeed } from '@/api';
-
-vi.mock('@/shared/lib/http', () => ({
-  request: vi.fn(),
-}));
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  clearGlobalCache,
+  globalCache,
+  MemoryCache,
+  RequestDeduplicator,
+} from '@/composables/useApiCache';
+import { getCacheStats, getHomeFeed } from '@/api';
 
 describe('API Caching and Deduplication', () => {
   let testCache: MemoryCache<unknown>;
   let testDeduplicator: RequestDeduplicator<unknown>;
+  const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
     testCache = new MemoryCache(100);
     testDeduplicator = new RequestDeduplicator<unknown>();
     globalCache.clear();
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'fetch', {
+      value: originalFetch,
+      configurable: true,
+      writable: true,
+    });
   });
 
   describe('MemoryCache', () => {
@@ -94,22 +103,41 @@ describe('API Caching and Deduplication', () => {
       const result = globalCache.get('to-clear');
       expect(result).toBeNull();
     });
+
+    it('should clear only cache entries matching a regex pattern', () => {
+      globalCache.set('user:1', { data: 'user' }, 60000);
+      globalCache.set('movie:1', { data: 'movie' }, 60000);
+
+      clearGlobalCache('^user:');
+
+      expect(globalCache.get('user:1')).toBeNull();
+      expect(globalCache.get('movie:1')).toEqual({ data: 'movie' });
+    });
   });
 
   describe('API Functions', () => {
-    it('getHomeFeed should call the API endpoint', async () => {
-      const mockResponse = {
-        code: 0,
-        message: 'success',
-        data: { hero_items: [], sections: {}, section_order: [] },
-      };
+    it('getHomeFeed should reuse the shared HTTP cache and update cache stats', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            code: 0,
+            message: 'success',
+            data: { hero_items: [], sections: {}, section_order: [], generated_at: '' },
+          }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }
+        )
+      );
+      vi.stubGlobal('fetch', fetchMock);
 
-      (request as vi.MockedFunction<typeof request>).mockResolvedValue(mockResponse);
+      const first = await getHomeFeed();
+      const second = await getHomeFeed();
 
-      const result = await getHomeFeed();
-
-      expect(request).toHaveBeenCalledTimes(1);
-      expect(result).toEqual(mockResponse);
+      expect(first).toEqual(second);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(getCacheStats()).toMatchObject({ hits: 1, misses: 1 });
     });
   });
 });

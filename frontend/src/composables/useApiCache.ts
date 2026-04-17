@@ -176,6 +176,26 @@ class MemoryCache<T = unknown> {
   }
 
   /**
+   * 删除匹配条件的缓存条目
+   */
+  clearMatching(matcher: (key: string) => boolean): number {
+    try {
+      let removed = 0;
+      for (const key of Array.from(this.cache.keys())) {
+        if (!matcher(key)) {
+          continue;
+        }
+        this.cache.delete(key);
+        removed++;
+      }
+      return removed;
+    } catch {
+      this.stats.errors++;
+      return 0;
+    }
+  }
+
+  /**
    * 清空缓存
    */
   clear(): void {
@@ -562,11 +582,8 @@ export function clearGlobalCache(pattern?: string): void {
     return;
   }
 
-  // 根据模式清除缓存
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _regex = new RegExp(pattern);
-  // 注意：这里需要遍历缓存键并删除匹配的条目
-  // 由于 MemoryCache 没有暴露 keys 方法，我们需要添加一个
+  const regex = new RegExp(pattern);
+  globalCache.clearMatching((key) => regex.test(key));
 }
 
 /**

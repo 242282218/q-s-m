@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { globalCache, globalDeduplicator } from '@/composables/useApiCache';
-import { request, toQuery } from '@/lib/http';
+import { clearHttpCache, request, toQuery } from '@/lib/http';
 
 interface StorageShape {
   clear: () => void;
@@ -138,5 +138,52 @@ describe('HTTP Layer Tests', () => {
         missing: undefined,
       })
     ).toBe('?q=Alien&page=2&include_adult=false');
+  });
+
+  it('clears cached HTTP GET responses without touching unrelated global cache entries', async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ code: 0, message: 'OK', data: { items: ['Alien'] } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    globalCache.set('custom-entry', { keep: true }, 60000);
+
+    await request<{ items: string[] }>('/collections');
+    clearHttpCache();
+    const preserved = globalCache.get('custom-entry');
+    await request<{ items: string[] }>('/collections');
+
+    expect(preserved).toEqual({ keep: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('supports clearing a targeted HTTP cache entry by path substring', async () => {
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      const payload =
+        url.includes('/collections')
+          ? { code: 0, message: 'OK', data: { items: ['Alien'] } }
+          : { code: 0, message: 'OK', data: { hero_items: [], sections: {}, section_order: [] } };
+
+      return Promise.resolve(
+        new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await request('/collections');
+    await request('/home');
+    clearHttpCache('/collections');
+    await request('/collections');
+    await request('/home');
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
