@@ -394,7 +394,12 @@ async def verify_single_collection(
             )
         )
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        return business_error(
+            None,
+            message=str(e),
+            code=ErrorCode.COLLECTION_NOT_FOUND,
+            error=ErrorDetail(field="collection_id", value=collection_id, reason=str(e)),
+        )
     finally:
         await client.close()
 

@@ -468,6 +468,30 @@ class CollectionService:
 
         return output
 
+    @staticmethod
+    def _deserialize_cursor_value(sort_column, raw_value):
+        if raw_value is None:
+            return None
+
+        try:
+            python_type = sort_column.type.python_type
+        except (AttributeError, NotImplementedError):
+            return raw_value
+
+        if python_type is datetime and isinstance(raw_value, str):
+            try:
+                return datetime.fromisoformat(raw_value)
+            except ValueError:
+                return raw_value
+
+        if python_type in (int, float, str, bool) and not isinstance(raw_value, python_type):
+            try:
+                return python_type(raw_value)
+            except (TypeError, ValueError):
+                return raw_value
+
+        return raw_value
+
     def list_cursor(
         self,
         cursor: Optional[str] = None,
@@ -526,8 +550,11 @@ class CollectionService:
 
         # 应用游标过滤
         if cursor_data:
-            cursor_value = cursor_data.get("value")
-            cursor_id = cursor_data.get("id")
+            cursor_value = self._deserialize_cursor_value(sort_column, cursor_data.get("value"))
+            try:
+                cursor_id = int(cursor_data.get("id"))
+            except (TypeError, ValueError):
+                cursor_id = None
             cursor_type = cursor_data.get("type")  # "next" 或 "prev"
 
             if cursor_value is not None and cursor_id is not None:
