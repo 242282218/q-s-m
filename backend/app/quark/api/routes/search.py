@@ -52,6 +52,35 @@ class QuarkTransferData(BaseModel):
     collection_created: bool = False
 
 
+def build_quark_transfer_error_detail(
+    message: str,
+    link: str,
+) -> tuple[ErrorCode, ErrorDetail]:
+    if "创建目标目录失败" in message:
+        failed_target = message.partition(":")[2].strip() or None
+        return (
+            ErrorCode.TRANSFER_DIR_NOT_FOUND,
+            ErrorDetail(field="target_folder", value=failed_target, reason=message),
+        )
+
+    if "分享链接" in message and ("无效" in message or "失效" in message):
+        return (
+            ErrorCode.TRANSFER_LINK_EXPIRED,
+            ErrorDetail(field="link", value=link, reason=message),
+        )
+
+    if "没有可转存的文件" in message or "没有文件" in message:
+        return (
+            ErrorCode.TRANSFER_NO_FILES,
+            ErrorDetail(field="link", value=link, reason=message),
+        )
+
+    return (
+        ErrorCode.TRANSFER_FAILED,
+        ErrorDetail(field="link", value=link, reason=message),
+    )
+
+
 def as_search_data(result: SearchResponse) -> SearchData:
     return SearchData(
         media=result.media,
@@ -285,6 +314,10 @@ async def transfer_resource(
 
         media_root_fid = await client.get_fid_by_path(media_root_path)
         if not media_root_fid:
+            code, error = build_quark_transfer_error_detail(
+                f"创建目标目录失败: {media_root_path}",
+                req.link,
+            )
             return business_error(
                 QuarkTransferData(
                     saved_files=[],
@@ -293,7 +326,8 @@ async def transfer_resource(
                     collection_created=False,
                 ),
                 message=f"创建目标目录失败: {media_root_path}",
-                code=1,
+                code=code,
+                error=error,
             )
 
         success, message, transferred_items, task_id = await transfer_share_to_target_fid(
@@ -303,6 +337,7 @@ async def transfer_resource(
             flatten_single_root=True,
         )
         if not success:
+            code, error = build_quark_transfer_error_detail(message, req.link)
             return business_error(
                 QuarkTransferData(
                     saved_files=[],
@@ -311,7 +346,8 @@ async def transfer_resource(
                     collection_created=False,
                 ),
                 message=message,
-                code=1,
+                code=code,
+                error=error,
             )
 
         task_done = await wait_for_transfer_task(client, task_id, max_retries=60, interval_seconds=1.0)
