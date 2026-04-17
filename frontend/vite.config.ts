@@ -27,6 +27,7 @@ export default defineConfig(({ mode }) => {
           "src/app/**/*.ts",
           "src/api/**/*.ts",
           "src/pages/CollectionPage.vue",
+          "src/pages/HomePage.vue",
           "src/pages/SettingsPage.vue",
           "src/pages/SearchPage.vue",
           "src/composables/useApiCache.ts",
