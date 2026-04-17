@@ -11,7 +11,7 @@ import {
 import ToggleSwitch from '@/components/ToggleSwitch.vue';
 import type { HealthCheck, SettingsCurrentData, SettingsUpdate } from '@/types/api';
 import { useToast } from '@/composables/useToast';
-import { getApiKeyCandidates, setConfiguredApiKey } from '@/lib/api-key';
+import { getApiKeyCandidates, hasStoredApiKey, setConfiguredApiKey } from '@/lib/api-key';
 import { ApiError } from '@/lib/http';
 import { getHealthIssues, getHealthStatusLabel, getHealthTone } from '@/utils/healthStatus';
 
@@ -20,6 +20,7 @@ const { push } = useToast();
 const loading = ref(false);
 const health = ref('unknown');
 const healthChecks = ref<Record<string, HealthCheck>>({});
+const hasLocalStoredApiKey = ref(hasStoredApiKey());
 const metricsSummary = ref('');
 const metricsData = ref<{
   requests: { total: number; avg_time: number };
@@ -200,6 +201,7 @@ async function submit() {
     }
     if (payload.API_KEY) {
       setConfiguredApiKey(payload.API_KEY);
+      hasLocalStoredApiKey.value = true;
     }
     const reloadResults = await Promise.allSettled([loadSettingsSnapshot(), refreshSystem()]);
     if (reloadResults.some((result) => result.status === 'rejected')) {
@@ -211,6 +213,16 @@ async function submit() {
   } finally {
     loading.value = false;
   }
+}
+
+function clearLocalApiKey() {
+  if (!hasLocalStoredApiKey.value) {
+    return;
+  }
+
+  setConfiguredApiKey(null);
+  hasLocalStoredApiKey.value = false;
+  push('已清除本机保存的 API Key', 'success');
 }
 
 async function refreshSystem() {
@@ -414,6 +426,23 @@ onMounted(() => {
               class="form-input"
               :placeholder="secretFieldHints.API_KEY"
             />
+            <div class="local-key-actions">
+              <span class="local-key-state">
+                {{
+                  hasLocalStoredApiKey
+                    ? '当前浏览器已保存一个本地 API Key，用于自动访问受保护接口'
+                    : '当前浏览器未保存本地 API Key；首次 401 也可以通过门禁卡片录入'
+                }}
+              </span>
+              <button
+                type="button"
+                class="local-key-clear"
+                :disabled="!hasLocalStoredApiKey"
+                @click="clearLocalApiKey"
+              >
+                清除本机已保存 Key
+              </button>
+            </div>
           </div>
 
           <div class="form-group">
@@ -1030,6 +1059,47 @@ onMounted(() => {
   resize: vertical;
   min-height: 80px;
   font-family: var(--font-family-mono);
+}
+
+.local-key-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+}
+
+.local-key-state {
+  flex: 1;
+  min-width: 220px;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+}
+
+.local-key-clear {
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    opacity var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.local-key-clear:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--color-border-strong);
+  transform: translateY(-1px);
+}
+
+.local-key-clear:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* 开关项 */

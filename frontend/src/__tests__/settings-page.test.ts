@@ -244,6 +244,21 @@ describe('SettingsPage', () => {
     expect(toastPush).toHaveBeenCalledWith('TMDB API Key 长度不足', 'error');
   });
 
+  it('clears the locally stored API key from the current browser', async () => {
+    localStorage.setItem('qsm_api_key', 'stored-key');
+
+    await mountSettingsPage();
+
+    expect(host!.textContent).toContain('当前浏览器已保存一个本地 API Key');
+
+    findButtonByText('清除本机已保存 Key').click();
+    await flushUi();
+
+    expect(localStorage.getItem('qsm_api_key')).toBeNull();
+    expect(host!.textContent).toContain('当前浏览器未保存本地 API Key');
+    expect(toastPush).toHaveBeenCalledWith('已清除本机保存的 API Key', 'success');
+  });
+
   it('retries save with the next API key candidate, persists the new key, and refreshes page state', async () => {
     localStorage.setItem('qsm_api_key', 'old-key');
 
