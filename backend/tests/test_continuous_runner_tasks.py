@@ -108,6 +108,8 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             [
                 "python",
                 "../tests/performance/benchmark.py",
+                "--transfer-concurrency",
+                "5",
                 "--output-json",
                 "--output-path",
                 "storage/logs/continuous/performance/latest.json",
@@ -638,6 +640,8 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         failed["command"] = [
             "python",
             "../tests/performance/benchmark.py",
+            "--transfer-concurrency",
+            "5",
             "--output-json",
             "--output-path",
             "storage/logs/continuous/performance/latest.json",

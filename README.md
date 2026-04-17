@@ -44,7 +44,7 @@ It is pre-split into `backend-agent`, `frontend-agent`, and `performance-agent` 
 
 - tasks in the same agent run sequentially (stable context, less interference)
 - different agents can run in parallel (controlled by `--max-workers`)
-- the default performance benchmark runs in its own lane, fails on threshold breaches, and writes its latest JSON artifact to `storage/logs/continuous/performance/latest.json`
+- the default performance benchmark runs in its own lane with `--transfer-concurrency 5`, fails on threshold breaches, and writes its latest JSON artifact to `storage/logs/continuous/performance/latest.json`
 - the default frontend lane uses read-only `lint:check` + `format:check`, so continuous checks fail on drift instead of auto-rewriting the worktree
 - `frontend_vitest` now includes a `happy-dom` smoke test that reuses the shared frontend bootstrap and real router config, covering redirects, lazy routes, title updates, and search submission in the default lane
 - `frontend_vitest` runs `test:coverage`, so the default lane also fails when core frontend coverage drops below the locked threshold baseline

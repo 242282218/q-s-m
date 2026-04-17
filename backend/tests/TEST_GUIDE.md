@@ -70,22 +70,23 @@ pnpm test -- --coverage
 
 ```bash
 # 默认性能基线（缓存 + 并发调度 + DB + 内存限流），输出 JSON
-python ../tests/performance/benchmark.py --output-json
+python ../tests/performance/benchmark.py --output-json --transfer-concurrency 5
 
 # 包含 Redis 限流吞吐压测（Redis 不可用时会标记 skipped）
-python ../tests/performance/benchmark.py --output-json --include-redis-rate-limit
+python ../tests/performance/benchmark.py --output-json --transfer-concurrency 5 --include-redis-rate-limit
 
 # 作为门禁使用：任一指标落入“需关注”时返回非零退出码
-python ../tests/performance/benchmark.py --output-json --fail-on-threshold-breach
+python ../tests/performance/benchmark.py --output-json --transfer-concurrency 5 --fail-on-threshold-breach
 
 # 作为部署前强校验：Redis 不可用或跳过时直接失败
-python ../tests/performance/benchmark.py --output-json --include-redis-rate-limit --fail-on-threshold-breach --require-redis
+python ../tests/performance/benchmark.py --output-json --transfer-concurrency 5 --include-redis-rate-limit --fail-on-threshold-breach --require-redis
 ```
 
 阈值说明：
 
-1. 内存限流：`>=100000 ops/s` 优秀，`>=40000 ops/s` 良好。
-2. Redis 限流：`>=2000 ops/s` 优秀，`>=800 ops/s` 良好。
+1. 并发调度：吞吐阈值按 `--transfer-concurrency` 线性缩放，目标值约为 `concurrency / 0.1s`，优秀/良好阈值分别取该目标的 90% / 75%。
+2. 内存限流：`>=100000 ops/s` 优秀，`>=40000 ops/s` 良好。
+3. Redis 限流：`>=2000 ops/s` 优秀，`>=800 ops/s` 良好。
 
 Redis 限流故障冷却：
 

@@ -22,6 +22,13 @@ from app.db.session import SessionLocal, get_query_stats, reset_query_stats
 from app.middleware.rate_limit import RateLimiter, RedisRateLimiter
 from app.quark.core.cache import MemoryCache
 
+DEFAULT_TRANSFER_CONCURRENCY = 5
+MIN_TRANSFER_TASKS = 20
+TRANSFER_BATCHES = 4
+TRANSFER_TASK_DURATION_SECONDS = 0.1
+TRANSFER_EXCELLENT_UTILIZATION = 0.9
+TRANSFER_GOOD_UTILIZATION = 0.75
+
 
 def _now() -> float:
     return time.perf_counter()
@@ -45,11 +52,25 @@ def _round(value: float) -> float:
     return round(value, 3)
 
 
+def _positive_int(raw_value: str) -> int:
+    value = int(raw_value)
+    if value <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return value
+
+
 def _resolve_output_path(path_value: str) -> Path:
     output_path = Path(path_value)
     if output_path.is_absolute():
         return output_path
     return (REPO_ROOT / output_path).resolve()
+
+
+def _transfer_throughput_thresholds(concurrency: int) -> tuple[float, float, float]:
+    expected = concurrency / TRANSFER_TASK_DURATION_SECONDS
+    excellent = expected * TRANSFER_EXCELLENT_UTILIZATION
+    good = expected * TRANSFER_GOOD_UTILIZATION
+    return expected, excellent, good
 
 
 async def benchmark_cache_operations(iterations: int = 1000) -> dict[str, Any]:
@@ -81,23 +102,42 @@ async def benchmark_cache_operations(iterations: int = 1000) -> dict[str, Any]:
     }
 
 
-async def benchmark_concurrent_transfers(concurrency: int = 5) -> dict[str, Any]:
+async def benchmark_concurrent_transfers(
+    concurrency: int = DEFAULT_TRANSFER_CONCURRENCY,
+) -> dict[str, Any]:
+    if concurrency <= 0:
+        raise ValueError("transfer concurrency must be positive")
+
+    total_tasks = max(MIN_TRANSFER_TASKS, concurrency * TRANSFER_BATCHES)
+    semaphore = asyncio.Semaphore(concurrency)
+    expected_throughput, excellent_threshold, good_threshold = _transfer_throughput_thresholds(
+        concurrency
+    )
+
     async def mock_transfer() -> bool:
-        await asyncio.sleep(0.1)
-        return True
+        async with semaphore:
+            await asyncio.sleep(TRANSFER_TASK_DURATION_SECONDS)
+            return True
 
     started = _now()
-    tasks = [mock_transfer() for _ in range(20)]
+    tasks = [mock_transfer() for _ in range(total_tasks)]
     await asyncio.gather(*tasks)
     elapsed = _now() - started
-    throughput = _safe_ops(20, elapsed)
+    throughput = _safe_ops(total_tasks, elapsed)
 
     return {
         "concurrency": concurrency,
-        "total_tasks": 20,
+        "total_tasks": total_tasks,
         "elapsed_time_seconds": _round(elapsed),
+        "expected_throughput_tasks_per_sec": round(expected_throughput, 2),
+        "excellent_threshold_tasks_per_sec": round(excellent_threshold, 2),
+        "good_threshold_tasks_per_sec": round(good_threshold, 2),
         "throughput_tasks_per_sec": round(throughput, 2),
-        "evaluation": _evaluate(throughput, excellent=180, good=120),
+        "evaluation": _evaluate(
+            throughput,
+            excellent=excellent_threshold,
+            good=good_threshold,
+        ),
     }
 
 
@@ -280,6 +320,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--db-queries", type=int, default=100)
     parser.add_argument("--rate-limit-requests", type=int, default=3000)
     parser.add_argument("--rate-limit-keys", type=int, default=256)
+    parser.add_argument(
+        "--transfer-concurrency",
+        type=_positive_int,
+        default=DEFAULT_TRANSFER_CONCURRENCY,
+    )
     parser.add_argument("--include-redis-rate-limit", action="store_true")
     parser.add_argument(
         "--redis-url",
@@ -300,8 +345,8 @@ async def run_all_benchmarks(args: argparse.Namespace) -> dict[str, Any]:
     print(f"   写入: {cache_result['write_ops_per_sec']} ops/s ({cache_result['write_evaluation']})")
     print(f"   读取: {cache_result['read_ops_per_sec']} ops/s ({cache_result['read_evaluation']})\n")
 
-    print("2. 并发调度测试")
-    transfer_result = await benchmark_concurrent_transfers(5)
+    print(f"2. 并发调度测试 (concurrency={args.transfer_concurrency})")
+    transfer_result = await benchmark_concurrent_transfers(args.transfer_concurrency)
     print(
         "   吞吐量: "
         f"{transfer_result['throughput_tasks_per_sec']} tasks/s ({transfer_result['evaluation']})\n"
