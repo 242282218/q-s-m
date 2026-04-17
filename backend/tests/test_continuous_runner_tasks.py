@@ -2641,13 +2641,15 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             marker = temp_path / "grandchild-alive.txt"
             child_script = temp_path / "grandchild_writer.py"
             parent_script = temp_path / "spawn_grandchild.py"
+            child_write_delay = 1.8
+            marker_deadline_margin = 0.4
             child_script.write_text(
                 (
                     "from pathlib import Path\n"
                     "import sys\n"
                     "import time\n"
                     "marker = Path(sys.argv[1])\n"
-                    "time.sleep(2)\n"
+                    f"time.sleep({child_write_delay})\n"
                     "marker.write_text('alive', encoding='utf-8')\n"
                 ),
                 encoding="utf-8",
@@ -2661,7 +2663,7 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
                     "marker = Path(sys.argv[1])\n"
                     "child = Path(sys.argv[2])\n"
                     "subprocess.Popen([sys.executable, str(child), str(marker)])\n"
-                    "time.sleep(10)\n"
+                    "time.sleep(3)\n"
                 ),
                 encoding="utf-8",
             )
@@ -2673,8 +2675,11 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
                 timeout=1,
             )
 
+            started = time.perf_counter()
             result = run_task(task, temp_path, tail_lines=20, default_timeout=30)
-            time.sleep(3)
+            deadline = started + child_write_delay + marker_deadline_margin
+            while time.perf_counter() < deadline and not marker.exists():
+                time.sleep(0.05)
             marker_exists = marker.exists()
 
         self.assertEqual(result["status"], "timeout")
