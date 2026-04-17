@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.main import health_check
+from app.main import build_liveness_data, collect_health_data, health_check
 
 
 class _FakeConnection:
@@ -25,6 +25,11 @@ class _FakeConnection:
 class _FakeEngine:
     def connect(self):
         return _FakeConnection()
+
+
+class _BrokenEngine:
+    def connect(self):
+        raise RuntimeError("db unavailable")
 
 
 class _FakeCache:
@@ -54,6 +59,27 @@ class HealthCheckTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.data.status, "ok")
         self.assertEqual(response.data.checks["cache"].status, "ok")
         self.assertEqual(response.data.checks["cache"].message, "Cache operational: 3/5 entries")
+
+    async def test_collect_health_data_marks_database_failure_as_not_ready(self):
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(tmdb_client=None)))
+
+        with patch("app.db.session.engine", _BrokenEngine()), patch(
+            "app.quark.core.cache.get_cache",
+            return_value=_FakeCache({"valid": 1, "total": 1}),
+        ):
+            health_data, is_ready = await collect_health_data(request)
+
+        self.assertFalse(is_ready)
+        self.assertEqual(health_data.status, "degraded")
+        self.assertEqual(health_data.checks["database"].status, "error")
+        self.assertEqual(health_data.checks["tmdb"].status, "warning")
+
+    def test_build_liveness_data_reports_running_process(self):
+        response = build_liveness_data()
+
+        self.assertEqual(response.status, "ok")
+        self.assertEqual(response.checks["app"].status, "ok")
+        self.assertEqual(response.checks["app"].message, "Process running")
 
 
 if __name__ == "__main__":

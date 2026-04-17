@@ -19,7 +19,7 @@ from .core.config import emit_security_warnings, get_settings
 from .core.logging import setup_logging
 from .db.session import init_db, get_query_stats, reset_query_stats
 from .api.router import api_router
-from .api.schemas.common import ApiResponse, ok, utc_now_iso
+from .api.schemas.common import ApiResponse, business_error, ok, utc_now_iso
 from .api.schemas.system import (
     DatabaseMetrics,
     HealthData,
@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 
 settings = get_settings()
 emit_security_warnings(settings)
+
+HEALTH_SERVICE_NAME = "qsm-media-center"
 
 
 def resolve_frontend_dist_dir(app_dir: Path) -> Path:
@@ -256,24 +258,23 @@ def build_cache_health_check(stats: dict | None) -> tuple[HealthCheck, bool]:
     return HealthCheck(status="warning", message=message), True
 
 
-@app.get("/api/v1/health", summary="健康检查", response_model=ApiResponse[HealthData])
-async def health_check(request: Request) -> ApiResponse[HealthData]:
-    """健康检查端点，用于容器健康监控"""
-    checks = {}
+async def collect_health_data(request: Request) -> tuple[HealthData, bool]:
+    checks: dict[str, HealthCheck] = {}
     overall_status = "ok"
-    
-    # 检查数据库连接
+    is_ready = True
+
     try:
         from sqlalchemy import text
         from .db.session import engine
+
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         checks["database"] = HealthCheck(status="ok", message="Database connection successful")
     except Exception as e:
         checks["database"] = HealthCheck(status="error", message=f"Database connection failed: {str(e)}")
         overall_status = "degraded"
-    
-    # 检查 TMDB 客户端
+        is_ready = False
+
     try:
         tmdb_client = getattr(request.app.state, "tmdb_client", None)
         if tmdb_client:
@@ -284,10 +285,10 @@ async def health_check(request: Request) -> ApiResponse[HealthData]:
     except Exception as e:
         checks["tmdb"] = HealthCheck(status="error", message=f"TMDB client error: {str(e)}")
         overall_status = "degraded"
-    
-    # 检查缓存
+
     try:
         from .quark.core.cache import get_cache
+
         cache = get_cache()
         stats = await cache.get_stats()
         checks["cache"], cache_should_degrade = build_cache_health_check(stats)
@@ -296,15 +297,57 @@ async def health_check(request: Request) -> ApiResponse[HealthData]:
     except Exception as e:
         checks["cache"] = HealthCheck(status="error", message=f"Cache error: {str(e)}")
         overall_status = "degraded"
-    
-    return ok(
+
+    return (
         HealthData(
             status=overall_status,
-            service="qsm-media-center",
+            service=HEALTH_SERVICE_NAME,
             timestamp=utc_now_iso(),
             checks=checks,
-        )
+        ),
+        is_ready,
     )
+
+
+def build_liveness_data() -> HealthData:
+    return HealthData(
+        status="ok",
+        service=HEALTH_SERVICE_NAME,
+        timestamp=utc_now_iso(),
+        checks={"app": HealthCheck(status="ok", message="Process running")},
+    )
+
+
+@app.get("/api/v1/health", summary="健康检查", response_model=ApiResponse[HealthData])
+async def health_check(request: Request) -> ApiResponse[HealthData]:
+    """详细健康检查端点，供前端状态页和人工排障使用。"""
+    health_data, _ = await collect_health_data(request)
+    return ok(health_data)
+
+
+@app.get("/api/v1/health/live", summary="存活检查", response_model=ApiResponse[HealthData])
+async def liveness_check() -> ApiResponse[HealthData]:
+    """轻量存活检查，仅确认进程仍可响应请求。"""
+    return ok(build_liveness_data(), message="Service alive")
+
+
+@app.get("/api/v1/health/ready", summary="就绪检查", response_model=ApiResponse[HealthData])
+async def readiness_check(request: Request) -> ApiResponse[HealthData] | JSONResponse:
+    """
+    就绪检查：
+    - 保留详细健康数据，便于排障
+    - 仅当核心依赖不可用时返回 503，供 Docker/K8s 探针使用
+    """
+    health_data, is_ready = await collect_health_data(request)
+    if is_ready:
+        return ok(health_data, message="Service ready")
+
+    response = business_error(
+        data=health_data,
+        message="Service not ready",
+        code=503,
+    )
+    return JSONResponse(status_code=503, content=response.model_dump(mode="json"))
 
 
 @app.get("/api/v1/metrics", summary="性能指标", response_model=ApiResponse[MetricsData])

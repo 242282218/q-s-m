@@ -62,6 +62,11 @@ It is pre-split into `backend-agent`, `frontend-agent`, and `performance-agent` 
 
 GitHub Actions mirrors the same baseline on pull requests and pushes to `main` via `.github/workflows/quality-gates.yml`: backend `pytest -m "not performance"` plus frontend `lint:check`, `format:check`, `test:coverage`, and `build`.
 
+Health probes are split by purpose:
+- `/api/v1/health` keeps the detailed JSON status used by the frontend settings page and manual troubleshooting
+- `/api/v1/health/ready` is the deployment readiness probe and returns HTTP `503` when core dependencies are unavailable
+- `/api/v1/health/live` is a lightweight liveness probe that only verifies the process can still serve requests
+
 ## Environment
 
 1. Copy the template:

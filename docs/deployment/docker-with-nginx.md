@@ -43,7 +43,14 @@ docker compose logs -f app
 健康检查：
 
 ```bash
+# 容器/编排探针：只有核心依赖不可用时才会失败
+curl -f http://127.0.0.1:8000/api/v1/health/ready
+
+# 人工排障详情：始终返回结构化检查项
 curl http://127.0.0.1:8000/api/v1/health
+
+# 轻量存活检查：只确认进程仍能响应
+curl http://127.0.0.1:8000/api/v1/health/live
 ```
 
 ## 3. Nginx 反向代理
