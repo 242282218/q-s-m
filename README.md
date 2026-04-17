@@ -171,4 +171,5 @@ Restore from a snapshot:
 python ops/backup/restore_sqlite.py --backup-file storage/backups/qsm-YYYYmmdd-HHMMSS.db
 ```
 
-The backup script also copies the runtime settings snapshot when `storage/config/settings.env` exists.
+The backup script also copies the runtime settings snapshot when it exists at the active runtime env path.
+During restore, a sibling `qsm-YYYYmmdd-HHMMSS.settings.env` file is restored automatically when present, and the current database/settings are snapshotted as `*.pre-restore-*` before replacement.

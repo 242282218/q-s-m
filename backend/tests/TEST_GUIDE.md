@@ -41,6 +41,9 @@ python -m pytest tests/test_rate_limiter_cleanup.py
 
 # Metrics 重置统计结构回归
 python -m pytest tests/test_metrics_reset.py
+
+# 备份/恢复脚本完整性回归
+python -m pytest tests/test_backup_scripts.py
 ```
 
 ### 生成覆盖率报告

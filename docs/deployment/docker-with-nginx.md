@@ -96,12 +96,16 @@ python ops/backup/restore_sqlite.py --backup-file storage/backups/<backup-file>.
 docker compose restart app
 ```
 
+如果同名的 `storage/backups/<backup-file>.settings.env` 存在，恢复脚本会一并回滚运行期设置；当前数据库与当前设置会先各自留下一份 `*.pre-restore-*` 快照，便于快速撤销本次恢复。
+
 ## 6. 备份
 
 ```bash
 cd /opt/qsm
 python ops/backup/backup_sqlite.py
 ```
+
+脚本会按当前生效的 `QSM_DATA_DIR` / `QSM_RUNTIME_ENV_FILE` 解析数据库和运行期设置路径，而不是写死到单一路径。
 
 关键数据目录：
 - `storage/db`

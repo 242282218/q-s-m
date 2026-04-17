@@ -3,21 +3,38 @@ from __future__ import annotations
 import argparse
 import shutil
 import sqlite3
+import sys
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+BACKEND_ROOT = REPO_ROOT / "backend"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
-def resolve_default_path(*parts: str) -> Path:
-    return Path(__file__).resolve().parents[2].joinpath(*parts)
+from app.core.paths import resolve_data_dir, resolve_runtime_env_path, resolve_storage_root
+
+
+def resolve_default_database_path() -> Path:
+    return resolve_data_dir() / "qsm.db"
+
+
+def resolve_default_config_path() -> Path:
+    return resolve_runtime_env_path()
+
+
+def resolve_default_backup_dir() -> Path:
+    return resolve_storage_root() / "backups"
 
 
 def backup_database(source_path: Path, target_path: Path) -> None:
-    with sqlite3.connect(source_path) as source, sqlite3.connect(target_path) as target:
+    with closing(sqlite3.connect(source_path)) as source, closing(sqlite3.connect(target_path)) as target:
         source.backup(target)
 
 
 def export_schema(source_path: Path, schema_path: Path) -> None:
-    with sqlite3.connect(source_path) as connection:
+    with closing(sqlite3.connect(source_path)) as connection:
         rows = connection.execute(
             """
             SELECT sql
@@ -31,16 +48,16 @@ def export_schema(source_path: Path, schema_path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Create a timestamped SQLite backup.")
-    parser.add_argument("--db", type=Path, default=resolve_default_path("storage", "db", "qsm.db"))
+    parser.add_argument("--db", type=Path, default=resolve_default_database_path())
     parser.add_argument(
         "--config",
         type=Path,
-        default=resolve_default_path("storage", "config", "settings.env"),
+        default=resolve_default_config_path(),
     )
     parser.add_argument(
         "--out-dir",
         type=Path,
-        default=resolve_default_path("storage", "backups"),
+        default=resolve_default_backup_dir(),
     )
     args = parser.parse_args()
 
