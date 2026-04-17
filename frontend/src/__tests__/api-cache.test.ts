@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  cachedFetch,
+  cancelAllGlobalRequests,
   clearGlobalCache,
   globalCache,
+  globalDeduplicator,
   MemoryCache,
   RequestDeduplicator,
+  useApiCache,
 } from '@/composables/useApiCache';
 import { getCacheStats, getHomeFeed } from '@/api';
 
@@ -16,10 +20,13 @@ describe('API Caching and Deduplication', () => {
     testCache = new MemoryCache(100);
     testDeduplicator = new RequestDeduplicator<unknown>();
     globalCache.clear();
+    globalDeduplicator.cancelAll();
     vi.clearAllMocks();
   });
 
   afterEach(() => {
+    globalDeduplicator.cancelAll();
+    vi.useRealTimers();
     Object.defineProperty(globalThis, 'fetch', {
       value: originalFetch,
       configurable: true,
@@ -88,6 +95,25 @@ describe('API Caching and Deduplication', () => {
 
       expect(mockFetcher).toHaveBeenCalledTimes(3);
     });
+
+    it('should cancel a pending request and clear tracking state', async () => {
+      const pending = testDeduplicator.getOrCreate('slow-key', (signal) => {
+        return new Promise((_, reject) => {
+          signal.addEventListener('abort', () => {
+            reject(new DOMException('Aborted', 'AbortError'));
+          });
+        });
+      });
+
+      expect(testDeduplicator.has('slow-key')).toBe(true);
+      expect(testDeduplicator.size()).toBe(1);
+
+      testDeduplicator.cancel('slow-key');
+
+      await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+      expect(testDeduplicator.has('slow-key')).toBe(false);
+      expect(testDeduplicator.size()).toBe(0);
+    });
   });
 
   describe('Global Cache Integration', () => {
@@ -112,6 +138,57 @@ describe('API Caching and Deduplication', () => {
 
       expect(globalCache.get('user:1')).toBeNull();
       expect(globalCache.get('movie:1')).toEqual({ data: 'movie' });
+    });
+
+    it('should cache fetch responses, support force refresh, and surface HTTP errors', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ data: 'cached' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          })
+        )
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ data: 'fresh' }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          })
+        )
+        .mockResolvedValueOnce(new Response('nope', { status: 503, statusText: 'Service Unavailable' }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const first = await cachedFetch<{ data: string }>('/cached-endpoint');
+      const second = await cachedFetch<{ data: string }>('/cached-endpoint');
+      const refreshed = await cachedFetch<{ data: string }>('/cached-endpoint', {
+        forceRefresh: true,
+      });
+
+      expect(first).toEqual({ data: 'cached' });
+      expect(second).toEqual({ data: 'cached' });
+      expect(refreshed).toEqual({ data: 'fresh' });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+
+      await expect(
+        cachedFetch('/broken-endpoint', {
+          forceRefresh: true,
+        })
+      ).rejects.toThrow('HTTP 503: Service Unavailable');
+    });
+
+    it('should cancel pending global requests through the public wrapper', async () => {
+      const pending = globalDeduplicator.getOrCreate('global-slow', (signal) => {
+        return new Promise((_, reject) => {
+          signal.addEventListener('abort', () => {
+            reject(new DOMException('Aborted', 'AbortError'));
+          });
+        });
+      });
+
+      cancelAllGlobalRequests();
+
+      await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+      expect(globalDeduplicator.size()).toBe(0);
     });
   });
 
@@ -138,6 +215,57 @@ describe('API Caching and Deduplication', () => {
       expect(first).toEqual(second);
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(getCacheStats()).toMatchObject({ hits: 1, misses: 1 });
+    });
+  });
+
+  describe('useApiCache composable', () => {
+    it('should reuse local cache, honor forceRefresh, and expose manual cache helpers', async () => {
+      const cache = useApiCache<string>({ defaultTtl: 60000 });
+      const fetcher = vi.fn<() => Promise<string>>()
+        .mockResolvedValueOnce('Alien')
+        .mockResolvedValueOnce('Aliens');
+
+      const first = await cache.execute('movie:42', fetcher);
+      const second = await cache.execute('movie:42', fetcher);
+      const refreshed = await cache.execute('movie:42', fetcher, { forceRefresh: true });
+
+      cache.setCache('manual', 'Blade Runner', 60000);
+
+      expect(first).toBe('Alien');
+      expect(second).toBe('Alien');
+      expect(refreshed).toBe('Aliens');
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      expect(cache.data.value).toBe('Aliens');
+      expect(cache.error.value).toBeNull();
+      expect(cache.getCache('manual')).toBe('Blade Runner');
+      expect(cache.hasCache('manual')).toBe(true);
+      expect(cache.getCacheSize()).toBe(2);
+
+      cache.clearCache('manual');
+      expect(cache.hasCache('manual')).toBe(false);
+
+      cache.clearCache();
+      expect(cache.getCacheSize()).toBe(0);
+    });
+
+    it('should abort pending local requests when cancelAll is invoked', async () => {
+      const cache = useApiCache<string>();
+
+      const pending = cache.execute('slow-movie', (signal) => {
+        return new Promise((_, reject) => {
+          signal.addEventListener('abort', () => {
+            reject(new DOMException('Aborted', 'AbortError'));
+          });
+        });
+      });
+
+      expect(cache.loading.value).toBe(true);
+
+      cache.cancelAll();
+
+      await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+      expect(cache.loading.value).toBe(false);
+      expect(cache.error.value).toMatchObject({ name: 'AbortError' });
     });
   });
 });
