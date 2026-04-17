@@ -27,6 +27,54 @@ from .service import TransferService
 router = APIRouter(prefix="/transfers", tags=["transfers"])
 
 
+def build_transfer_exec_error_detail(
+    message: str,
+    collection_id: int,
+    target_folder: Optional[str],
+) -> tuple[ErrorCode, ErrorDetail]:
+    if "收藏不存在" in message:
+        return (
+            ErrorCode.COLLECTION_NOT_FOUND,
+            ErrorDetail(field="collection_id", value=collection_id, reason=message),
+        )
+
+    if "未配置 QUARK_TRANSFER_COOKIE" in message:
+        return (
+            ErrorCode.CONFIG_ERROR,
+            ErrorDetail(field="QUARK_TRANSFER_COOKIE", reason="missing runtime configuration"),
+        )
+
+    if "未配置 TMDB_API_KEY" in message:
+        return (
+            ErrorCode.CONFIG_ERROR,
+            ErrorDetail(field="TMDB_API_KEY", reason="missing runtime configuration"),
+        )
+
+    if "转存超时" in message:
+        return (
+            ErrorCode.TRANSFER_TIMEOUT,
+            ErrorDetail(field="collection_id", value=collection_id, reason=message),
+        )
+
+    if "创建目标目录失败" in message:
+        failed_target = message.partition(":")[2].strip() or target_folder
+        return (
+            ErrorCode.TRANSFER_DIR_NOT_FOUND,
+            ErrorDetail(field="target_folder", value=failed_target, reason=message),
+        )
+
+    if "没有可转存的文件" in message or "没有文件" in message:
+        return (
+            ErrorCode.TRANSFER_NO_FILES,
+            ErrorDetail(field="collection_id", value=collection_id, reason=message),
+        )
+
+    return (
+        ErrorCode.TRANSFER_FAILED,
+        ErrorDetail(field="collection_id", value=collection_id, reason=message),
+    )
+
+
 class ValidateLinkRequest(BaseModel):
     """验证链接请求"""
     model_config = ConfigDict(defer_build=True)
@@ -186,11 +234,12 @@ async def transfer_exec(
         )
         if success:
             return ok(payload, message=message)
+        code, error = build_transfer_exec_error_detail(message, collection_id, body.target_folder)
         return business_error(
             payload,
             message=message,
-            code=ErrorCode.TRANSFER_FAILED,
-            error=ErrorDetail(field="collection_id", value=collection_id, reason=message),
+            code=code,
+            error=error,
         )
     finally:
         await service.close()
