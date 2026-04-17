@@ -10,6 +10,10 @@ class DeploymentConfigTests(unittest.TestCase):
         self.compose_content = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
         self.dockerfile_content = (ROOT / "Dockerfile").read_text(encoding="utf-8")
         self.env_example_content = (ROOT / ".env.example").read_text(encoding="utf-8")
+        self.quality_gates_content = (
+            ROOT / ".github" / "workflows" / "quality-gates.yml"
+        ).read_text(encoding="utf-8")
+        self.readme_content = (ROOT / "README.md").read_text(encoding="utf-8")
         self.docker_with_nginx_doc = (
             ROOT / "docs" / "deployment" / "docker-with-nginx.md"
         ).read_text(encoding="utf-8")
@@ -35,6 +39,13 @@ class DeploymentConfigTests(unittest.TestCase):
             self.dockerfile_content,
         )
 
+    def test_quality_gates_include_docker_build_validation(self):
+        self.assertIn("name: Docker image build", self.quality_gates_content)
+        self.assertIn("docker/setup-buildx-action@v3", self.quality_gates_content)
+        self.assertIn("docker/build-push-action@v6", self.quality_gates_content)
+        self.assertIn("platforms: linux/amd64", self.quality_gates_content)
+        self.assertIn("push: false", self.quality_gates_content)
+
     def test_env_example_uses_safe_cors_default_when_debug_disabled(self):
         self.assertIn("DEBUG=false", self.env_example_content)
         cors_line = next(
@@ -52,6 +63,10 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn("/api/v1/health/ready", self.docker_with_nginx_doc)
         self.assertIn("/api/v1/health/live", self.docker_with_nginx_doc)
         self.assertIn("/api/v1/health", self.docker_with_nginx_doc)
+
+    def test_repo_docs_document_docker_build_gate(self):
+        self.assertIn("Docker image build", self.readme_content)
+        self.assertIn("quality-gates.yml", self.readme_content)
 
 
 if __name__ == "__main__":

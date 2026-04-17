@@ -18,6 +18,7 @@ qsm/
 ## Local Development
 
 ### Backend
+
 ```bash
 cd backend
 pip install -r requirements.txt
@@ -25,6 +26,7 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 ### Frontend
+
 ```bash
 cd frontend
 pnpm install
@@ -60,9 +62,10 @@ It is pre-split into `backend-agent`, `frontend-agent`, and `performance-agent` 
 - next iteration id resumes from `latest.json`; if `latest.json` is broken/stale, runner falls back to highest `iteration-*.json`
 - runners that share the same `log_dir` reserve iteration ids through a lock-backed counter, so updated processes do not reuse the same iteration number concurrently
 
-GitHub Actions mirrors the same baseline on pull requests and pushes to `main` via `.github/workflows/quality-gates.yml`: backend `pytest -m "not performance"` plus frontend `lint:check`, `format:check`, `test:coverage`, and `build`.
+GitHub Actions mirrors the same baseline on pull requests and pushes to `main` via `.github/workflows/quality-gates.yml`: backend `pytest -m "not performance"`, Docker image build validation for the recommended deployment path, plus frontend `lint:check`, `format:check`, `test:coverage`, and `build`.
 
 Health probes are split by purpose:
+
 - `/api/v1/health` keeps the detailed JSON status used by the frontend settings page and manual troubleshooting
 - `/api/v1/health/ready` is the deployment readiness probe and returns HTTP `503` when core dependencies are unavailable
 - `/api/v1/health/live` is a lightweight liveness probe that only verifies the process can still serve requests
@@ -70,9 +73,11 @@ Health probes are split by purpose:
 ## Environment
 
 1. Copy the template:
+
 ```bash
 cp .env.example .env
 ```
+
 2. Fill in at least:
    - `TMDB_API_KEY`
    - `QUARK_TRANSFER_COOKIE`
@@ -155,6 +160,7 @@ with `VITE_API_KEY` set to the same value as `API_KEY`.
 ### Persistent data
 
 All runtime data is stored under:
+
 - `storage/db`
 - `storage/logs`
 - `storage/config`
@@ -166,11 +172,13 @@ The API and SPA are served from the same container on `http://localhost:8000`.
 ## Backup
 
 Create a database snapshot:
+
 ```bash
 python ops/backup/backup_sqlite.py
 ```
 
 Restore from a snapshot:
+
 ```bash
 python ops/backup/restore_sqlite.py --backup-file storage/backups/qsm-YYYYmmdd-HHMMSS.db
 ```
