@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -226,8 +227,17 @@ def tail_text(text: str, tail_lines: int) -> str:
     return "\n".join(lines[-tail_lines:])
 
 
-def strip_ansi_sequences(text: str) -> str:
-    sanitized = ANSI_OSC_PATTERN.sub("", text)
+def decode_process_output(text: str | bytes | None) -> str:
+    if text is None:
+        return ""
+    if isinstance(text, bytes):
+        return text.decode("utf-8", errors="replace")
+    return text
+
+
+def strip_ansi_sequences(text: str | bytes | None) -> str:
+    normalized = decode_process_output(text)
+    sanitized = ANSI_OSC_PATTERN.sub("", normalized)
     sanitized = ANSI_CSI_PATTERN.sub("", sanitized)
     return ANSI_SINGLE_ESCAPE_PATTERN.sub("", sanitized)
 
@@ -237,6 +247,84 @@ def normalize_command(command: list[str]) -> list[str]:
     if normalized and normalized[0] == "python":
         normalized[0] = sys.executable
     return normalized
+
+
+def spawn_task_process(command: list[str], task_cwd: Path) -> subprocess.Popen[str]:
+    popen_kwargs: dict[str, Any] = {
+        "cwd": task_cwd,
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
+    }
+    if os.name == "nt":
+        popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    else:
+        popen_kwargs["start_new_session"] = True
+    return subprocess.Popen(command, **popen_kwargs)
+
+
+def force_kill_process(process: subprocess.Popen[str]) -> None:
+    try:
+        process.kill()
+    except (ProcessLookupError, OSError):
+        pass
+
+
+def terminate_process_tree(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+            pass
+        if process.poll() is None:
+            force_kill_process(process)
+        return
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return
+    except (PermissionError, OSError):
+        force_kill_process(process)
+
+
+def collect_process_result(
+    process: subprocess.Popen[str],
+    timeout: int,
+) -> tuple[str, str, str, int]:
+    try:
+        stdout_text, stderr_text = process.communicate(timeout=timeout)
+        return (
+            "passed" if process.returncode == 0 else "failed",
+            strip_ansi_sequences(stdout_text),
+            strip_ansi_sequences(stderr_text),
+            process.returncode,
+        )
+    except subprocess.TimeoutExpired as err:
+        terminate_process_tree(process)
+        try:
+            stdout_text, stderr_text = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            force_kill_process(process)
+            stdout_text, stderr_text = process.communicate()
+        stdout_text = strip_ansi_sequences(stdout_text or err.stdout)
+        stderr_text = strip_ansi_sequences(stderr_text or err.stderr)
+        timeout_message = f"Task timeout after {timeout}s"
+        if stderr_text:
+            stderr_text = f"{stderr_text}\n{timeout_message}"
+        else:
+            stderr_text = timeout_message
+        return "timeout", stdout_text, stderr_text, 124
 
 
 def resolve_command(command: list[str]) -> list[str]:
@@ -310,30 +398,14 @@ def run_task(
             "stderr_tail": tail_text(stderr_text, tail_lines),
         }
     try:
-        completed = subprocess.run(
-            command,
-            cwd=task_cwd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=timeout,
-            check=False,
-        )
-        status = "passed" if completed.returncode == 0 else "failed"
-        stdout_text = strip_ansi_sequences(completed.stdout)
-        stderr_text = strip_ansi_sequences(completed.stderr)
-        exit_code = completed.returncode
+        process = spawn_task_process(command, task_cwd)
     except FileNotFoundError as err:
         status = "failed"
         stdout_text = ""
         stderr_text = str(err)
         exit_code = 127
-    except subprocess.TimeoutExpired as err:
-        status = "timeout"
-        stdout_text = strip_ansi_sequences(err.stdout or "")
-        stderr_text = strip_ansi_sequences(err.stderr or "") + f"\nTask timeout after {timeout}s"
-        exit_code = 124
+    else:
+        status, stdout_text, stderr_text, exit_code = collect_process_result(process, timeout)
     duration_seconds = round(time.perf_counter() - started, 3)
     return {
         "name": task.name,

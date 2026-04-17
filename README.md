@@ -52,6 +52,7 @@ It is pre-split into `backend-agent`, `frontend-agent`, and `performance-agent` 
 - `enabled=false` only skips execution; task schema + duplicate name checks still fail fast
 - `task.cwd` must stay inside `repo_root`; absolute path / `..` escape is rejected
 - `task.cwd` must resolve to an existing directory; missing/non-directory paths fail fast
+- timed-out tasks run in isolated process groups/sessions; timeout cleanup terminates spawned descendants too, avoiding leaked watchers/servers across iterations
 - unhandled task errors and unexpected lane-level errors are downgraded to failed task results (`exit_code=70`); finished lane tasks are preserved, incomplete lane result sets only backfill missing tasks, and invalid lane indexes are treated as lane-level failures
 - `optimization_suggestions` adds task-specific guidance for the default frontend quality gates, so lint / format / test / build failures point to the next fix path instead of a generic fallback
 - `optimization_suggestions` also surfaces breached performance thresholds from the default benchmark lane, so degradations point to the exact metric family to optimize next

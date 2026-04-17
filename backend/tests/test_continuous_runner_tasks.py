@@ -2588,23 +2588,27 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
     def test_run_task_reports_timeout_and_strips_ansi_sequences(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
+            script = temp_path / "timeout_with_output.py"
+            script.write_text(
+                (
+                    "import sys\n"
+                    "import time\n"
+                    "sys.stdout.write('\\x1b[31mstart\\x1b[0m\\n')\n"
+                    "sys.stdout.flush()\n"
+                    "sys.stderr.write('\\x1b[33mstill running\\x1b[0m\\n')\n"
+                    "sys.stderr.flush()\n"
+                    "time.sleep(5)\n"
+                ),
+                encoding="utf-8",
+            )
             task = TaskDefinition(
                 name="timeout_task",
                 module="frontend",
                 cwd=Path("."),
-                command=["python", "-c", "print('timeout')"],
+                command=["python", str(script.name)],
                 timeout=1,
             )
-            with patch(
-                "ops.continuous.continuous_runner.subprocess.run",
-                side_effect=subprocess.TimeoutExpired(
-                    cmd=[sys.executable, "-c", "print('timeout')"],
-                    timeout=1,
-                    output="\u001b[31mstart\u001b[0m\n",
-                    stderr="\u001b[33mstill running\u001b[0m\n",
-                ),
-            ):
-                result = run_task(task, temp_path, tail_lines=20, default_timeout=30)
+            result = run_task(task, temp_path, tail_lines=20, default_timeout=30)
 
         self.assertEqual(result["status"], "timeout")
         self.assertEqual(result["exit_code"], 124)
@@ -2613,6 +2617,52 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertIn("still running", str(result["stderr_tail"]))
         self.assertNotIn("\u001b[", str(result["stdout_tail"]))
         self.assertNotIn("\u001b[", str(result["stderr_tail"]))
+
+    def test_run_task_timeout_kills_spawned_process_tree(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            marker = temp_path / "grandchild-alive.txt"
+            child_script = temp_path / "grandchild_writer.py"
+            parent_script = temp_path / "spawn_grandchild.py"
+            child_script.write_text(
+                (
+                    "from pathlib import Path\n"
+                    "import sys\n"
+                    "import time\n"
+                    "marker = Path(sys.argv[1])\n"
+                    "time.sleep(2)\n"
+                    "marker.write_text('alive', encoding='utf-8')\n"
+                ),
+                encoding="utf-8",
+            )
+            parent_script.write_text(
+                (
+                    "from pathlib import Path\n"
+                    "import subprocess\n"
+                    "import sys\n"
+                    "import time\n"
+                    "marker = Path(sys.argv[1])\n"
+                    "child = Path(sys.argv[2])\n"
+                    "subprocess.Popen([sys.executable, str(child), str(marker)])\n"
+                    "time.sleep(10)\n"
+                ),
+                encoding="utf-8",
+            )
+            task = TaskDefinition(
+                name="timeout_tree_cleanup",
+                module="frontend",
+                cwd=Path("."),
+                command=["python", str(parent_script.name), str(marker.name), str(child_script.name)],
+                timeout=1,
+            )
+
+            result = run_task(task, temp_path, tail_lines=20, default_timeout=30)
+            time.sleep(3)
+            marker_exists = marker.exists()
+
+        self.assertEqual(result["status"], "timeout")
+        self.assertEqual(result["exit_code"], 124)
+        self.assertFalse(marker_exists, "timeout should clean spawned descendants")
 
     def test_run_task_strips_ansi_escape_sequences(self):
         with tempfile.TemporaryDirectory() as temp_dir:
