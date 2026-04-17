@@ -73,6 +73,16 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
             agent_names,
             {"backend-agent", "frontend-agent", "performance-agent"},
         )
+        backend_pytest = tasks_by_name["backend_pytest"]
+        self.assertEqual(backend_pytest.cwd, Path("backend"))
+        self.assertEqual(
+            backend_pytest.command,
+            ["python", "-m", "pytest", "-m", "not performance"],
+        )
+        self.assertEqual(backend_pytest.timeout, 1800)
+        self.assertEqual(backend_pytest.agent, "backend-agent")
+        self.assertEqual(backend_pytest.model, DEFAULT_AGENT_MODEL)
+
         frontend_lint_check = tasks_by_name["frontend_lint_check"]
         self.assertEqual(frontend_lint_check.cwd, Path("frontend"))
         self.assertEqual(frontend_lint_check.command, ["pnpm", "run", "lint:check"])
@@ -176,7 +186,10 @@ class ContinuousRunnerTaskFileTests(unittest.TestCase):
         self.assertEqual(len(tasks), 1)
         self.assertEqual(tasks[0].name, "backend_pytest")
         self.assertEqual(tasks[0].cwd, Path("backend"))
-        self.assertEqual(tasks[0].command, ["python", "-m", "pytest"])
+        self.assertEqual(
+            tasks[0].command,
+            ["python", "-m", "pytest"],
+        )
 
     def test_load_tasks_reports_missing_file(self):
         with tempfile.TemporaryDirectory() as temp_dir:

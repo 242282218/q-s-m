@@ -9,6 +9,7 @@ import statistics
 import tracemalloc
 import psutil
 import aiohttp
+import pytest
 from typing import Dict, List, Any, Tuple
 from app.middleware.rate_limit import RateLimiter
 from app.quark.core.cache import MemoryCache, CacheManager
@@ -18,6 +19,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+pytestmark = pytest.mark.performance
 
 
 class PerformanceTester:

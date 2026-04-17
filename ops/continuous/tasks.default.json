@@ -4,7 +4,7 @@
       "name": "backend_pytest",
       "module": "backend",
       "cwd": "backend",
-      "command": ["python", "-m", "pytest"],
+      "command": ["python", "-m", "pytest", "-m", "not performance"],
       "agent": {
         "name": "backend-agent",
         "model": "gpt-5.4"

@@ -10,7 +10,7 @@ pip install pytest pytest-asyncio httpx
 
 ### 运行所有测试
 ```bash
-python -m pytest -q tests
+python -m pytest -q tests -m "not performance"
 ```
 
 ### 运行特定测试
@@ -32,6 +32,9 @@ python -m pytest tests/test_home_hero_cache.py
 
 # TMDB 缓存并发/键稳定性回归
 python -m pytest tests/test_tmdb_cache_behaviors.py
+
+# 显式运行重型性能 pytest 套件（默认门禁不会包含）
+python -m pytest tests/test_performance_benchmark.py -m performance
 
 # RateLimiter 自动清理 + Redis 降级回归
 python -m pytest tests/test_rate_limiter_cleanup.py
