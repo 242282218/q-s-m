@@ -13,6 +13,12 @@ class DeploymentConfigTests(unittest.TestCase):
         self.quality_gates_content = (
             ROOT / ".github" / "workflows" / "quality-gates.yml"
         ).read_text(encoding="utf-8")
+        self.docker_ghcr_main_content = (
+            ROOT / ".github" / "workflows" / "docker-ghcr-main.yml"
+        ).read_text(encoding="utf-8")
+        self.release_docker_content = (
+            ROOT / ".github" / "workflows" / "release-docker.yml"
+        ).read_text(encoding="utf-8")
         self.readme_content = (ROOT / "README.md").read_text(encoding="utf-8")
         self.docker_with_nginx_doc = (
             ROOT / "docs" / "deployment" / "docker-with-nginx.md"
@@ -46,6 +52,16 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn("platforms: linux/amd64", self.quality_gates_content)
         self.assertIn("push: false", self.quality_gates_content)
 
+    def test_ghcr_workflows_publish_multi_arch_images(self):
+        self.assertIn("docker/setup-qemu-action@v3", self.docker_ghcr_main_content)
+        self.assertIn("platforms: linux/amd64,linux/arm64", self.docker_ghcr_main_content)
+        self.assertIn("GHCR_PLATFORMS: linux/amd64,linux/arm64", self.release_docker_content)
+        self.assertIn("docker/setup-qemu-action@v3", self.release_docker_content)
+        self.assertIn(
+            "Build and push multi-arch image",
+            self.release_docker_content,
+        )
+
     def test_env_example_uses_safe_cors_default_when_debug_disabled(self):
         self.assertIn("DEBUG=false", self.env_example_content)
         cors_line = next(
@@ -64,9 +80,18 @@ class DeploymentConfigTests(unittest.TestCase):
         self.assertIn("/api/v1/health/live", self.docker_with_nginx_doc)
         self.assertIn("/api/v1/health", self.docker_with_nginx_doc)
 
+    def test_deployment_doc_mentions_multi_arch_ghcr_images(self):
+        self.assertIn("linux/amd64", self.docker_with_nginx_doc)
+        self.assertIn("linux/arm64", self.docker_with_nginx_doc)
+
     def test_repo_docs_document_docker_build_gate(self):
         self.assertIn("Docker image build", self.readme_content)
         self.assertIn("quality-gates.yml", self.readme_content)
+
+    def test_readme_documents_multi_arch_ghcr_images(self):
+        self.assertIn("linux/amd64", self.readme_content)
+        self.assertIn("linux/arm64", self.readme_content)
+        self.assertIn("ghcr.io", self.readme_content)
 
 
 if __name__ == "__main__":

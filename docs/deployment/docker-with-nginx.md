@@ -1,6 +1,8 @@
 # Docker + Nginx 部署说明
 
 本项目推荐以单容器应用方式部署，由宿主机 Nginx 反向代理到 `127.0.0.1:8000`。
+如果使用 GHCR 预构建镜像，公开 tag 当前同时提供 `linux/amd64` 和 `linux/arm64`；
+release 页面附带的离线 `tar.gz` 资产仍保持 `linux-amd64` 单包。
 
 ## 1. 服务器准备
 
@@ -115,6 +117,7 @@ python ops/backup/backup_sqlite.py
 脚本会按当前生效的 `QSM_DATA_DIR` / `QSM_RUNTIME_ENV_FILE` 解析数据库和运行期设置路径，而不是写死到单一路径。
 
 关键数据目录：
+
 - `storage/db`
 - `storage/config`
 - `storage/backups`

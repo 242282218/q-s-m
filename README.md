@@ -62,7 +62,7 @@ It is pre-split into `backend-agent`, `frontend-agent`, and `performance-agent` 
 - next iteration id resumes from `latest.json`; if `latest.json` is broken/stale, runner falls back to highest `iteration-*.json`
 - runners that share the same `log_dir` reserve iteration ids through a lock-backed counter, so updated processes do not reuse the same iteration number concurrently
 
-GitHub Actions mirrors the same baseline on pull requests and pushes to `main` via `.github/workflows/quality-gates.yml`: backend `pytest -m "not performance"`, Docker image build validation for the recommended deployment path, plus frontend `lint:check`, `format:check`, `test:coverage`, and `build`.
+GitHub Actions reuses the same backend/frontend baseline on pull requests and pushes to `main`, and adds Docker image build validation for the recommended deployment path via `.github/workflows/quality-gates.yml`: backend `pytest -m "not performance"` plus frontend `lint:check`, `format:check`, `test:coverage`, and `build`.
 
 Health probes are split by purpose:
 
@@ -109,7 +109,8 @@ docker compose up -d --build
 
 ### Option B: Pull from GitHub Container Registry
 
-Every push to `main` automatically builds and publishes an image to `ghcr.io`.
+Every push to `main` automatically builds and publishes a multi-arch image to
+`ghcr.io` for `linux/amd64` and `linux/arm64`.
 
 ```bash
 # 1. Create project directory on your server
