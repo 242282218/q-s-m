@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { consumeSse } from '@/shared/lib/sse';
+import { consumeSse } from '@/lib/sse';
 
 function buildResponse(chunks: string[]): Response {
   const encoder = new TextEncoder();
