@@ -1,23 +1,28 @@
-# QSM Movie Wall
+# QSM 影视墙
 
-QSM is a full-stack media collection tool built with FastAPI and Vue 3. It integrates TMDB for metadata and Quark services for search, verification, transfer, and rename workflows.
+QSM 是一个基于 FastAPI + Vue 3 的影视收藏工具，提供：
 
-## Project Structure
+- TMDB 元数据展示
+- 夸克资源搜索
+- 资源校验、转存、重命名
+- Docker 部署
+
+## 目录结构
 
 ```text
 qsm/
-├─ backend/             # FastAPI application
-├─ frontend/            # Vue 3 + Vite application
-├─ storage/             # Runtime data, logs, config snapshots, backups
-├─ ops/backup/          # Backup and restore scripts
+├─ backend/             # FastAPI 后端
+├─ frontend/            # Vue 3 前端
+├─ storage/             # 运行期数据、日志、配置、备份
+├─ ops/backup/          # 备份与恢复脚本
 ├─ Dockerfile
 ├─ docker-compose.yml
 └─ .env.example
 ```
 
-## Local Development
+## 本地开发
 
-### Backend
+### 后端
 
 ```bash
 cd backend
@@ -25,7 +30,7 @@ pip install --prefer-binary --no-compile -r requirements-dev.lock.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-### Frontend
+### 前端
 
 ```bash
 cd frontend
@@ -33,113 +38,63 @@ pnpm install
 pnpm dev
 ```
 
-## Continuous QA Loop
+## 环境变量
 
-Use the built-in continuous runner to execute default backend/frontend checks in a loop:
-
-```bash
-python ops/continuous/continuous_runner.py --max-workers 3 --interval 60
-```
-
-Default task config lives in `ops/continuous/tasks.default.json`.
-It is pre-split into `backend-agent`, `frontend-agent`, and `performance-agent` lanes:
-
-- tasks in the same agent run sequentially (stable context, less interference)
-- different agents can run in parallel (controlled by `--max-workers`)
-- the default backend lane runs `pytest -m "not performance"`; heavy performance benchmarks stay opt-in and are handled by the dedicated performance lane
-- the default performance benchmark runs in its own lane with `--transfer-concurrency 5`, fails on threshold breaches, and writes its latest JSON artifact to `storage/logs/continuous/performance/latest.json`
-- the default frontend lane uses read-only `lint:check` + `format:check`, so continuous checks fail on drift instead of auto-rewriting the worktree
-- `frontend_vitest` now includes a `happy-dom` smoke test that reuses the shared frontend bootstrap and real router config, covering redirects, lazy routes, title updates, and search submission in the default lane
-- `frontend_vitest` runs `test:coverage`, so the default lane also fails when core frontend coverage drops below the locked threshold baseline
-- `agent.model` is fixed to `gpt-5.4` and invalid models fail fast
-- `enabled=false` only skips execution; task schema + duplicate name checks still fail fast
-- `task.cwd` must stay inside `repo_root`; absolute path / `..` escape is rejected
-- `task.cwd` must resolve to an existing directory; missing/non-directory paths fail fast
-- timed-out tasks run in isolated process groups/sessions; timeout cleanup terminates spawned descendants too, avoiding leaked watchers/servers across iterations
-- unhandled task errors and unexpected lane-level errors are downgraded to failed task results (`exit_code=70`); finished lane tasks are preserved, incomplete lane result sets only backfill missing tasks, and invalid lane indexes are treated as lane-level failures
-- `optimization_suggestions` adds task-specific guidance for the default frontend quality gates, so lint / format / test / build failures point to the next fix path instead of a generic fallback
-- `optimization_suggestions` also surfaces breached performance thresholds from the default benchmark lane, so degradations point to the exact metric family to optimize next
-- next iteration id resumes from `latest.json`; if `latest.json` is broken/stale, runner falls back to highest `iteration-*.json`
-- runners that share the same `log_dir` reserve iteration ids through a lock-backed counter, so updated processes do not reuse the same iteration number concurrently
-
-GitHub Actions reuses the same backend/frontend baseline on pull requests and pushes to `main`, and adds Docker image build validation for the recommended deployment path via `.github/workflows/quality-gates.yml`: backend `pytest -m "not performance"` plus frontend `lint:check`, `format:check`, `test:coverage`, and `build`.
-The Docker job now also starts the built container and probes both `/api/v1/health/live`
-and `/api/v1/health/ready`, so the recommended image path is checked for startup regressions,
-not just Dockerfile syntax/build drift.
-
-Health probes are split by purpose:
-
-- `/api/v1/health` keeps the detailed JSON status used by the frontend settings page and manual troubleshooting
-- `/api/v1/health/ready` is the deployment readiness probe and returns HTTP `503` when core dependencies are unavailable
-- `/api/v1/health/live` is a lightweight liveness probe that only verifies the process can still serve requests
-
-## Environment
-
-1. Copy the template:
+先复制模板：
 
 ```bash
 cp .env.example .env
 ```
 
-2. Fill in at least:
-   - `TMDB_API_KEY`
-   - `QUARK_TRANSFER_COOKIE`
-   - `API_KEY`
-3. For multi-worker deployment, set `CACHE_TYPE=redis` and a reachable `REDIS_URL`
-   so cache + rate limiting stay consistent across processes.
-   The bundled container defaults to a single Gunicorn worker until Redis-backed
-   cache/rate limiting is configured, so the out-of-the-box deployment stays
-   consistent with the default `CACHE_TYPE=memory`.
-4. Optional: tune `RATE_LIMIT_REDIS_FAILURE_COOLDOWN_SECONDS` (default `30`) to
-   control how long rate limiting stays on in-memory fallback after a Redis failure.
-5. Behind Nginx/Ingress, set `TRUST_PROXY_HEADERS=true` and configure
-   `TRUSTED_PROXY_IPS` to your proxy source addresses only, otherwise keep it disabled.
-   `TRUSTED_PROXY_IPS` supports both JSON array (recommended) and comma-separated string.
-   Example: `["127.0.0.1","::1"]` or `127.0.0.1,::1`.
-   The limiter resolves `X-Forwarded-For` from right to left and skips trusted proxy hops.
-   Non-IP or malformed header values are ignored and fallback to the connection source IP.
-6. Keep `CORS_ORIGINS` production-safe by default (for example `["https://your-domain.com"]`).
-   For local split frontend/backend development, temporarily set it to localhost origins and enable `DEBUG=true`.
+至少填写：
 
-Runtime settings updates are persisted to `storage/config/settings.env` by default. Existing local deployments that still use `backend/data/settings.env` remain compatible until migrated.
+- `API_KEY`
+- `TMDB_API_KEY`
+- `QUARK_TRANSFER_COOKIE`
 
-## Docker Deployment
+生产环境建议同时检查：
 
-### Option A: Build locally
+- `CORS_ORIGINS=["https://your-domain.com"]`
+- `TRUST_PROXY_HEADERS=true`
+- `TRUSTED_PROXY_IPS=["127.0.0.1","::1"]`
+
+运行期配置默认保存在：
+
+- `storage/config/settings.env`
+
+## Docker 部署
+
+### 方式 A：服务器拉代码后本地构建
 
 ```bash
+mkdir -p /opt/qsm
+cd /opt/qsm
+git clone https://github.com/242282218/q-s-m.git .
 cp .env.example .env
-# Edit .env and fill in API_KEY, TMDB_API_KEY, QUARK_TRANSFER_COOKIE
+mkdir -p storage/db storage/logs storage/config storage/uploads storage/backups
+# 编辑 .env
 docker compose up -d --build
 ```
 
-The bundled image defaults to a single Gunicorn worker. Only scale beyond one
-worker after enabling `CACHE_TYPE=redis` with a reachable `REDIS_URL`.
-
-Before pushing deployment-related changes, you can run the same local image smoke path
-used by CI:
+查看状态：
 
 ```bash
-python ops/deploy/docker_smoke.py
+docker compose ps
+docker compose logs -f app
 ```
 
-Use `--skip-build` to reuse an existing local image, or `--keep-container` if you want
-to inspect the started container after a successful probe.
+### 方式 B：直接使用 GHCR 镜像
 
-### Option B: Pull from GitHub Container Registry
+每次推送到 `main` 都会自动发布多架构镜像到 GHCR：
 
-Every push to `main` automatically builds and publishes a multi-arch image to
-`ghcr.io` for `linux/amd64` and `linux/arm64`.
+- `ghcr.io/242282218/q-s-m:latest`
 
-```bash
-# 1. Create project directory on your server
-mkdir -p ~/qsm && cd ~/qsm
+示例 `docker-compose.yml`：
 
-# 2. Create docker-compose.yml
-cat > docker-compose.yml << 'EOF'
+```yaml
 services:
   app:
-    image: ghcr.io/YOUR_GITHUB_USERNAME/qsm:latest
+    image: ghcr.io/242282218/q-s-m:latest
     environment:
       ENV: production
       QSM_STORAGE_ROOT: /app/storage
@@ -158,50 +113,64 @@ services:
       - ./storage/uploads:/app/storage/uploads
       - ./storage/backups:/app/storage/backups
     restart: unless-stopped
-EOF
+```
 
-# 3. Create storage directories
-mkdir -p storage/{db,logs,config,uploads,backups}
+启动：
 
-# 4. Pull and start
+```bash
+mkdir -p storage/db storage/logs storage/config storage/uploads storage/backups
 docker compose pull
 docker compose up -d
 ```
 
-### First-time API Key setup
+## 健康检查
 
-If `API_KEY` is set in the environment, the frontend needs to know it too.
-On the first `401`, QSM now shows an in-app API Key prompt. Enter the key once,
-and the frontend stores it in `localStorage` and reloads the current page automatically.
+```bash
+curl -f http://127.0.0.1:8000/api/v1/health/ready
+curl http://127.0.0.1:8000/api/v1/health
+curl http://127.0.0.1:8000/api/v1/health/live
+```
 
-If you prefer to avoid the runtime prompt entirely, you can still build the frontend
-with `VITE_API_KEY` set to the same value as `API_KEY`.
+## 更新
 
-### Persistent data
+### 代码构建部署
 
-All runtime data is stored under:
+```bash
+cd /opt/qsm
+git pull
+docker compose up -d --build
+```
 
-- `storage/db`
-- `storage/logs`
-- `storage/config`
-- `storage/uploads`
-- `storage/backups`
+### GHCR 镜像部署
 
-The API and SPA are served from the same container on `http://localhost:8000`.
+```bash
+cd /opt/qsm
+docker compose pull
+docker compose up -d
+```
 
-## Backup
+## 备份与恢复
 
-Create a database snapshot:
+备份：
 
 ```bash
 python ops/backup/backup_sqlite.py
 ```
 
-Restore from a snapshot:
+恢复：
 
 ```bash
 python ops/backup/restore_sqlite.py --backup-file storage/backups/qsm-YYYYmmdd-HHMMSS.db
 ```
 
-The backup script also copies the runtime settings snapshot when it exists at the active runtime env path.
-During restore, a sibling `qsm-YYYYmmdd-HHMMSS.settings.env` file is restored automatically when present, and the current database/settings are snapshotted as `*.pre-restore-*` before replacement.
+## 详细文档
+
+详细部署说明见：
+
+- [docs/deployment/docker-with-nginx.md](docs/deployment/docker-with-nginx.md)
+
+当前默认部署配置见：
+
+- [docker-compose.yml](docker-compose.yml)
+- [Dockerfile](Dockerfile)
+- [.github/workflows/docker-ghcr-main.yml](.github/workflows/docker-ghcr-main.yml)
