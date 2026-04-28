@@ -35,6 +35,7 @@ const form = reactive({
   API_KEY: '',
   TMDB_API_KEY: '',
   HTTP_PROXY: '',
+  CORS_ORIGINS: '',
   QUARK_SEARCH_BASE_URL: '',
   QUARK_TRANSFER_COOKIE: '',
   TRANSFER_KEEP_EXTRAS: false,
@@ -67,6 +68,7 @@ type BoolField = (typeof boolFields)[number];
 function applySettingsSnapshot(snapshot: SettingsCurrentData) {
   form.LOG_LEVEL = snapshot.LOG_LEVEL || '';
   form.HTTP_PROXY = snapshot.HTTP_PROXY || '';
+  form.CORS_ORIGINS = snapshot.CORS_ORIGINS || '';
   form.QUARK_SEARCH_BASE_URL = snapshot.QUARK_SEARCH_BASE_URL || '';
 
   boolFields.forEach((key) => {
@@ -139,6 +141,24 @@ function validateSettings(): { valid: boolean; errors: string[] } {
     errors.push('PanSou API 地址格式不正确，应以 http:// 或 https:// 开头');
   }
 
+  if (form.CORS_ORIGINS) {
+    try {
+      const parsed = JSON.parse(form.CORS_ORIGINS);
+      if (
+        !Array.isArray(parsed) ||
+        parsed.length === 0 ||
+        parsed.some((origin) => typeof origin !== 'string' || !origin.trim())
+      ) {
+        errors.push('CORS_ORIGINS 必须是字符串数组，例如 ["https://example.com"]');
+      }
+    } catch {
+      const origins = form.CORS_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean);
+      if (origins.length === 0) {
+        errors.push('CORS_ORIGINS 不能为空');
+      }
+    }
+  }
+
   if (
     form.LOG_LEVEL &&
     !['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'].includes(form.LOG_LEVEL.toUpperCase())
@@ -163,6 +183,7 @@ async function submit() {
     'API_KEY',
     'TMDB_API_KEY',
     'HTTP_PROXY',
+    'CORS_ORIGINS',
     'QUARK_SEARCH_BASE_URL',
     'QUARK_TRANSFER_COOKIE',
   ] as const;
@@ -216,7 +237,7 @@ async function submit() {
     }
     const successMessage = res.data.restart_required
       ? '配置已保存，请按提示重启后端服务'
-      : '配置已保存，PanSou API 地址已即时生效';
+      : '配置已保存，运行时配置已即时生效';
     push(successMessage, 'success', 3200);
   } catch (error) {
     push(error instanceof Error ? error.message : '保存失败', 'error');
@@ -483,6 +504,19 @@ onMounted(() => {
 
           <div class="form-group">
             <label class="form-label">
+              <span class="label-text">CORS 允许来源</span>
+              <span class="label-desc">部署域名白名单，支持 JSON 数组或逗号分隔，保存后即时生效</span>
+            </label>
+            <input
+              v-model="form.CORS_ORIGINS"
+              type="text"
+              class="form-input"
+              placeholder='["https://your-domain.com"]'
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">
               <span class="label-text">PanSou API 地址</span>
               <span class="label-desc">夸克资源搜索上游地址，保存后即时生效</span>
             </label>
@@ -622,7 +656,7 @@ onMounted(() => {
           <line x1="12" y1="16" x2="12" y2="12" />
           <line x1="12" y1="8" x2="12.01" y2="8" />
         </svg>
-        PanSou API 地址可即时生效；其他配置保存后可能需要重启后端服务
+        API Key、TMDB Key、夸克 Cookie、CORS 与 PanSou 地址保存后可即时生效；转存策略可能需要重启后端服务
       </p>
     </div>
   </div>

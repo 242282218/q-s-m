@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Dict, Optional
+import json
 import re
 from tempfile import NamedTemporaryFile
 
@@ -15,17 +16,48 @@ from ...quark.core.quark_client import AsyncQuarkAPIClient
 api_router = APIRouter()
 
 KEEP_SENTINEL = "__KEEP__"
-HOT_SWAPPABLE_KEYS = {"QUARK_SEARCH_BASE_URL"}
+HOT_SWAPPABLE_KEYS = {
+    "API_KEY",
+    "TMDB_API_KEY",
+    "HTTP_PROXY",
+    "QUARK_SEARCH_BASE_URL",
+    "QUARK_TRANSFER_COOKIE",
+    "CORS_ORIGINS",
+}
+TMDB_CLIENT_KEYS = {"TMDB_API_KEY", "HTTP_PROXY"}
+
+
+def serialize_cors_origins(origins: list[str]) -> str:
+    return json.dumps(origins, ensure_ascii=False)
 
 
 async def apply_hot_swappable_settings(request: Request, updates: Dict[str, str]) -> None:
-    if "QUARK_SEARCH_BASE_URL" not in updates:
-        return
+    settings = get_settings()
 
-    old_client = getattr(request.app.state, "quark_client", None)
-    request.app.state.quark_client = AsyncQuarkAPIClient()
-    if old_client is not None:
-        await old_client.close()
+    if "CORS_ORIGINS" in updates:
+        request.app.state.cors_origins = list(settings.cors_origins)
+
+    if "QUARK_SEARCH_BASE_URL" in updates:
+        old_client = getattr(request.app.state, "quark_client", None)
+        request.app.state.quark_client = AsyncQuarkAPIClient()
+        if old_client is not None:
+            await old_client.close()
+
+    if TMDB_CLIENT_KEYS.intersection(updates):
+        from ...services.tmdb import TmdbClient
+
+        old_client = getattr(request.app.state, "tmdb_client", None)
+        request.app.state.tmdb_client = None
+        if settings.tmdb_api_key:
+            request.app.state.tmdb_client = TmdbClient(
+                settings.tmdb_api_key,
+                api_base=settings.tmdb_api_base,
+                image_base=settings.tmdb_image_base,
+                language=settings.default_language,
+                proxy=settings.http_proxy,
+            )
+        if old_client is not None:
+            await old_client.close()
 
 
 def validate_env_key(key: str) -> bool:
@@ -165,6 +197,7 @@ class SettingsUpdate(BaseModel):
     API_KEY: Optional[str] = None
     TMDB_API_KEY: Optional[str] = None
     HTTP_PROXY: Optional[str] = None
+    CORS_ORIGINS: Optional[str] = None
     QUARK_SEARCH_BASE_URL: Optional[str] = None
     QUARK_TRANSFER_COOKIE: Optional[str] = None
     TRANSFER_KEEP_EXTRAS: Optional[bool] = None
@@ -185,6 +218,7 @@ async def get_current_settings(
         SettingsCurrentData(
             LOG_LEVEL=settings.log_level,
             HTTP_PROXY=settings.http_proxy,
+            CORS_ORIGINS=serialize_cors_origins(settings.cors_origins),
             QUARK_SEARCH_BASE_URL=settings.quark_search_base_url,
             TRANSFER_KEEP_EXTRAS=settings.transfer_keep_extras,
             TRANSFER_KEEP_SUBTITLES=settings.transfer_keep_subtitles,

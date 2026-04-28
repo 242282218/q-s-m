@@ -45,6 +45,7 @@ function createSettingsSnapshot(overrides: Partial<SettingsCurrentData> = {}): S
   return {
     LOG_LEVEL: 'INFO',
     HTTP_PROXY: '',
+    CORS_ORIGINS: '["http://localhost:5173","http://127.0.0.1:5173"]',
     QUARK_SEARCH_BASE_URL: 'http://107.172.8.60:11380',
     TRANSFER_KEEP_EXTRAS: false,
     TRANSFER_KEEP_SUBTITLES: false,
@@ -251,18 +252,37 @@ describe('SettingsPage', () => {
     );
   });
 
-  it('shows that PanSou API URL saves without backend restart', async () => {
+  it('blocks invalid CORS origins before submitting', async () => {
+    await mountSettingsPage();
+
+    const corsOriginsInput = findField<HTMLInputElement>('CORS 允许来源');
+    setFieldValue(corsOriginsInput, '[]');
+
+    findButtonByText('保存配置').click();
+    await flushUi();
+
+    expect(apiMocks.updateSettings).not.toHaveBeenCalled();
+    expect(apiMocks.updateSettingsWithApiKey).not.toHaveBeenCalled();
+    expect(toastPush).toHaveBeenCalledWith(
+      'CORS_ORIGINS 必须是字符串数组，例如 ["https://example.com"]',
+      'error'
+    );
+  });
+
+  it('shows that runtime settings save without backend restart', async () => {
     localStorage.setItem('qsm_api_key', 'stored-key');
     apiMocks.updateSettingsWithApiKey.mockResolvedValueOnce(
       ok({
-        updated_keys: ['QUARK_SEARCH_BASE_URL'],
+        updated_keys: ['CORS_ORIGINS', 'QUARK_SEARCH_BASE_URL'],
         restart_required: false,
       })
     );
 
     await mountSettingsPage();
 
+    const corsOriginsInput = findField<HTMLInputElement>('CORS 允许来源');
     const pansouUrlInput = findField<HTMLInputElement>('PanSou API 地址');
+    setFieldValue(corsOriginsInput, '["https://example.com"]');
     setFieldValue(pansouUrlInput, 'http://127.0.0.1:8888');
 
     findButtonByText('保存配置').click();
@@ -271,12 +291,13 @@ describe('SettingsPage', () => {
 
     expect(apiMocks.updateSettingsWithApiKey).toHaveBeenCalledWith(
       expect.objectContaining({
+        CORS_ORIGINS: '["https://example.com"]',
         QUARK_SEARCH_BASE_URL: 'http://127.0.0.1:8888',
       }),
       'stored-key'
     );
     expect(toastPush).toHaveBeenCalledWith(
-      '配置已保存，PanSou API 地址已即时生效',
+      '配置已保存，运行时配置已即时生效',
       'success',
       3200
     );
@@ -352,6 +373,7 @@ describe('SettingsPage', () => {
       LOG_LEVEL: 'INFO',
       API_KEY: 'new-current-key',
       HTTP_PROXY: 'http://127.0.0.1:7890',
+      CORS_ORIGINS: '["http://localhost:5173","http://127.0.0.1:5173"]',
       QUARK_SEARCH_BASE_URL: 'http://107.172.8.60:11380',
       TRANSFER_KEEP_EXTRAS: true,
       TRANSFER_KEEP_SUBTITLES: false,

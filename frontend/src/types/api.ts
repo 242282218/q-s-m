@@ -145,6 +145,7 @@ export interface SettingsUpdate {
   API_KEY?: string;
   TMDB_API_KEY?: string;
   HTTP_PROXY?: string;
+  CORS_ORIGINS?: string;
   QUARK_SEARCH_BASE_URL?: string;
   QUARK_TRANSFER_COOKIE?: string;
   TRANSFER_KEEP_EXTRAS?: boolean;
@@ -164,6 +165,7 @@ export interface SettingsUpdateData {
 export interface SettingsCurrentData {
   LOG_LEVEL: string;
   HTTP_PROXY: string | null;
+  CORS_ORIGINS: string;
   QUARK_SEARCH_BASE_URL: string;
   TRANSFER_KEEP_EXTRAS: boolean;
   TRANSFER_KEEP_SUBTITLES: boolean;

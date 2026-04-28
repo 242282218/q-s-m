@@ -60,6 +60,7 @@ class SettingsUpdateData(BaseModel):
 class SettingsCurrentData(BaseModel):
     LOG_LEVEL: str
     HTTP_PROXY: str | None = None
+    CORS_ORIGINS: str
     QUARK_SEARCH_BASE_URL: str
     TRANSFER_KEEP_EXTRAS: bool
     TRANSFER_KEEP_SUBTITLES: bool

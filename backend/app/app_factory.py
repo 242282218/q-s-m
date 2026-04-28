@@ -6,11 +6,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Callable
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -56,6 +55,7 @@ async def lifespan(app: FastAPI):
     from .quark.core.quark_client import AsyncQuarkAPIClient
     from .services.tmdb import TmdbClient
 
+    app.state.cors_origins = list(settings.cors_origins)
     app.state.tmdb_client = None
     if settings.tmdb_api_key:
         app.state.tmdb_client = TmdbClient(
@@ -211,22 +211,59 @@ def register_exception_handlers(app: FastAPI) -> None:
     )
 
 
+def get_allowed_cors_origin(request: Request) -> str | None:
+    origin = request.headers.get("origin")
+    if not origin:
+        return None
+    origins = getattr(request.app.state, "cors_origins", settings.cors_origins)
+    if "*" in origins or origin in origins:
+        return origin
+    return None
+
+
+def add_dynamic_cors_headers(request: Request, response: Response) -> None:
+    allowed_origin = get_allowed_cors_origin(request)
+    if not allowed_origin:
+        return
+
+    response.headers["Access-Control-Allow-Origin"] = allowed_origin
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers.add_vary_header("Origin")
+
+
+def build_preflight_response(request: Request) -> Response:
+    allowed_origin = get_allowed_cors_origin(request)
+    if not allowed_origin:
+        return PlainTextResponse("Disallowed CORS origin", status_code=status.HTTP_400_BAD_REQUEST)
+
+    requested_headers = request.headers.get("access-control-request-headers")
+    response = PlainTextResponse("OK", status_code=status.HTTP_200_OK)
+    response.headers["Access-Control-Allow-Origin"] = allowed_origin
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = requested_headers or "*"
+    response.headers["Access-Control-Max-Age"] = "600"
+    response.headers.add_vary_header("Origin")
+    return response
+
+
 def register_middleware(app: FastAPI) -> None:
     app.add_middleware(
         GZipMiddleware,
         minimum_size=1000,
         compresslevel=6,
     )
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
     app.add_middleware(RequestIDMiddleware)
 
     from .middleware.rate_limit import rate_limit_middleware
+
+    @app.middleware("http")
+    async def dynamic_cors_middleware(request: Request, call_next: Callable) -> Response:
+        if request.method == "OPTIONS" and "access-control-request-method" in request.headers:
+            return build_preflight_response(request)
+        response = await call_next(request)
+        add_dynamic_cors_headers(request, response)
+        return response
 
     app.middleware("http")(rate_limit_middleware)
 
@@ -256,7 +293,12 @@ def register_middleware(app: FastAPI) -> None:
             response.headers["Cache-Control"] = "public, max-age=86400"
         return response
 
-    globals()["performance_monitoring"] = performance_monitoring
+    globals().update(
+        {
+            "dynamic_cors_middleware": dynamic_cors_middleware,
+            "performance_monitoring": performance_monitoring,
+        }
+    )
 
 
 def register_frontend_routes(app: FastAPI) -> None:

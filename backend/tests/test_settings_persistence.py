@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from pydantic import ValidationError
 
@@ -34,6 +35,7 @@ class SettingsPersistenceTests(unittest.TestCase):
         }
         os.environ["QSM_ENV_FILE"] = str(self.default_env_path)
         os.environ["QSM_RUNTIME_ENV_FILE"] = str(self.runtime_env_path)
+        os.environ.pop("DEBUG", None)
         os.environ["API_KEY"] = "env-api-key-12345"
         os.environ["TMDB_API_KEY"] = "env-tmdb-api-key-12345"
         os.environ["QUARK_TRANSFER_COOKIE"] = "env-cookie=original"
@@ -55,6 +57,9 @@ class SettingsPersistenceTests(unittest.TestCase):
         get_settings.cache_clear()
         return get_settings()
 
+    def _fake_request(self):
+        return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+
     def test_update_env_file_writes_to_runtime_settings_file(self):
         update_env_file(
             {
@@ -74,12 +79,43 @@ class SettingsPersistenceTests(unittest.TestCase):
 
     def test_update_settings_accepts_api_key_payload(self):
         response = asyncio.run(
-            update_settings(SettingsUpdate.model_validate({"API_KEY": "saved-api-key-67890"}))
+            update_settings(
+                SettingsUpdate.model_validate({"API_KEY": "saved-api-key-67890"}),
+                self._fake_request(),
+            )
         )
 
         self.assertEqual(response.data.updated_keys, ["API_KEY"])
+        self.assertFalse(response.data.restart_required)
         content = self.runtime_env_path.read_text(encoding="utf-8")
         self.assertIn("API_KEY=saved-api-key-67890", content)
+
+    def test_update_settings_hot_swaps_cors_origins_without_restart(self):
+        request = self._fake_request()
+
+        response = asyncio.run(
+            update_settings(
+                SettingsUpdate.model_validate({"CORS_ORIGINS": '["https://example.com"]'}),
+                request,
+            )
+        )
+
+        self.assertEqual(response.data.updated_keys, ["CORS_ORIGINS"])
+        self.assertFalse(response.data.restart_required)
+        self.assertEqual(request.app.state.cors_origins, ["https://example.com"])
+        content = self.runtime_env_path.read_text(encoding="utf-8")
+        self.assertIn('CORS_ORIGINS=["https://example.com"]', content)
+
+    def test_update_settings_marks_transfer_strategy_restart_required(self):
+        response = asyncio.run(
+            update_settings(
+                SettingsUpdate.model_validate({"TRANSFER_KEEP_EXTRAS": True}),
+                self._fake_request(),
+            )
+        )
+
+        self.assertEqual(response.data.updated_keys, ["TRANSFER_KEEP_EXTRAS"])
+        self.assertTrue(response.data.restart_required)
 
     def test_runtime_settings_file_overrides_process_environment(self):
         self.runtime_env_path.write_text(
