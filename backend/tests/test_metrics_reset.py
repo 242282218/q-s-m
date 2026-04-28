@@ -1,4 +1,5 @@
 from collections import deque
+from types import SimpleNamespace
 
 import pytest
 
@@ -22,10 +23,16 @@ async def test_reset_metrics_reinitializes_request_stats_shape():
         "slow_requests": [{"path": "/api/v1/foo"}],
     }
 
-    response = await reset_metrics()
+    response = await reset_metrics(
+        SimpleNamespace(
+            app=app,
+            state=SimpleNamespace(request_id="req-reset"),
+        )
+    )
     stats = app.state.request_stats
 
     assert response.data.reset is True
+    assert response.request_id == "req-reset"
     assert stats["total_requests"] == 0
     assert stats["total_time"] == 0.0
     assert isinstance(stats["slow_requests"], deque)

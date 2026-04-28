@@ -29,9 +29,7 @@ export function emitAuthRequired(message?: string | null): void {
   );
 }
 
-export function subscribeAuthRequired(
-  listener: (detail: AuthRequiredDetail) => void
-): () => void {
+export function subscribeAuthRequired(listener: (detail: AuthRequiredDetail) => void): () => void {
   if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
     return () => undefined;
   }

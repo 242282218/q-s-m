@@ -11,8 +11,8 @@ import {
 import ToggleSwitch from '@/components/ToggleSwitch.vue';
 import type { HealthCheck, SettingsCurrentData, SettingsUpdate } from '@/types/api';
 import { useToast } from '@/composables/useToast';
-import { getApiKeyCandidates, hasStoredApiKey, setConfiguredApiKey } from '@/lib/api-key';
-import { ApiError } from '@/lib/http';
+import { getApiKeyCandidates, hasStoredApiKey, setConfiguredApiKey } from '@/shared/lib/api-key';
+import { ApiError } from '@/shared/lib/http';
 import { getHealthIssues, getHealthStatusLabel, getHealthTone } from '@/utils/healthStatus';
 
 const { push } = useToast();

@@ -5,7 +5,7 @@
 ### 安装依赖
 ```bash
 cd backend
-pip install pytest pytest-asyncio httpx
+pip install --prefer-binary --no-compile -r requirements-dev.lock.txt
 ```
 
 ### 运行所有测试
@@ -48,9 +48,11 @@ python -m pytest tests/test_backup_scripts.py
 
 ### 生成覆盖率报告
 ```bash
-pip install pytest-cov
 python -m pytest --cov=app --cov-report=html
 ```
+
+`requirements-dev.lock.txt` 在 `requirements.lock.txt` 的基础上额外固定了
+`pytest`、`pytest-asyncio`、`pytest-cov`、`respx` 等测试依赖，避免 CI 和本地依赖集合漂移。
 
 ## 前端测试
 

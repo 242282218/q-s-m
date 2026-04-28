@@ -1,0 +1,12 @@
+*
+!.gitignore
+!backups/
+!config/
+!db/
+!logs/
+!uploads/
+!backups/.gitkeep
+!config/.gitkeep
+!db/.gitkeep
+!logs/.gitkeep
+!uploads/.gitkeep

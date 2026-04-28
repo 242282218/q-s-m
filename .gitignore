@@ -62,6 +62,7 @@ backend/.env
 .pytest_cache/
 .coverage
 htmlcov/
+frontend/coverage/
 
 # Test results
 performance_results.json

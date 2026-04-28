@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
 from app.api.endpoints.home import get_home_feed
 from app.api.endpoints.tmdb import search_media
 from app.collection.routes import verify_single_collection
+from app.core.exceptions import QSMException
 from app.quark.api.routes.search import search_by_tmdb_id
 
 
@@ -40,10 +41,12 @@ class OptionalRuntimeConfigTests(unittest.IsolatedAsyncioTestCase):
 
         with patch("app.quark.api.routes.search.get_settings") as mock_get_settings:
             mock_get_settings.return_value = SimpleNamespace(tmdb_api_key=None)
-            response = await search_by_tmdb_id(request, tmdb_id=27205)
+            with self.assertRaises(QSMException) as context:
+                await search_by_tmdb_id(request, tmdb_id=27205)
 
-        self.assertEqual(response.code, 423)
-        self.assertEqual(response.error.field, "TMDB_API_KEY")
+        self.assertEqual(int(context.exception.code), 423)
+        self.assertIsNotNone(context.exception.context)
+        self.assertEqual(context.exception.context.field, "TMDB_API_KEY")
 
     async def test_verify_single_collection_returns_config_error_without_quark_cookie(self):
         response = await verify_single_collection(

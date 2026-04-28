@@ -13,13 +13,17 @@ class QSMException(Exception):
         message: str,
         code: ErrorCode = ErrorCode.INTERNAL_ERROR,
         context: Optional[ErrorContext] = None,
-        details: Optional[dict] = None
+        details: Optional[dict] = None,
+        data: Any = None,
+        status_code: int = 200,
     ):
         super().__init__(message)
         self.message = message
         self.code = code
         self.context = context
         self.details = details or {}
+        self.data = data
+        self.status_code = status_code
 
     def to_dict(self) -> dict[str, Any]:
         result = {

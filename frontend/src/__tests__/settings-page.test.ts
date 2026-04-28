@@ -29,7 +29,7 @@ vi.mock('@/composables/useToast', () => ({
   }),
 }));
 
-import { ApiError } from '@/lib/http';
+import { ApiError } from '@/shared/lib/http';
 import SettingsPage from '@/pages/SettingsPage.vue';
 import type { HealthData, MetricsData, SettingsCurrentData } from '@/types/api';
 

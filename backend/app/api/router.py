@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from .endpoints import home, settings, tmdb
+from .endpoints import home, settings, system, tmdb
 from .v1.endpoints import performance
 from ..collection import routes as collection_routes
 from ..transfer import routes as transfer_routes
@@ -10,6 +10,7 @@ api_router = APIRouter()
 
 api_router.include_router(tmdb.router, prefix="/tmdb", tags=["tmdb"])
 api_router.include_router(home.router)
+api_router.include_router(system.router)
 api_router.include_router(settings.api_router, prefix="/settings", tags=["settings"])
 api_router.include_router(performance.router, prefix="/performance", tags=["performance"])
 api_router.include_router(collection_routes.router)

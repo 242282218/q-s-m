@@ -20,8 +20,15 @@ class DeploymentConfigTests(unittest.TestCase):
             ROOT / ".github" / "workflows" / "release-docker.yml"
         ).read_text(encoding="utf-8")
         self.readme_content = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.test_guide_content = (ROOT / "backend" / "tests" / "TEST_GUIDE.md").read_text(encoding="utf-8")
+        self.dev_requirements_content = (
+            ROOT / "backend" / "requirements-dev.lock.txt"
+        ).read_text(encoding="utf-8")
         self.docker_with_nginx_doc = (
             ROOT / "docs" / "deployment" / "docker-with-nginx.md"
+        ).read_text(encoding="utf-8")
+        self.continuous_testing_doc = (
+            ROOT / "docs" / "continuous-testing-loop.md"
         ).read_text(encoding="utf-8")
 
     def test_compose_uses_env_file_instead_of_bind_mounting_dotenv(self):
@@ -45,12 +52,27 @@ class DeploymentConfigTests(unittest.TestCase):
             self.dockerfile_content,
         )
 
+    def test_dockerfile_defaults_to_single_worker_until_redis_is_enabled(self):
+        self.assertIn('"--workers", "1"', self.dockerfile_content)
+        self.assertIn("For multi-worker deployment, set `CACHE_TYPE=redis`", self.readme_content)
+
     def test_quality_gates_include_docker_build_validation(self):
         self.assertIn("name: Docker image build", self.quality_gates_content)
         self.assertIn("docker/setup-buildx-action@v3", self.quality_gates_content)
         self.assertIn("docker/build-push-action@v6", self.quality_gates_content)
         self.assertIn("platforms: linux/amd64", self.quality_gates_content)
         self.assertIn("push: false", self.quality_gates_content)
+        self.assertIn("load: true", self.quality_gates_content)
+        self.assertIn("Run container smoke test", self.quality_gates_content)
+        self.assertIn("/api/v1/health/live", self.quality_gates_content)
+        self.assertIn("/api/v1/health/ready", self.quality_gates_content)
+
+    def test_backend_quality_gate_uses_dev_lock_file(self):
+        self.assertIn("backend/requirements-dev.lock.txt", self.quality_gates_content)
+        self.assertIn("-r requirements.lock.txt", self.dev_requirements_content)
+        self.assertIn("pytest==", self.dev_requirements_content)
+        self.assertIn("pytest-asyncio==", self.dev_requirements_content)
+        self.assertIn("pytest-cov==", self.dev_requirements_content)
 
     def test_ghcr_workflows_publish_multi_arch_images(self):
         self.assertIn("docker/setup-qemu-action@v3", self.docker_ghcr_main_content)
@@ -87,6 +109,16 @@ class DeploymentConfigTests(unittest.TestCase):
     def test_repo_docs_document_docker_build_gate(self):
         self.assertIn("Docker image build", self.readme_content)
         self.assertIn("quality-gates.yml", self.readme_content)
+        self.assertIn("health/live", self.readme_content)
+        self.assertIn("health/ready", self.readme_content)
+
+    def test_docs_reference_local_docker_smoke_script(self):
+        self.assertIn("python ops/deploy/docker_smoke.py", self.readme_content)
+        self.assertIn("python ops/deploy/docker_smoke.py", self.docker_with_nginx_doc)
+
+    def test_backend_test_docs_reference_dev_lock_file(self):
+        self.assertIn("requirements-dev.lock.txt", self.test_guide_content)
+        self.assertIn("requirements-dev.lock.txt", self.continuous_testing_doc)
 
     def test_readme_documents_multi_arch_ghcr_images(self):
         self.assertIn("linux/amd64", self.readme_content)

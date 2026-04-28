@@ -15,9 +15,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field, ConfigDict
 
-from ..api.schemas.common import ApiResponse, business_error, ok, ErrorDetail
+from ..api.schemas.common import ApiResponse, ok
 from ..api.schemas.sse import create_sse_event
+from ..core.exceptions import QSMException, TransferException
 from ..core.error_codes import ErrorCode
+from ..core.error_codes import ErrorContext
 from ..core.auth import verify_api_key
 from ..db.session import get_db
 from ..core.config import get_settings, Settings
@@ -27,51 +29,58 @@ from .service import TransferService
 router = APIRouter(prefix="/transfers", tags=["transfers"])
 
 
-def build_transfer_exec_error_detail(
+def build_transfer_exec_exception(
     message: str,
     collection_id: int,
     target_folder: Optional[str],
-) -> tuple[ErrorCode, ErrorDetail]:
+) -> TransferException:
     if "收藏不存在" in message:
-        return (
-            ErrorCode.COLLECTION_NOT_FOUND,
-            ErrorDetail(field="collection_id", value=collection_id, reason=message),
+        return TransferException(
+            message,
+            code=ErrorCode.COLLECTION_NOT_FOUND,
+            context=ErrorContext(field="collection_id", value=collection_id, reason=message),
         )
 
     if "未配置 QUARK_TRANSFER_COOKIE" in message:
-        return (
-            ErrorCode.CONFIG_ERROR,
-            ErrorDetail(field="QUARK_TRANSFER_COOKIE", reason="missing runtime configuration"),
+        return TransferException(
+            message,
+            code=ErrorCode.CONFIG_ERROR,
+            context=ErrorContext(field="QUARK_TRANSFER_COOKIE", reason="missing runtime configuration"),
         )
 
     if "未配置 TMDB_API_KEY" in message:
-        return (
-            ErrorCode.CONFIG_ERROR,
-            ErrorDetail(field="TMDB_API_KEY", reason="missing runtime configuration"),
+        return TransferException(
+            message,
+            code=ErrorCode.CONFIG_ERROR,
+            context=ErrorContext(field="TMDB_API_KEY", reason="missing runtime configuration"),
         )
 
     if "转存超时" in message:
-        return (
-            ErrorCode.TRANSFER_TIMEOUT,
-            ErrorDetail(field="collection_id", value=collection_id, reason=message),
+        return TransferException(
+            message,
+            code=ErrorCode.TRANSFER_TIMEOUT,
+            context=ErrorContext(field="collection_id", value=collection_id, reason=message),
         )
 
     if "创建目标目录失败" in message:
         failed_target = message.partition(":")[2].strip() or target_folder
-        return (
-            ErrorCode.TRANSFER_DIR_NOT_FOUND,
-            ErrorDetail(field="target_folder", value=failed_target, reason=message),
+        return TransferException(
+            message,
+            code=ErrorCode.TRANSFER_DIR_NOT_FOUND,
+            context=ErrorContext(field="target_folder", value=failed_target, reason=message),
         )
 
     if "没有可转存的文件" in message or "没有文件" in message:
-        return (
-            ErrorCode.TRANSFER_NO_FILES,
-            ErrorDetail(field="collection_id", value=collection_id, reason=message),
+        return TransferException(
+            message,
+            code=ErrorCode.TRANSFER_NO_FILES,
+            context=ErrorContext(field="collection_id", value=collection_id, reason=message),
         )
 
-    return (
-        ErrorCode.TRANSFER_FAILED,
-        ErrorDetail(field="collection_id", value=collection_id, reason=message),
+    return TransferException(
+        message,
+        code=ErrorCode.TRANSFER_FAILED,
+        context=ErrorContext(field="collection_id", value=collection_id, reason=message),
     )
 
 
@@ -178,11 +187,11 @@ async def validate_link(
     """
     if not settings.quark_transfer_cookie:
         payload = ValidateLinkData(valid=False, files=[])
-        return business_error(
-            payload,
-            message="未配置 QUARK_TRANSFER_COOKIE，无法验证分享链接",
+        raise TransferException(
+            "未配置 QUARK_TRANSFER_COOKIE，无法验证分享链接",
             code=ErrorCode.CONFIG_ERROR,
-            error=ErrorDetail(field="QUARK_TRANSFER_COOKIE", reason="missing runtime configuration"),
+            context=ErrorContext(field="QUARK_TRANSFER_COOKIE", reason="missing runtime configuration"),
+            data=payload,
         )
 
     service = TransferService(db, cookie=settings.quark_transfer_cookie)
@@ -194,12 +203,16 @@ async def validate_link(
         )
         if valid:
             return ok(payload, message=message)
-        return business_error(
-            payload,
-            message=message,
+        raise QSMException(
+            message,
             code=ErrorCode.COLLECTION_LINK_INVALID,
-            error=ErrorDetail(field="share_url", value=request.share_url, reason="链接无效或已过期"),
+            context=ErrorContext(field="share_url", value=request.share_url, reason="链接无效或已过期"),
+            data=payload,
         )
+    except QSMException as exc:
+        if exc.data is None or exc.data == []:
+            exc.data = ValidateLinkData(valid=False, files=[])
+        raise
     finally:
         await service.close()
 
@@ -234,13 +247,13 @@ async def transfer_exec(
         )
         if success:
             return ok(payload, message=message)
-        code, error = build_transfer_exec_error_detail(message, collection_id, body.target_folder)
-        return business_error(
-            payload,
-            message=message,
-            code=code,
-            error=error,
-        )
+        exception = build_transfer_exec_exception(message, collection_id, body.target_folder)
+        exception.data = payload
+        raise exception
+    except TransferException as exc:
+        if exc.data is None or exc.data == []:
+            exc.data = TransferExecData(success=False, files=[])
+        raise
     finally:
         await service.close()
 
@@ -323,24 +336,35 @@ async def batch_transfer(
         failed_count = 0
 
         for item in body.items:
-            success, message, files = await service.transfer_collection(
-                collection_id=item.collection_id,
-                target_folder=item.target_folder,
-                auto_rename=item.auto_rename,
-            )
+            try:
+                success, message, files = await service.transfer_collection(
+                    collection_id=item.collection_id,
+                    target_folder=item.target_folder,
+                    auto_rename=item.auto_rename,
+                )
 
-            result = TransferBatchResult(
-                collection_id=item.collection_id,
-                success=success,
-                message=message,
-                files=[TransferredFile.model_validate(f) for f in files],
-            )
-            results.append(result)
+                result = TransferBatchResult(
+                    collection_id=item.collection_id,
+                    success=success,
+                    message=message,
+                    files=[TransferredFile.model_validate(f) for f in files],
+                )
+                results.append(result)
 
-            if success:
-                success_count += 1
-            else:
+                if success:
+                    success_count += 1
+                else:
+                    failed_count += 1
+            except QSMException as exc:
                 failed_count += 1
+                results.append(
+                    TransferBatchResult(
+                        collection_id=item.collection_id,
+                        success=False,
+                        message=exc.message,
+                        files=[],
+                    )
+                )
 
         return ok(
             TransferBatchData(

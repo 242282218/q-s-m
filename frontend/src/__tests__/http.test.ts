@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { globalCache, globalDeduplicator } from '@/composables/useApiCache';
-import { clearHttpCache, request, toQuery } from '@/lib/http';
+import { clearHttpCache, request, toQuery } from '@/shared/lib/http';
 
 interface StorageShape {
   clear: () => void;

@@ -7,10 +7,7 @@ import IconHome from '@/components/Icons/IconHome.vue';
 import IconStar from '@/components/Icons/IconStar.vue';
 import IconSettings from '@/components/Icons/IconSettings.vue';
 import { setConfiguredApiKey } from '@/shared/lib/api-key';
-import {
-  subscribeAuthRequired,
-  type AuthRequiredDetail,
-} from '@/shared/lib/auth-prompt';
+import { subscribeAuthRequired, type AuthRequiredDetail } from '@/shared/lib/auth-prompt';
 
 const router = useRouter();
 const searchQuery = ref('');

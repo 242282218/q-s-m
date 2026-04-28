@@ -8,7 +8,7 @@ vi.mock('@/shared/lib/sse', () => ({
 
 import { startVerifySse } from '@/api';
 import { AUTH_REQUIRED_EVENT, type AuthRequiredDetail } from '@/shared/lib/auth-prompt';
-import { ApiError, cancelAllHttpRequests, request } from '@/lib/http';
+import { ApiError, cancelAllHttpRequests, request } from '@/shared/lib/http';
 
 interface StorageShape {
   clear: () => void;

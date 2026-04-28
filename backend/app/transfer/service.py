@@ -19,7 +19,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from ..core.config import get_settings
 from ..core.exceptions import TransferException, QuarkException
-from ..core.error_codes import ErrorCode
+from ..core.error_codes import ErrorCode, ErrorContext
 from ..core.distributed_lock import get_distributed_lock
 from ..services.tmdb import TmdbClient
 from ..db.models import Collection, TransferHistory
@@ -39,6 +39,88 @@ from .renamer import Renamer
 from app.core.constants import PATH_REPLACEMENTS
 
 logger = logging.getLogger(__name__)
+
+
+def raise_transfer_failure(
+    message: str,
+    *,
+    collection_id: int | None = None,
+    target_folder: str | None = None,
+    share_url: str | None = None,
+    reason: str | None = None,
+    data: dict | list | None = None,
+) -> None:
+    if "收藏不存在" in message:
+        raise TransferException(
+            message,
+            code=ErrorCode.COLLECTION_NOT_FOUND,
+            context=ErrorContext(field="collection_id", value=collection_id, reason=reason or message),
+            data=data,
+        )
+
+    if "未配置 QUARK_TRANSFER_COOKIE" in message:
+        raise TransferException(
+            message,
+            code=ErrorCode.CONFIG_ERROR,
+            context=ErrorContext(field="QUARK_TRANSFER_COOKIE", reason="missing runtime configuration"),
+            data=data,
+        )
+
+    if "未配置 TMDB_API_KEY" in message:
+        raise TransferException(
+            message,
+            code=ErrorCode.CONFIG_ERROR,
+            context=ErrorContext(field="TMDB_API_KEY", reason="missing runtime configuration"),
+            data=data,
+        )
+
+    if "转存超时" in message or "验证超时" in message:
+        raise TransferException(
+            message,
+            code=ErrorCode.TRANSFER_TIMEOUT,
+            context=ErrorContext(field="collection_id", value=collection_id, reason=reason or message),
+            data=data,
+        )
+
+    if "创建目标目录失败" in message:
+        failed_target = message.partition(":")[2].strip() or target_folder
+        raise TransferException(
+            message,
+            code=ErrorCode.TRANSFER_DIR_NOT_FOUND,
+            context=ErrorContext(field="target_folder", value=failed_target, reason=reason or message),
+            data=data,
+        )
+
+    if "分享链接" in message and ("无效" in message or "失效" in message):
+        raise TransferException(
+            message,
+            code=ErrorCode.TRANSFER_LINK_EXPIRED,
+            context=ErrorContext(field="share_url", value=share_url, reason=reason or message),
+            data=data,
+        )
+
+    if "没有可转存的文件" in message or "没有文件" in message:
+        raise TransferException(
+            message,
+            code=ErrorCode.TRANSFER_NO_FILES,
+            context=ErrorContext(
+                field="collection_id" if collection_id is not None else "share_url",
+                value=collection_id if collection_id is not None else share_url,
+                reason=reason or message,
+            ),
+            data=data,
+        )
+
+    raise TransferException(
+        message,
+        code=ErrorCode.TRANSFER_FAILED,
+        context=ErrorContext(
+            field="collection_id" if collection_id is not None else "share_url",
+            value=collection_id if collection_id is not None else share_url,
+            reason=reason or message,
+        ),
+        data=data,
+    )
 
 
 class TransferService:
@@ -191,7 +273,12 @@ class TransferService:
 
             if not is_valid:
                 logger.warning(f"分享链接无效: {share_url[:50]}...")
-                return False, "链接无效或已失效", []
+                raise_transfer_failure(
+                    "分享链接无效或已失效",
+                    share_url=share_url,
+                    reason="链接无效或已过期",
+                    data=[],
+                )
 
             detail_resp = await asyncio.wait_for(
                 client.get_detail(pwd_id, stoken, "0"),
@@ -201,7 +288,7 @@ class TransferService:
             if detail_resp.get("code") != 0:
                 error_msg = detail_resp.get("message", "获取文件列表失败")
                 logger.error(f"获取文件列表失败: {error_msg}")
-                return False, error_msg, []
+                raise_transfer_failure(error_msg, share_url=share_url, data=[])
 
             files = []
             for f in detail_resp.get("data", {}).get("list", []):
@@ -217,10 +304,16 @@ class TransferService:
 
         except asyncio.TimeoutError:
             logger.error(f"验证链接超时（{effective_timeout}秒）: {share_url[:50]}...")
-            return False, f"验证超时（{effective_timeout}秒），请稍后重试", []
+            raise_transfer_failure(
+                f"验证超时（{effective_timeout}秒），请稍后重试",
+                share_url=share_url,
+                data=[],
+            )
+        except TransferException:
+            raise
         except Exception as e:
             logger.error(f"验证链接异常: {e}", exc_info=True)
-            return False, f"验证失败: {str(e)}", []
+            raise_transfer_failure(f"验证失败: {str(e)}", share_url=share_url, data=[])
 
     async def transfer_collection(
         self,
@@ -243,7 +336,7 @@ class TransferService:
         collection = self.collection_service.get_by_id(collection_id)
         if not collection:
             logger.warning(f"转存失败 - 收藏不存在: id={collection_id}")
-            return False, "收藏不存在", []
+            raise_transfer_failure("收藏不存在", collection_id=collection_id, data=[])
 
         # 如果使用后台任务，提交到 BackgroundTasks
         if use_background_task and self._background_tasks:
@@ -294,11 +387,11 @@ class TransferService:
         """转存实现（带分布式锁）"""
         collection = self.collection_service.get_by_id(collection_id)
         if not collection:
-            return False, "收藏不存在", []
+            raise_transfer_failure("收藏不存在", collection_id=collection_id, data=[])
 
         settings = get_settings()
         if self._tmdb_client is None and not settings.tmdb_api_key:
-            return False, "未配置 TMDB_API_KEY，无法执行转存", []
+            raise_transfer_failure("未配置 TMDB_API_KEY，无法执行转存", collection_id=collection_id, data=[])
         client = await self._get_client()
         tmdb_client = self._tmdb_client
 
@@ -342,7 +435,12 @@ class TransferService:
                     timeout=self.DEFAULT_TIMEOUT
                 )
                 if not media_root_fid:
-                    return False, f"创建目标目录失败: {media_root_path}", []
+                    raise_transfer_failure(
+                        f"创建目标目录失败: {media_root_path}",
+                        collection_id=collection_id,
+                        target_folder=media_root_path,
+                        data=[],
+                    )
 
                 # 执行转存
                 share_url = self._attach_share_passcode(
@@ -361,7 +459,13 @@ class TransferService:
 
                 if not success:
                     self.collection_service.update_status(collection_id, 2)
-                    return False, message, []
+                    raise_transfer_failure(
+                        message,
+                        collection_id=collection_id,
+                        share_url=share_url,
+                        target_folder=media_root_path,
+                        data=[],
+                    )
 
                 # 等待转存任务完成（带超时）
                 task_done = await asyncio.wait_for(
@@ -427,15 +531,23 @@ class TransferService:
         except asyncio.TimeoutError:
             self.db.rollback()
             logger.error(f"转存超时: collection_id={collection_id}")
-            return False, "转存超时，请稍后重试", []
+            raise_transfer_failure("转存超时，请稍后重试", collection_id=collection_id, data=[])
         except SQLAlchemyError as e:
             self.db.rollback()
             logger.error(f"转存失败 - 数据库错误: id={collection_id}, error={e}")
-            return False, "转存失败: 数据库错误", []
+            raise TransferException(
+                "转存失败: 数据库错误",
+                code=ErrorCode.DATABASE_ERROR,
+                context=ErrorContext(field="collection_id", value=collection_id, reason="database error"),
+                data=[],
+            )
+        except TransferException:
+            self.db.rollback()
+            raise
         except Exception as e:
             self.db.rollback()
             logger.error(f"转存失败 - 未知错误: id={collection_id}, error={e}", exc_info=True)
-            return False, f"转存失败: {str(e)}", []
+            raise_transfer_failure(f"转存失败: {str(e)}", collection_id=collection_id, data=[])
         finally:
             if self._tmdb_client is None and tmdb_client:
                 await tmdb_client.close()

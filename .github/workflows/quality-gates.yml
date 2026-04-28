@@ -32,12 +32,12 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: backend/requirements.lock.txt
+          cache-dependency-path: backend/requirements-dev.lock.txt
 
       - name: Install backend dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install --prefer-binary --no-compile -r requirements.lock.txt
+          pip install --prefer-binary --no-compile -r requirements-dev.lock.txt
 
       - name: Run backend pytest
         run: python -m pytest tests -q -m "not performance"
@@ -60,8 +60,38 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: false
+          load: true
+          tags: qsm-ci:smoke
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Run container smoke test
+        run: |
+          docker run -d --rm \
+            --name qsm-smoke \
+            -p 18000:8000 \
+            -e API_KEY=smoke-api-key \
+            -e TMDB_API_KEY=smoke-tmdb-key \
+            -e QUARK_TRANSFER_COOKIE=smoke-quark-cookie \
+            qsm-ci:smoke
+
+          for attempt in {1..30}; do
+            if curl -fsS http://127.0.0.1:18000/api/v1/health/live >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+
+          curl -fsS http://127.0.0.1:18000/api/v1/health/live
+          curl -fsS http://127.0.0.1:18000/api/v1/health/ready
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker logs qsm-smoke
+
+      - name: Stop smoke container
+        if: always()
+        run: docker rm -f qsm-smoke || true
 
   frontend:
     name: Frontend quality gates

@@ -21,7 +21,7 @@ qsm/
 
 ```bash
 cd backend
-pip install -r requirements.txt
+pip install --prefer-binary --no-compile -r requirements-dev.lock.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -63,6 +63,9 @@ It is pre-split into `backend-agent`, `frontend-agent`, and `performance-agent` 
 - runners that share the same `log_dir` reserve iteration ids through a lock-backed counter, so updated processes do not reuse the same iteration number concurrently
 
 GitHub Actions reuses the same backend/frontend baseline on pull requests and pushes to `main`, and adds Docker image build validation for the recommended deployment path via `.github/workflows/quality-gates.yml`: backend `pytest -m "not performance"` plus frontend `lint:check`, `format:check`, `test:coverage`, and `build`.
+The Docker job now also starts the built container and probes both `/api/v1/health/live`
+and `/api/v1/health/ready`, so the recommended image path is checked for startup regressions,
+not just Dockerfile syntax/build drift.
 
 Health probes are split by purpose:
 
@@ -84,6 +87,9 @@ cp .env.example .env
    - `API_KEY`
 3. For multi-worker deployment, set `CACHE_TYPE=redis` and a reachable `REDIS_URL`
    so cache + rate limiting stay consistent across processes.
+   The bundled container defaults to a single Gunicorn worker until Redis-backed
+   cache/rate limiting is configured, so the out-of-the-box deployment stays
+   consistent with the default `CACHE_TYPE=memory`.
 4. Optional: tune `RATE_LIMIT_REDIS_FAILURE_COOLDOWN_SECONDS` (default `30`) to
    control how long rate limiting stays on in-memory fallback after a Redis failure.
 5. Behind Nginx/Ingress, set `TRUST_PROXY_HEADERS=true` and configure
@@ -106,6 +112,19 @@ cp .env.example .env
 # Edit .env and fill in API_KEY, TMDB_API_KEY, QUARK_TRANSFER_COOKIE
 docker compose up -d --build
 ```
+
+The bundled image defaults to a single Gunicorn worker. Only scale beyond one
+worker after enabling `CACHE_TYPE=redis` with a reachable `REDIS_URL`.
+
+Before pushing deployment-related changes, you can run the same local image smoke path
+used by CI:
+
+```bash
+python ops/deploy/docker_smoke.py
+```
+
+Use `--skip-build` to reuse an existing local image, or `--keep-container` if you want
+to inspect the started container after a successful probe.
 
 ### Option B: Pull from GitHub Container Registry
 

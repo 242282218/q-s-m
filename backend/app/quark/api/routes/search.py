@@ -13,10 +13,12 @@ from fastapi import APIRouter, Query, Request, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.schemas.common import ApiResponse, business_error, ok, ErrorDetail
+from app.api.schemas.common import ApiResponse, ok
 from app.core.error_codes import ErrorCode
+from app.core.error_codes import ErrorContext
 from app.core.config import get_settings
 from app.core.auth import verify_api_key
+from app.core.exceptions import QSMException, TransferException
 from app.db.session import get_db
 from app.quark.core.transfer_client import QuarkTransferClient
 from app.quark.schemas.search import MediaDto, ResourceDto, SearchResponse
@@ -52,32 +54,36 @@ class QuarkTransferData(BaseModel):
     collection_created: bool = False
 
 
-def build_quark_transfer_error_detail(
+def build_quark_transfer_exception(
     message: str,
     link: str,
-) -> tuple[ErrorCode, ErrorDetail]:
+) -> TransferException:
     if "创建目标目录失败" in message:
         failed_target = message.partition(":")[2].strip() or None
-        return (
-            ErrorCode.TRANSFER_DIR_NOT_FOUND,
-            ErrorDetail(field="target_folder", value=failed_target, reason=message),
+        return TransferException(
+            message,
+            code=ErrorCode.TRANSFER_DIR_NOT_FOUND,
+            context=ErrorContext(field="target_folder", value=failed_target, reason=message),
         )
 
     if "分享链接" in message and ("无效" in message or "失效" in message):
-        return (
-            ErrorCode.TRANSFER_LINK_EXPIRED,
-            ErrorDetail(field="link", value=link, reason=message),
+        return TransferException(
+            message,
+            code=ErrorCode.TRANSFER_LINK_EXPIRED,
+            context=ErrorContext(field="link", value=link, reason=message),
         )
 
     if "没有可转存的文件" in message or "没有文件" in message:
-        return (
-            ErrorCode.TRANSFER_NO_FILES,
-            ErrorDetail(field="link", value=link, reason=message),
+        return TransferException(
+            message,
+            code=ErrorCode.TRANSFER_NO_FILES,
+            context=ErrorContext(field="link", value=link, reason=message),
         )
 
-    return (
-        ErrorCode.TRANSFER_FAILED,
-        ErrorDetail(field="link", value=link, reason=message),
+    return TransferException(
+        message,
+        code=ErrorCode.TRANSFER_FAILED,
+        context=ErrorContext(field="link", value=link, reason=message),
     )
 
 
@@ -110,11 +116,11 @@ async def search_by_tmdb_id(
     tmdb_client = getattr(request.app.state, "tmdb_client", None)
     if tmdb_client is None and not settings.tmdb_api_key:
         payload = SearchData(media=None, resources=[], total=0, query_time=None)
-        return business_error(
-            payload,
-            message="未配置 TMDB_API_KEY，无法通过 TMDB ID 搜索",
+        raise QSMException(
+            "未配置 TMDB_API_KEY，无法通过 TMDB ID 搜索",
             code=ErrorCode.CONFIG_ERROR,
-            error=ErrorDetail(field="TMDB_API_KEY", reason="missing runtime configuration"),
+            context=ErrorContext(field="TMDB_API_KEY", reason="missing runtime configuration"),
+            data=payload,
         )
 
     logger.info(f"API called: tmdb_id={tmdb_id}, media_type={media_type}, max_results={max_results}")
@@ -127,11 +133,11 @@ async def search_by_tmdb_id(
         payload = as_search_data(result)
         if result.success:
             return ok(payload, message=result.message or "OK")
-        return business_error(
-            payload,
-            message=result.message or "搜索失败",
+        raise QSMException(
+            result.message or "搜索失败",
             code=ErrorCode.SEARCH_FAILED,
-            error=ErrorDetail(field="tmdb_id", value=tmdb_id, reason=result.message),
+            context=ErrorContext(field="tmdb_id", value=tmdb_id, reason=result.message),
+            data=payload,
         )
     finally:
         await service.close()
@@ -164,11 +170,11 @@ async def search_by_title(
         payload = as_search_data(result)
         if result.success:
             return ok(payload, message=result.message or "OK")
-        return business_error(
-            payload,
-            message=result.message or "搜索失败",
+        raise QSMException(
+            result.message or "搜索失败",
             code=ErrorCode.SEARCH_FAILED,
-            error=ErrorDetail(field="title", value=title, reason=result.message),
+            context=ErrorContext(field="title", value=title, reason=result.message),
+            data=payload,
         )
     finally:
         await service.close()
@@ -251,16 +257,16 @@ async def transfer_resource(
     settings = get_settings()
     cookie = settings.quark_transfer_cookie
     if not cookie:
-        return business_error(
-            QuarkTransferData(
+        raise TransferException(
+            "未配置 QUARK_TRANSFER_COOKIE，无法执行转存",
+            code=ErrorCode.CONFIG_ERROR,
+            context=ErrorContext(field="QUARK_TRANSFER_COOKIE", reason="missing runtime configuration"),
+            data=QuarkTransferData(
                 saved_files=[],
                 task_id="",
                 collection_id=None,
                 collection_created=False,
             ),
-            message="未配置 QUARK_TRANSFER_COOKIE，无法执行转存",
-            code=ErrorCode.CONFIG_ERROR,
-            error=ErrorDetail(field="QUARK_TRANSFER_COOKIE", reason="missing runtime configuration"),
         )
     renamer = Renamer()
     client = QuarkTransferClient(cookie)
@@ -279,16 +285,16 @@ async def transfer_resource(
     tmdb_client = getattr(request.app.state, "tmdb_client", None)
     if tmdb_client is None:
         if not settings.tmdb_api_key:
-            return business_error(
-                QuarkTransferData(
+            raise TransferException(
+                "未配置 TMDB_API_KEY，无法执行转存命名",
+                code=ErrorCode.CONFIG_ERROR,
+                context=ErrorContext(field="TMDB_API_KEY", reason="missing runtime configuration"),
+                data=QuarkTransferData(
                     saved_files=[],
                     task_id="",
                     collection_id=None,
                     collection_created=False,
                 ),
-                message="未配置 TMDB_API_KEY，无法执行转存命名",
-                code=ErrorCode.CONFIG_ERROR,
-                error=ErrorDetail(field="TMDB_API_KEY", reason="missing runtime configuration"),
             )
         tmdb_client = TmdbClient(
             settings.tmdb_api_key,
@@ -321,20 +327,9 @@ async def transfer_resource(
 
         media_root_fid = await client.get_fid_by_path(media_root_path)
         if not media_root_fid:
-            code, error = build_quark_transfer_error_detail(
+            raise build_quark_transfer_exception(
                 f"创建目标目录失败: {media_root_path}",
                 req.link,
-            )
-            return business_error(
-                QuarkTransferData(
-                    saved_files=[],
-                    task_id="",
-                    collection_id=None,
-                    collection_created=False,
-                ),
-                message=f"创建目标目录失败: {media_root_path}",
-                code=code,
-                error=error,
             )
 
         success, message, transferred_items, task_id = await transfer_share_to_target_fid(
@@ -344,18 +339,14 @@ async def transfer_resource(
             flatten_single_root=True,
         )
         if not success:
-            code, error = build_quark_transfer_error_detail(message, req.link)
-            return business_error(
-                QuarkTransferData(
-                    saved_files=[],
-                    task_id=task_id,
-                    collection_id=None,
-                    collection_created=False,
-                ),
-                message=message,
-                code=code,
-                error=error,
+            exception = build_quark_transfer_exception(message, req.link)
+            exception.data = QuarkTransferData(
+                saved_files=[],
+                task_id=task_id,
+                collection_id=None,
+                collection_created=False,
             )
+            raise exception
 
         task_done = await wait_for_transfer_task(client, task_id, max_retries=60, interval_seconds=1.0)
         if not task_done:
@@ -448,17 +439,20 @@ async def transfer_resource(
             ),
             message=status_msg,
         )
+    except QSMException:
+        raise
     except Exception as e:
         logger.error(f"Transfer error: {str(e)}", exc_info=True)
-        return business_error(
-            QuarkTransferData(
+        raise TransferException(
+            f"转存异常: {str(e)}",
+            code=ErrorCode.INTERNAL_ERROR,
+            context=ErrorContext(reason=str(e)),
+            data=QuarkTransferData(
                 saved_files=[],
                 task_id="",
                 collection_id=None,
                 collection_created=False,
             ),
-            message=f"转存异常: {str(e)}",
-            code=500,
         )
     finally:
         if close_tmdb_client:

@@ -59,9 +59,7 @@ function clearStoredKey() {
         />
 
         <div class="auth-gate-actions">
-          <button class="auth-gate-primary" type="submit" :disabled="!canSave">
-            保存并重试
-          </button>
+          <button class="auth-gate-primary" type="submit" :disabled="!canSave">保存并重试</button>
           <button
             v-if="hasStoredKey"
             class="auth-gate-secondary"

@@ -42,6 +42,19 @@ docker compose ps
 docker compose logs -f app
 ```
 
+默认镜像使用单个 Gunicorn worker，这样可以和默认的 `CACHE_TYPE=memory`
+保持一致，避免多进程下缓存与限流状态分叉。只有在你已经配置
+`CACHE_TYPE=redis` 和可用的 `REDIS_URL` 后，才建议增加 worker 数。
+
+本地修改 Dockerfile、entrypoint、健康检查或环境变量接线后，建议先跑一次仓库内 smoke：
+
+```bash
+python ops/deploy/docker_smoke.py
+```
+
+它会执行 `docker build`、启动临时容器，并验证 `/api/v1/health/live` 与
+`/api/v1/health/ready`。如果镜像已在本机构建完成，可以加 `--skip-build`。
+
 健康检查：
 
 ```bash
