@@ -87,7 +87,13 @@ class SearchService:
         """
         effective_timeout = timeout or self.DEFAULT_TIMEOUT
         cache = get_cache()
-        cache_key = generate_cache_key("quark:search:tmdb", tmdb_id=tmdb_id, media_type=media_type)
+        source_base_url = self.quark_client.base_url
+        cache_key = generate_cache_key(
+            "quark:search:tmdb",
+            source_base_url=source_base_url,
+            tmdb_id=tmdb_id,
+            media_type=media_type,
+        )
 
         # 1. 检查缓存
         cached_result = await cache.get(cache_key)
@@ -151,7 +157,13 @@ class SearchService:
         """
         effective_timeout = timeout or self.DEFAULT_TIMEOUT
         cache = get_cache()
-        cache_key = generate_cache_key("quark:search:title", title=title, year=year)
+        source_base_url = self.quark_client.base_url
+        cache_key = generate_cache_key(
+            "quark:search:title",
+            source_base_url=source_base_url,
+            title=title,
+            year=year,
+        )
 
         # 1. 检查缓存
         cached_result = await cache.get(cache_key)
@@ -308,7 +320,7 @@ class SearchService:
         """并行处理资源评分"""
         async def process_one(resource: Any) -> Optional[ResourceDto]:
             quality_info = self.quality_evaluator.evaluate(resource.name, resource.size)
-            quality_score = quality_info.get_score()
+            quality_score = quality_info.score
             confidence = 0.5
             overall = quality_score * 0.5 + confidence * 50
 

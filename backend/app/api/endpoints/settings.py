@@ -3,17 +3,29 @@ from typing import Dict, Optional
 import re
 from tempfile import NamedTemporaryFile
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 
 from ..schemas.common import ApiResponse, ok
 from ..schemas.system import SettingsCurrentData, SettingsUpdateData
 from ...core.config import get_settings, resolve_runtime_env_path
 from ...core.auth import verify_api_key
+from ...quark.core.quark_client import AsyncQuarkAPIClient
 
 api_router = APIRouter()
 
 KEEP_SENTINEL = "__KEEP__"
+HOT_SWAPPABLE_KEYS = {"QUARK_SEARCH_BASE_URL"}
+
+
+async def apply_hot_swappable_settings(request: Request, updates: Dict[str, str]) -> None:
+    if "QUARK_SEARCH_BASE_URL" not in updates:
+        return
+
+    old_client = getattr(request.app.state, "quark_client", None)
+    request.app.state.quark_client = AsyncQuarkAPIClient()
+    if old_client is not None:
+        await old_client.close()
 
 
 def validate_env_key(key: str) -> bool:
@@ -153,6 +165,7 @@ class SettingsUpdate(BaseModel):
     API_KEY: Optional[str] = None
     TMDB_API_KEY: Optional[str] = None
     HTTP_PROXY: Optional[str] = None
+    QUARK_SEARCH_BASE_URL: Optional[str] = None
     QUARK_TRANSFER_COOKIE: Optional[str] = None
     TRANSFER_KEEP_EXTRAS: Optional[bool] = None
     TRANSFER_KEEP_SUBTITLES: Optional[bool] = None
@@ -172,6 +185,7 @@ async def get_current_settings(
         SettingsCurrentData(
             LOG_LEVEL=settings.log_level,
             HTTP_PROXY=settings.http_proxy,
+            QUARK_SEARCH_BASE_URL=settings.quark_search_base_url,
             TRANSFER_KEEP_EXTRAS=settings.transfer_keep_extras,
             TRANSFER_KEEP_SUBTITLES=settings.transfer_keep_subtitles,
             TRANSFER_DRY_RUN=settings.transfer_dry_run,
@@ -192,7 +206,8 @@ async def get_current_settings(
 @api_router.post("/update", response_model=ApiResponse[SettingsUpdateData])
 async def update_settings(
     update_data: SettingsUpdate,
-    _: None = Depends(verify_api_key)
+    request: Request,
+    _: None = Depends(verify_api_key),
 ) -> ApiResponse[SettingsUpdateData]:
     updates: Dict[str, str] = {}
     data = update_data.model_dump(exclude_none=True)
@@ -215,9 +230,14 @@ async def update_settings(
 
     try:
         update_env_file(updates)
+        await apply_hot_swappable_settings(request, updates)
+        restart_required = any(key not in HOT_SWAPPABLE_KEYS for key in updates)
+        message = "配置已更新"
+        if restart_required:
+            message = "配置已更新，请重启服务以确保所有更改生效"
         return ok(
-            SettingsUpdateData(updated_keys=sorted(updates.keys()), restart_required=True),
-            message="配置已更新，请重启服务以确保所有更改生效",
+            SettingsUpdateData(updated_keys=sorted(updates.keys()), restart_required=restart_required),
+            message=message,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"更新配置失败: {str(e)}")

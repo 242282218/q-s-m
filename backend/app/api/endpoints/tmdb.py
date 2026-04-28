@@ -6,9 +6,10 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 
 from ...core.error_codes import ErrorCode
-from ...services.tmdb import TmdbClient, adapt_detail, adapt_person, adapt_poster
+from ...services.tmdb import TmdbClient, adapt_detail, adapt_person, adapt_poster, is_tmdb_auth_error
 from ..schemas.common import ApiResponse, ok, business_error, ErrorDetail
 from ..schemas.system import TmdbDetailsData
+from .home import DEMO_HOME_POSTERS, _is_development_home_fallback_enabled
 from ..schemas.tmdb import (
     CastMemberData,
     DetailItemData,
@@ -59,6 +60,141 @@ def to_poster_card(raw: dict) -> PosterCardData:
         poster_url=raw.get("poster_url"),
         backdrop_url=raw.get("backdrop_url"),
     )
+
+
+def _find_demo_detail(media_type: str, item_id: int) -> dict | None:
+    return next(
+        (
+            item
+            for item in DEMO_HOME_POSTERS
+            if item.get("media_type") == media_type and item.get("id") == item_id
+        ),
+        None,
+    )
+
+
+DEMO_DETAIL_EXTRAS: dict[tuple[str, int], dict[str, Any]] = {
+    ("movie", 157336): {
+        "genres": ["科幻", "剧情", "冒险"],
+        "runtime": 169,
+        "vote": 8.7,
+        "tagline": "人类的未来，藏在群星之间。",
+        "cast": [
+            {"id": 10297, "name": "Matthew McConaughey", "character": "Cooper", "profile_path": "/lCySuYjhXix3FzQdS4oceDDrXKI.jpg"},
+            {"id": 1813, "name": "Anne Hathaway", "character": "Brand", "profile_path": "/tLelKoPNiyJCSEtQTz1FGv4TLGc.jpg"},
+            {"id": 3896, "name": "Jessica Chastain", "character": "Murph", "profile_path": "/lodMzLKSdrPcBry6TdoDsMN3Vge.jpg"},
+            {"id": 6489, "name": "Michael Caine", "character": "Professor Brand", "profile_path": "/bVZRMlpjTAO2pJK6v90buFgVbSW.jpg"},
+        ],
+        "videos": [
+            {"key": "zSWdZVtXT7E", "name": "Official Trailer", "type": "Trailer", "official": True},
+        ],
+    },
+    ("movie", 129): {
+        "genres": ["动画", "奇幻", "家庭"],
+        "runtime": 125,
+        "vote": 8.5,
+        "tagline": "在不可思议的世界里，找回名字与勇气。",
+        "cast": [
+            {"id": 19587, "name": "柊瑠美", "character": "荻野千寻", "profile_path": "/z5BSB2QkZ6kWXT3dOQJ4X8dL6Z2.jpg"},
+            {"id": 19588, "name": "入野自由", "character": "白龙", "profile_path": "/8NgzG4sVAmuVLvn3b9QfJ0qfe8H.jpg"},
+            {"id": 19589, "name": "夏木真理", "character": "汤婆婆 / 钱婆婆", "profile_path": "/hZKQkU6oQZQWwlq7QghQYc8vw8T.jpg"},
+            {"id": 19590, "name": "菅原文太", "character": "锅炉爷爷", "profile_path": None},
+        ],
+        "videos": [
+            {"key": "ByXuk9QqQkk", "name": "Official Trailer", "type": "Trailer", "official": True},
+        ],
+    },
+    ("movie", 27205): {
+        "genres": ["科幻", "动作", "悬疑"],
+        "runtime": 148,
+        "vote": 8.4,
+        "tagline": "你的梦境，可能不是你的。",
+        "cast": [
+            {"id": 6193, "name": "Leonardo DiCaprio", "character": "Cobb", "profile_path": "/wo2hJpn04vbtmh0B9utCFdsQhxM.jpg"},
+            {"id": 24045, "name": "Joseph Gordon-Levitt", "character": "Arthur", "profile_path": "/4U9G4YwTlIEbAymBaseltS38eH4.jpg"},
+            {"id": 27578, "name": "Elliot Page", "character": "Ariadne", "profile_path": "/eCeFgzS8dYH3jD3hR5Z4SVU7Wci.jpg"},
+            {"id": 2524, "name": "Tom Hardy", "character": "Eames", "profile_path": "/d81K0RH8UX7tZj49tZaQhZ9ewH.jpg"},
+        ],
+        "videos": [
+            {"key": "YoHD9XEInc0", "name": "Official Trailer", "type": "Trailer", "official": True},
+        ],
+    },
+}
+
+
+def _demo_image_url(path: str | None, size: str) -> str | None:
+    if not path:
+        return None
+    return f"https://image.tmdb.org/t/p/{size}{path}"
+
+
+def _demo_cast(extras: dict[str, Any]) -> list[CastMemberData]:
+    return [
+        CastMemberData(
+            id=int(member["id"]),
+            name=str(member.get("name") or ""),
+            character=str(member.get("character") or ""),
+            profile_url=_demo_image_url(member.get("profile_path"), "w300"),
+        )
+        for member in extras.get("cast", [])
+        if member.get("id")
+    ]
+
+
+def _demo_videos(extras: dict[str, Any]) -> list[VideoData]:
+    return [
+        VideoData(
+            key=str(video.get("key") or ""),
+            name=str(video.get("name") or ""),
+            type=str(video.get("type") or ""),
+            official=bool(video.get("official") or False),
+        )
+        for video in extras.get("videos", [])
+        if video.get("key")
+    ]
+
+
+def _build_demo_detail_page_data(media_type: str, item_id: int) -> DetailPageData | None:
+    detail = _find_demo_detail(media_type, item_id)
+    if detail is None:
+        return None
+
+    year_text = str(detail.get("subtitle") or "")[:4]
+    extras = DEMO_DETAIL_EXTRAS.get((media_type, item_id), {})
+    item = DetailItemData(
+        id=int(detail["id"]),
+        media_type=str(detail.get("media_type") or media_type),
+        title=str(detail.get("title") or ""),
+        year=parse_year(year_text),
+        genres=[str(genre) for genre in extras.get("genres", [])],
+        runtime=extras.get("runtime"),
+        vote=extras.get("vote"),
+        tagline=str(extras.get("tagline") or ""),
+        overview=str(detail.get("overview") or ""),
+        poster_url=detail.get("poster_url"),
+        backdrop_url=detail.get("backdrop_url"),
+        poster_path=None,
+        backdrop_path=None,
+        cast=_demo_cast(extras),
+        videos=_demo_videos(extras),
+    )
+    recommendations = [
+        to_poster_card(raw)
+        for raw in DEMO_HOME_POSTERS
+        if raw.get("id") != item_id and raw.get("media_type") in ("movie", "tv")
+    ][:12]
+    return DetailPageData(item=item, recommendations=recommendations)
+
+
+def _demo_detail_response(media_type: str, item_id: int) -> ApiResponse[DetailPageData] | None:
+    if not _is_development_home_fallback_enabled():
+        return None
+
+    data = _build_demo_detail_page_data(media_type, item_id)
+    if data is None:
+        return None
+
+    return ok(data, message="TMDB 未可用，开发环境返回演示详情数据")
 
 
 @router.get(
@@ -193,7 +329,8 @@ async def get_detail_page_data(
 
     tmdb_client = get_tmdb_client(request)
     if tmdb_client is None:
-        return tmdb_not_configured_response(None)
+        demo_response = _demo_detail_response(media_type, item_id)
+        return demo_response or tmdb_not_configured_response(None)
     try:
         data = await tmdb_client.details(media_type, item_id)
         need_fallback = False
@@ -215,6 +352,10 @@ async def get_detail_page_data(
                 pass
     except httpx.HTTPStatusError as exc:
         logger.error("TMDB API HTTP错误: %s", str(exc))
+        if is_tmdb_auth_error(exc):
+            demo_response = _demo_detail_response(media_type, item_id)
+            if demo_response is not None:
+                return demo_response
         return business_error(
             None,
             message="TMDB 服务错误",

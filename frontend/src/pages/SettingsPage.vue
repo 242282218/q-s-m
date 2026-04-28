@@ -35,6 +35,7 @@ const form = reactive({
   API_KEY: '',
   TMDB_API_KEY: '',
   HTTP_PROXY: '',
+  QUARK_SEARCH_BASE_URL: '',
   QUARK_TRANSFER_COOKIE: '',
   TRANSFER_KEEP_EXTRAS: false,
   TRANSFER_KEEP_SUBTITLES: false,
@@ -66,6 +67,7 @@ type BoolField = (typeof boolFields)[number];
 function applySettingsSnapshot(snapshot: SettingsCurrentData) {
   form.LOG_LEVEL = snapshot.LOG_LEVEL || '';
   form.HTTP_PROXY = snapshot.HTTP_PROXY || '';
+  form.QUARK_SEARCH_BASE_URL = snapshot.QUARK_SEARCH_BASE_URL || '';
 
   boolFields.forEach((key) => {
     form[key] = snapshot[key];
@@ -133,6 +135,10 @@ function validateSettings(): { valid: boolean; errors: string[] } {
     errors.push('HTTP Proxy 格式不正确，应以 http:// 或 https:// 开头');
   }
 
+  if (form.QUARK_SEARCH_BASE_URL && !/^https?:\/\/.+/.test(form.QUARK_SEARCH_BASE_URL)) {
+    errors.push('PanSou API 地址格式不正确，应以 http:// 或 https:// 开头');
+  }
+
   if (
     form.LOG_LEVEL &&
     !['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'].includes(form.LOG_LEVEL.toUpperCase())
@@ -157,6 +163,7 @@ async function submit() {
     'API_KEY',
     'TMDB_API_KEY',
     'HTTP_PROXY',
+    'QUARK_SEARCH_BASE_URL',
     'QUARK_TRANSFER_COOKIE',
   ] as const;
   textKeys.forEach((key) => {
@@ -207,7 +214,10 @@ async function submit() {
     if (reloadResults.some((result) => result.status === 'rejected')) {
       push('配置已保存，但当前页面未能刷新最新状态', 'info');
     }
-    push('配置已保存，请按提示重启后端服务', 'success', 3200);
+    const successMessage = res.data.restart_required
+      ? '配置已保存，请按提示重启后端服务'
+      : '配置已保存，PanSou API 地址已即时生效';
+    push(successMessage, 'success', 3200);
   } catch (error) {
     push(error instanceof Error ? error.message : '保存失败', 'error');
   } finally {
@@ -473,6 +483,19 @@ onMounted(() => {
 
           <div class="form-group">
             <label class="form-label">
+              <span class="label-text">PanSou API 地址</span>
+              <span class="label-desc">夸克资源搜索上游地址，保存后即时生效</span>
+            </label>
+            <input
+              v-model="form.QUARK_SEARCH_BASE_URL"
+              type="text"
+              class="form-input"
+              placeholder="http://107.172.8.60:11380"
+            />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">
               <span class="label-text">夸克网盘 Cookie</span>
               <span class="label-desc">{{ secretFieldHints.QUARK_TRANSFER_COOKIE }}</span>
             </label>
@@ -599,7 +622,7 @@ onMounted(() => {
           <line x1="12" y1="16" x2="12" y2="12" />
           <line x1="12" y1="8" x2="12.01" y2="8" />
         </svg>
-        保存后需要重启后端服务才能生效
+        PanSou API 地址可即时生效；其他配置保存后可能需要重启后端服务
       </p>
     </div>
   </div>

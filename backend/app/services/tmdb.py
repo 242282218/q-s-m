@@ -544,6 +544,10 @@ def adapt_poster(item: Dict[str, Any], client: TmdbClient) -> Dict[str, Any]:
     }
 
 
+def is_tmdb_auth_error(exc: BaseException) -> bool:
+    return isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (401, 403)
+
+
 async def gather_sections(client: TmdbClient) -> Dict[str, List[Dict[str, Any]]]:
     """
     获取首页各分区数据，支持缓存
@@ -585,6 +589,8 @@ async def gather_sections(client: TmdbClient) -> Dict[str, List[Dict[str, Any]]]
 
         for key, result in zip(keys, results):
             if isinstance(result, Exception):
+                if is_tmdb_auth_error(result):
+                    raise result
                 error_msg = f"Failed to fetch section {key}: {type(result).__name__}: {str(result) or 'Unknown error'}"
                 logger.error(error_msg)
                 data[key] = []

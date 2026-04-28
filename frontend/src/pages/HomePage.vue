@@ -23,6 +23,14 @@ const FAILED_IMAGE_TTL = 5 * 60 * 1000; // 5分钟
 
 const heroItems = computed(() => feed.value?.hero_items || []);
 
+function getHeroImageUrl(hero: HomeHeroItem): string | null {
+  return hero.backdrop_url || null;
+}
+
+function hasFailedImage(url: string | null): boolean {
+  return Boolean(url && failedImages.value.has(url));
+}
+
 const {
   activeIndex: activeHeroIndex,
   activeItem: activeHero,
@@ -92,7 +100,7 @@ onMounted(() => {
 const preloadHeroImages = () => {
   if (feed.value?.hero_items && feed.value.hero_items.length > 0) {
     const imageUrls = feed.value.hero_items
-      .map((hero) => hero.backdrop_url || hero.poster_url)
+      .map(getHeroImageUrl)
       .filter((url): url is string => url != null);
     if (imageUrls.length > 0) {
       imagePreloader.preload(imageUrls);
@@ -122,11 +130,8 @@ onBeforeUnmount(() => {
         >
           <div class="hero-background">
             <img
-              v-if="
-                (hero.backdrop_url || hero.poster_url) &&
-                !failedImages.has(hero.backdrop_url || hero.poster_url || '')
-              "
-              :src="hero.backdrop_url || hero.poster_url || ''"
+              v-if="getHeroImageUrl(hero) && !hasFailedImage(getHeroImageUrl(hero))"
+              :src="getHeroImageUrl(hero) || ''"
               :alt="hero.title"
               :loading="index === 0 ? 'eager' : 'lazy'"
               @error="handleImageError"

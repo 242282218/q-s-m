@@ -1,4 +1,13 @@
 const API_KEY_STORAGE_KEY = 'qsm_api_key';
+const DEV_LOCAL_API_KEY = 'test-api-key-for-local-verification-only';
+
+function isLocalDevelopment(): boolean {
+  return import.meta.env.DEV && ['127.0.0.1', 'localhost'].includes(globalThis.location?.hostname || '');
+}
+
+function getLocalDevelopmentApiKey(): string | null {
+  return isLocalDevelopment() ? DEV_LOCAL_API_KEY : null;
+}
 
 function normalizeApiKey(value: string | null | undefined): string | null {
   if (typeof value !== 'string') {
@@ -37,13 +46,18 @@ export function hasStoredApiKey(): boolean {
 }
 
 export function getConfiguredApiKey(): string | null {
-  return readStoredApiKey() ?? normalizeApiKey(import.meta.env.VITE_API_KEY);
+  return readStoredApiKey() ?? getLocalDevelopmentApiKey() ?? normalizeApiKey(import.meta.env.VITE_API_KEY);
 }
 
 export function getApiKeyCandidates(explicitApiKey?: string | null): string[] {
   const candidates: string[] = [];
 
-  for (const candidate of [getConfiguredApiKey(), normalizeApiKey(explicitApiKey)]) {
+  for (const candidate of [
+    readStoredApiKey(),
+    normalizeApiKey(explicitApiKey),
+    getLocalDevelopmentApiKey(),
+    normalizeApiKey(import.meta.env.VITE_API_KEY),
+  ]) {
     if (!candidate || candidates.includes(candidate)) {
       continue;
     }

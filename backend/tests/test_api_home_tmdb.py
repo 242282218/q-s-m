@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
 from unittest.mock import AsyncMock, patch
+from typing import Any
 
+import httpx
 import pytest
 from httpx import AsyncClient
 
 from app.api.endpoints.home import SECTION_META
+
+
+def make_tmdb_http_error(status_code: int = 401) -> httpx.HTTPStatusError:
+    request = httpx.Request("GET", "https://api.themoviedb.org/3/movie/top_rated")
+    response = httpx.Response(status_code, request=request)
+    return httpx.HTTPStatusError("TMDB auth failed", request=request, response=response)
 
 
 class FakeTmdbClient:
@@ -34,7 +41,10 @@ class FakeTmdbClient:
     ) -> dict[str, Any]:
         call = (media_type, item_id, language_override)
         self.detail_calls.append(call)
-        return deepcopy(self._detail_payloads[call])
+        payload = self._detail_payloads[call]
+        if isinstance(payload, BaseException):
+            raise payload
+        return deepcopy(payload)
 
     def image_url(self, path: str | None, size: str = "w500") -> str | None:
         if not path:
@@ -129,6 +139,133 @@ async def test_get_home_feed_returns_normalized_sections_and_hero_items(
         "backdrop_url": "https://image.tmdb.org/t/p/w780/backdrop-tv.jpg",
     }
     assert payload["data"]["hero_items"] == hero_items
+
+
+@pytest.mark.asyncio
+async def test_home_feed_returns_demo_data_for_local_placeholder_tmdb_key(
+    async_client: AsyncClient,
+    install_tmdb_client,
+):
+    fake_client = FakeTmdbClient()
+    install_tmdb_client(fake_client)
+
+    with (
+        patch(
+            "app.api.endpoints.home.gather_sections",
+            new=AsyncMock(side_effect=make_tmdb_http_error(401)),
+        ),
+        patch(
+            "app.api.endpoints.home.get_settings",
+        ) as get_settings_mock,
+        patch("app.api.endpoints.home.os.getenv", return_value="production"),
+    ):
+        get_settings_mock.return_value.debug = False
+        get_settings_mock.return_value.tmdb_api_key = "replace-with-your-tmdb-api-key"
+        response = await async_client.get("/api/v1/home")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["code"] == 0
+    assert payload["message"] == "TMDB 未可用，开发环境返回演示首页数据"
+    assert payload["data"]["hero_items"]
+    assert all(payload["data"]["sections"][meta.key] for meta in SECTION_META)
+    assert payload["data"]["sections"]["anime_latest"][0]["title"] == "星际穿越"
+    assert "穿越虫洞" in payload["data"]["sections"]["anime_latest"][0]["overview"]
+
+
+@pytest.mark.asyncio
+async def test_home_feed_returns_demo_data_for_local_empty_sections(
+    async_client: AsyncClient,
+    install_tmdb_client,
+):
+    fake_client = FakeTmdbClient()
+    install_tmdb_client(fake_client)
+    empty_sections = {meta.key: [] for meta in SECTION_META}
+
+    with (
+        patch(
+            "app.api.endpoints.home.gather_sections",
+            new=AsyncMock(return_value=empty_sections),
+        ),
+        patch(
+            "app.api.endpoints.home.get_settings",
+        ) as get_settings_mock,
+        patch("app.api.endpoints.home.os.getenv", return_value="production"),
+    ):
+        get_settings_mock.return_value.debug = False
+        get_settings_mock.return_value.tmdb_api_key = "replace-with-your-tmdb-api-key"
+        response = await async_client.get("/api/v1/home")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["code"] == 0
+    assert payload["message"] == "TMDB 未返回首页数据，开发环境返回演示首页数据"
+    assert payload["data"]["hero_items"]
+    assert all(payload["data"]["sections"][meta.key] for meta in SECTION_META)
+
+
+@pytest.mark.asyncio
+async def test_home_feed_returns_config_error_for_tmdb_auth_failure_in_production(
+    async_client: AsyncClient,
+    install_tmdb_client,
+):
+    fake_client = FakeTmdbClient()
+    install_tmdb_client(fake_client)
+
+    with (
+        patch(
+            "app.api.endpoints.home.gather_sections",
+            new=AsyncMock(side_effect=make_tmdb_http_error(401)),
+        ),
+        patch(
+            "app.api.endpoints.home.get_settings",
+        ) as get_settings_mock,
+        patch("app.api.endpoints.home.os.getenv", return_value="production"),
+    ):
+        get_settings_mock.return_value.debug = False
+        get_settings_mock.return_value.tmdb_api_key = "real-but-invalid-key"
+        response = await async_client.get("/api/v1/home")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["code"] == 423
+    assert payload["data"] is None
+    assert payload["message"] == "TMDB_API_KEY 无效或未授权，无法加载首页数据"
+    assert payload["error"] == {
+        "field": "TMDB_API_KEY",
+        "value": None,
+        "reason": "TMDB authentication failed",
+        "context": {"status_code": 401},
+    }
+
+
+@pytest.mark.asyncio
+async def test_home_feed_returns_config_error_when_tmdb_client_missing_in_production(
+    async_client: AsyncClient,
+):
+    from app.main import app
+
+    original_client = getattr(app.state, "tmdb_client", None)
+    app.state.tmdb_client = None
+    try:
+        with (
+            patch(
+                "app.api.endpoints.home.get_settings",
+            ) as get_settings_mock,
+            patch("app.api.endpoints.home.os.getenv", return_value="production"),
+        ):
+            get_settings_mock.return_value.debug = False
+            get_settings_mock.return_value.tmdb_api_key = "real-key"
+            response = await async_client.get("/api/v1/home")
+    finally:
+        app.state.tmdb_client = original_client
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["code"] == 423
+    assert payload["message"] == "未配置 TMDB_API_KEY，无法加载首页数据"
+    assert payload["error"]["field"] == "TMDB_API_KEY"
+    assert payload["error"]["reason"] == "missing runtime configuration"
 
 
 @pytest.mark.asyncio
@@ -280,3 +417,35 @@ async def test_get_detail_page_data_falls_back_to_english_payload_when_primary_i
             "backdrop_url": "https://image.tmdb.org/t/p/w780/days-backdrop.jpg",
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_get_detail_page_data_returns_demo_data_for_local_tmdb_auth_failure(
+    async_client: AsyncClient,
+    install_tmdb_client,
+):
+    fake_client = FakeTmdbClient(
+        detail_payloads={
+            ("movie", 157336, None): make_tmdb_http_error(401),
+        }
+    )
+    install_tmdb_client(fake_client)
+
+    with (
+        patch(
+            "app.api.endpoints.home.get_settings",
+        ) as get_settings_mock,
+        patch("app.api.endpoints.home.os.getenv", return_value="production"),
+    ):
+        get_settings_mock.return_value.debug = False
+        get_settings_mock.return_value.tmdb_api_key = "replace-with-your-tmdb-api-key"
+        response = await async_client.get("/api/v1/tmdb/detail/movie/157336")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["code"] == 0
+    assert payload["message"] == "TMDB 未可用，开发环境返回演示详情数据"
+    assert payload["data"]["item"]["title"] == "星际穿越"
+    assert "穿越虫洞" in payload["data"]["item"]["overview"]
+    assert payload["data"]["item"]["backdrop_url"].endswith("rAiYTfKGqDCRIIqo664sY9XZIvQ.jpg")
+    assert payload["data"]["recommendations"]

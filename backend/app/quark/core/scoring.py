@@ -133,12 +133,12 @@ class QualityEvaluator:
         size_str = size_str.lower().strip()
         
         patterns = [
-            (r"([\d.]+)\s*(tb|t)", None),
-            (r"([\d.]+)\s*(gb|g)", None),
-            (r"([\d.]+)\s*(mb|m)", None),
-            (r"([\d.]+)\s*(kb|k)", None),
+            r"([\d.]+)\s*(tb|t)",
+            r"([\d.]+)\s*(gb|g)",
+            r"([\d.]+)\s*(mb|m)",
+            r"([\d.]+)\s*(kb|k)",
         ]
-        
+
         for pattern in patterns:
             match = re.search(pattern, size_str)
             if match:

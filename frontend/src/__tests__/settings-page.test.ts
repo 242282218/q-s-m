@@ -45,6 +45,7 @@ function createSettingsSnapshot(overrides: Partial<SettingsCurrentData> = {}): S
   return {
     LOG_LEVEL: 'INFO',
     HTTP_PROXY: '',
+    QUARK_SEARCH_BASE_URL: 'http://107.172.8.60:11380',
     TRANSFER_KEEP_EXTRAS: false,
     TRANSFER_KEEP_SUBTITLES: false,
     TRANSFER_DRY_RUN: false,
@@ -234,7 +235,9 @@ describe('SettingsPage', () => {
     await mountSettingsPage();
 
     const tmdbApiKeyInput = findField<HTMLInputElement>('TMDB API Key');
+    const pansouUrlInput = findField<HTMLInputElement>('PanSou API 地址');
     setFieldValue(tmdbApiKeyInput, 'short');
+    setFieldValue(pansouUrlInput, '107.172.8.60:11380');
 
     findButtonByText('保存配置').click();
     await flushUi();
@@ -242,6 +245,41 @@ describe('SettingsPage', () => {
     expect(apiMocks.updateSettings).not.toHaveBeenCalled();
     expect(apiMocks.updateSettingsWithApiKey).not.toHaveBeenCalled();
     expect(toastPush).toHaveBeenCalledWith('TMDB API Key 长度不足', 'error');
+    expect(toastPush).toHaveBeenCalledWith(
+      'PanSou API 地址格式不正确，应以 http:// 或 https:// 开头',
+      'error'
+    );
+  });
+
+  it('shows that PanSou API URL saves without backend restart', async () => {
+    localStorage.setItem('qsm_api_key', 'stored-key');
+    apiMocks.updateSettingsWithApiKey.mockResolvedValueOnce(
+      ok({
+        updated_keys: ['QUARK_SEARCH_BASE_URL'],
+        restart_required: false,
+      })
+    );
+
+    await mountSettingsPage();
+
+    const pansouUrlInput = findField<HTMLInputElement>('PanSou API 地址');
+    setFieldValue(pansouUrlInput, 'http://127.0.0.1:8888');
+
+    findButtonByText('保存配置').click();
+    await flushUi();
+    await flushUi();
+
+    expect(apiMocks.updateSettingsWithApiKey).toHaveBeenCalledWith(
+      expect.objectContaining({
+        QUARK_SEARCH_BASE_URL: 'http://127.0.0.1:8888',
+      }),
+      'stored-key'
+    );
+    expect(toastPush).toHaveBeenCalledWith(
+      '配置已保存，PanSou API 地址已即时生效',
+      'success',
+      3200
+    );
   });
 
   it('clears the locally stored API key from the current browser', async () => {
@@ -314,6 +352,7 @@ describe('SettingsPage', () => {
       LOG_LEVEL: 'INFO',
       API_KEY: 'new-current-key',
       HTTP_PROXY: 'http://127.0.0.1:7890',
+      QUARK_SEARCH_BASE_URL: 'http://107.172.8.60:11380',
       TRANSFER_KEEP_EXTRAS: true,
       TRANSFER_KEEP_SUBTITLES: false,
       TRANSFER_DRY_RUN: false,
