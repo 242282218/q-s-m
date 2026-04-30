@@ -183,6 +183,50 @@ class TransferService:
             self._path_resolver = resolver
         return await resolver.find_fid_by_path_no_create(path)
 
+    async def _ensure_target_dir_fid(
+        self,
+        client: QuarkTransferClient,
+        path: str,
+    ) -> Optional[str]:
+        """确保目标目录存在并返回 FID。"""
+        normalized_path = QuarkPathResolver.normalize_path(path)
+        direct_fid = await client.get_fid_by_path(normalized_path)
+        if direct_fid:
+            return direct_fid
+
+        resolver = await self._get_path_resolver()
+        if resolver.client is not client:
+            resolver = QuarkPathResolver(client)
+            self._path_resolver = resolver
+
+        parts = [part for part in normalized_path.split("/") if part]
+        current_fid = "0"
+
+        for part in parts:
+            children = await resolver.list_dir(current_fid, use_cache=False)
+            if children is None:
+                return None
+
+            next_fid: Optional[str] = None
+            for item in children:
+                name = item.get("file_name") or item.get("name")
+                is_dir = (item.get("dir") is True) or (item.get("dir") == 1)
+                if name == part and is_dir:
+                    fid = item.get("fid")
+                    next_fid = str(fid) if fid is not None else None
+                    break
+
+            if next_fid:
+                current_fid = next_fid
+                continue
+
+            created_fid = await client.create_dir(part, current_fid)
+            if not created_fid:
+                return None
+            current_fid = str(created_fid)
+
+        return current_fid
+
     async def get_quark(self) -> QuarkTransferClient:
         """获取夸克客户端（异步方法）"""
         return await self._get_client()
@@ -431,7 +475,7 @@ class TransferService:
 
                 # 获取目标目录 FID
                 media_root_fid = await asyncio.wait_for(
-                    client.get_fid_by_path(media_root_path),
+                    self._ensure_target_dir_fid(client, media_root_path),
                     timeout=self.DEFAULT_TIMEOUT
                 )
                 if not media_root_fid:
