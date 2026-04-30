@@ -77,6 +77,12 @@ class SettingsPersistenceTests(unittest.TestCase):
         self.assertIn("QUARK_TRANSFER_COOKIE=saved-cookie=updated", content)
         self.assertIn("LOG_LEVEL=DEBUG", content)
 
+    def test_update_env_file_rejects_runtime_env_directory(self):
+        self.runtime_env_path.mkdir()
+
+        with self.assertRaisesRegex(ValueError, "运行时配置路径必须是文件"):
+            update_env_file({"API_KEY": "saved-api-key-67890"})
+
     def test_update_settings_accepts_api_key_payload(self):
         response = asyncio.run(
             update_settings(

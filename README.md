@@ -88,6 +88,18 @@ docker compose logs -f app
 每次推送到 `main` 都会自动发布多架构镜像到 GHCR：
 
 - `ghcr.io/242282218/q-s-m:latest`
+- `linux/amd64`
+- `linux/arm64`
+
+默认容器启动为单 worker，避免 SQLite 与内存缓存状态在多进程下不一致。For multi-worker deployment, set `CACHE_TYPE=redis` and configure `REDIS_URL` first.
+
+CI 中的 `quality-gates.yml` 会执行 `Docker image build`，并通过 `health/live` 与 `health/ready` 检查镜像启动状态。
+
+本地可执行 Docker 冒烟测试：
+
+```bash
+python ops/deploy/docker_smoke.py
+```
 
 示例 `docker-compose.yml`：
 

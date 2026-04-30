@@ -9,3 +9,4 @@ pytest-cov==6.0.0
 respx==0.22.0
 coverage==7.13.1
 anyio==4.13.0
+psutil==7.2.2

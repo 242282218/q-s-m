@@ -13,8 +13,14 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.db.session import Base, get_db
+from app.db.session import Base, get_db, init_db
 from app.core.config import get_settings
+
+
+@pytest.fixture(scope="session", autouse=True)
+def initialized_default_db():
+    """Create the file-backed schema for tests using SessionLocal directly."""
+    init_db()
 
 
 @pytest.fixture
@@ -32,6 +38,16 @@ def test_db():
         yield engine
     finally:
         engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter_state():
+    """Keep rate-limit tests isolated from shared middleware state."""
+    from app.middleware.rate_limit import rate_limiter
+
+    rate_limiter.requests.clear()
+    yield
+    rate_limiter.requests.clear()
 
 
 @pytest.fixture

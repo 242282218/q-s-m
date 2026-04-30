@@ -296,11 +296,7 @@ describe('SettingsPage', () => {
       }),
       'stored-key'
     );
-    expect(toastPush).toHaveBeenCalledWith(
-      '配置已保存，运行时配置已即时生效',
-      'success',
-      3200
-    );
+    expect(toastPush).toHaveBeenCalledWith('配置已保存，运行时配置已即时生效', 'success', 3200);
   });
 
   it('clears the locally stored API key from the current browser', async () => {

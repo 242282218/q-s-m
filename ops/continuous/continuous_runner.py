@@ -922,8 +922,14 @@ def _ensure_lock_file_bytes(handle: Any) -> None:
 def _lock_file(handle: Any) -> None:
     _ensure_lock_file_bytes(handle)
     if os.name == "nt":
-        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
-        return
+        while True:
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                return
+            except OSError as exc:
+                if getattr(exc, "winerror", None) not in {33, 36} and getattr(exc, "errno", None) != 13:
+                    raise
+                time.sleep(0.01)
     fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
 
 

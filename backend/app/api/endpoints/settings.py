@@ -113,6 +113,9 @@ def mask_sensitive_value(value: Optional[str]) -> Optional[str]:
 
 
 def write_env_file_atomically(env_path: Path, lines: list[str]) -> None:
+    if env_path.exists() and env_path.is_dir():
+        raise ValueError(f"运行时配置路径必须是文件，当前是目录: {env_path}")
+
     env_path.parent.mkdir(parents=True, exist_ok=True)
     temp_path: Path | None = None
     try:
@@ -147,6 +150,8 @@ def update_env_file(updates: Dict[str, str]) -> None:
         ValueError: 如果键或值无效
     """
     env_path = resolve_runtime_env_path()
+    if env_path.exists() and env_path.is_dir():
+        raise ValueError(f"运行时配置路径必须是文件，当前是目录: {env_path}")
 
     # 验证所有输入
     for key, value in updates.items():

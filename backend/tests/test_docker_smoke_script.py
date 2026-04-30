@@ -75,6 +75,36 @@ def test_build_commands_use_expected_defaults():
     )
 
 
+def test_run_smoke_checks_docker_before_build(monkeypatch: pytest.MonkeyPatch):
+    module = load_module()
+    config = module.SmokeConfig(
+        repo_root=ROOT,
+        image_tag="qsm-test",
+        container_name="qsm-container",
+        host_port=18001,
+        timeout_seconds=45,
+        build_image=True,
+        keep_container=False,
+        api_key="a",
+        tmdb_api_key="b",
+        quark_transfer_cookie="c",
+    )
+    executed_commands: list[list[str]] = []
+
+    def fake_run_command(command: list[str], cwd: Path):
+        executed_commands.append(command)
+        if command == ["docker", "--version"]:
+            raise FileNotFoundError("docker")
+        return object()
+
+    monkeypatch.setattr(module, "run_command", fake_run_command)
+
+    with pytest.raises(FileNotFoundError, match="docker"):
+        module.run_smoke(config)
+
+    assert executed_commands == [["docker", "--version"]]
+
+
 def test_run_smoke_cleans_up_container_after_success(monkeypatch: pytest.MonkeyPatch):
     module = load_module()
     config = module.SmokeConfig(
@@ -112,6 +142,7 @@ def test_run_smoke_cleans_up_container_after_success(monkeypatch: pytest.MonkeyP
     module.run_smoke(config)
 
     assert executed_commands == [
+        ["docker", "--version"],
         ["docker", "build", "-t", "qsm-test", "."],
         [
             "docker",

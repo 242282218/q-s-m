@@ -111,7 +111,13 @@ def wait_for_url(url: str, timeout_seconds: int) -> None:
     raise RuntimeError(message)
 
 
+def ensure_docker_available() -> None:
+    run_command(["docker", "--version"], Path.cwd())
+
+
 def run_smoke(config: SmokeConfig) -> None:
+    ensure_docker_available()
+
     if config.build_image:
         print(f"[qsm-smoke] building image {config.image_tag}")
         run_command(build_docker_build_command(config), config.repo_root)

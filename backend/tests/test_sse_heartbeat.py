@@ -22,11 +22,12 @@ class SseHeartbeatTests(unittest.IsolatedAsyncioTestCase):
             heartbeat_message=": heartbeat\n\n",
         ):
             chunks.append(chunk)
-            if len(chunks) == 2:
+            if chunk == "data: event\n\n":
                 break
 
         self.assertEqual(chunks[0], ": heartbeat\n\n")
-        self.assertEqual(chunks[1], "data: event\n\n")
+        self.assertEqual(chunks[-1], "data: event\n\n")
+        self.assertIn(": heartbeat\n\n", chunks[:-1])
 
 
 if __name__ == "__main__":

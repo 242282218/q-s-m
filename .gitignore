@@ -91,6 +91,7 @@ scripts/
 
 # Documentation (optional)
 docs/*
+!docs/continuous-testing-loop.md
 !docs/deployment/
 !docs/deployment/docker-with-nginx.md
 DEPLOYMENT.md

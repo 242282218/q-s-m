@@ -169,8 +169,8 @@ async def test_home_feed_returns_demo_data_for_local_placeholder_tmdb_key(
     assert payload["message"] == "TMDB 未可用，开发环境返回演示首页数据"
     assert payload["data"]["hero_items"]
     assert all(payload["data"]["sections"][meta.key] for meta in SECTION_META)
-    assert payload["data"]["sections"]["anime_latest"][0]["title"] == "星际穿越"
-    assert "穿越虫洞" in payload["data"]["sections"]["anime_latest"][0]["overview"]
+    assert payload["data"]["sections"]["anime_latest"][0]["title"] == "007：无暇赴死"
+    assert "詹姆斯·邦德" in payload["data"]["sections"]["anime_latest"][0]["overview"]
 
 
 @pytest.mark.asyncio

@@ -199,6 +199,15 @@ def _create_probe_app() -> FastAPI:
     return app
 
 
+def _probe_client(app: FastAPI) -> TestClient:
+    async def app_with_client(scope, receive, send):
+        if scope["type"] == "http":
+            scope = {**scope, "client": ("testclient", 50000)}
+        await app(scope, receive, send)
+
+    return TestClient(app_with_client)
+
+
 def test_rate_limit_uses_remote_ip_when_proxy_trust_disabled(monkeypatch):
     limiter = RateLimiter(requests_per_minute=10, requests_per_hour=20)
     captured: list[str] = []
@@ -212,7 +221,7 @@ def test_rate_limit_uses_remote_ip_when_proxy_trust_disabled(monkeypatch):
     monkeypatch.setattr(rate_limit_module._settings, "trust_proxy_headers", False)
     monkeypatch.setattr(limiter, "is_allowed", fake_is_allowed)
 
-    with TestClient(_create_probe_app()) as client:
+    with _probe_client(_create_probe_app()) as client:
         response = client.get(
             "/probe",
             headers={"X-Forwarded-For": "198.51.100.24"},
@@ -236,7 +245,7 @@ def test_rate_limit_uses_x_forwarded_for_when_proxy_trusted(monkeypatch):
     monkeypatch.setattr(rate_limit_module, "_trusted_proxy_ips", {"testclient"})
     monkeypatch.setattr(limiter, "is_allowed", fake_is_allowed)
 
-    with TestClient(_create_probe_app()) as client:
+    with _probe_client(_create_probe_app()) as client:
         response = client.get(
             "/probe",
             headers={"X-Forwarded-For": "198.51.100.24, 203.0.113.8"},
@@ -260,7 +269,7 @@ def test_rate_limit_ignores_spoofed_leftmost_xff_when_proxy_appends(monkeypatch)
     monkeypatch.setattr(rate_limit_module, "_trusted_proxy_ips", {"testclient"})
     monkeypatch.setattr(limiter, "is_allowed", fake_is_allowed)
 
-    with TestClient(_create_probe_app()) as client:
+    with _probe_client(_create_probe_app()) as client:
         response = client.get(
             "/probe",
             headers={"X-Forwarded-For": "6.6.6.6, 203.0.113.8, testclient"},
@@ -285,7 +294,7 @@ def test_rate_limit_parses_forwarded_for_with_ports_and_invalid_values(monkeypat
     monkeypatch.setattr(limiter, "is_allowed", fake_is_allowed)
 
     app = _create_probe_app()
-    with TestClient(app) as client:
+    with _probe_client(app) as client:
         response = client.get(
             "/probe",
             headers={"X-Forwarded-For": "6.6.6.6, 203.0.113.10:4321, bad-ip, 127.0.0.1"},
@@ -309,7 +318,7 @@ def test_rate_limit_falls_back_to_remote_ip_when_proxy_headers_invalid(monkeypat
     monkeypatch.setattr(rate_limit_module, "_trusted_proxy_ips", {"testclient"})
     monkeypatch.setattr(limiter, "is_allowed", fake_is_allowed)
 
-    with TestClient(_create_probe_app()) as client:
+    with _probe_client(_create_probe_app()) as client:
         response = client.get(
             "/probe",
             headers={"X-Forwarded-For": "not-an-ip, ???", "X-Real-IP": "still-not-ip"},
@@ -333,7 +342,7 @@ def test_rate_limit_falls_back_to_x_real_ip_when_forwarded_for_missing(monkeypat
     monkeypatch.setattr(rate_limit_module, "_trusted_proxy_ips", {"testclient"})
     monkeypatch.setattr(limiter, "is_allowed", fake_is_allowed)
 
-    with TestClient(_create_probe_app()) as client:
+    with _probe_client(_create_probe_app()) as client:
         response = client.get(
             "/probe",
             headers={"X-Real-IP": "198.51.100.25"},

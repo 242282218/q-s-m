@@ -3,6 +3,7 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -19,12 +20,14 @@ class OptionalRuntimeConfigTests(unittest.IsolatedAsyncioTestCase):
     async def test_home_feed_degrades_without_tmdb_client(self):
         request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(tmdb_client=None)))
 
-        response = await get_home_feed(request)
+        with patch("app.api.endpoints.home.get_settings") as mock_get_settings:
+            mock_get_settings.return_value = SimpleNamespace(debug=True, tmdb_api_key=None)
+            response = await get_home_feed(request)
 
         self.assertEqual(response.code, 0)
-        self.assertEqual(response.message, "未配置 TMDB_API_KEY，首页返回空数据")
-        self.assertEqual(response.data.hero_items, [])
-        self.assertTrue(all(not items for items in response.data.sections.values()))
+        self.assertEqual(response.message, "TMDB 未可用，开发环境返回演示首页数据")
+        self.assertTrue(response.data.hero_items)
+        self.assertTrue(all(items for items in response.data.sections.values()))
 
     async def test_tmdb_search_returns_config_error_without_tmdb_client(self):
         request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(tmdb_client=None)))
@@ -36,8 +39,6 @@ class OptionalRuntimeConfigTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_quark_search_by_tmdb_id_returns_config_error_without_tmdb_key(self):
         request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(quark_client=None)))
-
-        from unittest.mock import patch
 
         with patch("app.quark.api.routes.search.get_settings") as mock_get_settings:
             mock_get_settings.return_value = SimpleNamespace(tmdb_api_key=None)

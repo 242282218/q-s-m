@@ -152,7 +152,9 @@ function validateSettings(): { valid: boolean; errors: string[] } {
         errors.push('CORS_ORIGINS 必须是字符串数组，例如 ["https://example.com"]');
       }
     } catch {
-      const origins = form.CORS_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean);
+      const origins = form.CORS_ORIGINS.split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean);
       if (origins.length === 0) {
         errors.push('CORS_ORIGINS 不能为空');
       }
@@ -505,7 +507,9 @@ onMounted(() => {
           <div class="form-group">
             <label class="form-label">
               <span class="label-text">CORS 允许来源</span>
-              <span class="label-desc">部署域名白名单，支持 JSON 数组或逗号分隔，保存后即时生效</span>
+              <span class="label-desc"
+                >部署域名白名单，支持 JSON 数组或逗号分隔，保存后即时生效</span
+              >
             </label>
             <input
               v-model="form.CORS_ORIGINS"
@@ -656,7 +660,8 @@ onMounted(() => {
           <line x1="12" y1="16" x2="12" y2="12" />
           <line x1="12" y1="8" x2="12.01" y2="8" />
         </svg>
-        API Key、TMDB Key、夸克 Cookie、CORS 与 PanSou 地址保存后可即时生效；转存策略可能需要重启后端服务
+        API Key、TMDB Key、夸克 Cookie、CORS 与 PanSou
+        地址保存后可即时生效；转存策略可能需要重启后端服务
       </p>
     </div>
   </div>

@@ -2,7 +2,9 @@ const API_KEY_STORAGE_KEY = 'qsm_api_key';
 const DEV_LOCAL_API_KEY = 'test-api-key-for-local-verification-only';
 
 function isLocalDevelopment(): boolean {
-  return import.meta.env.DEV && ['127.0.0.1', 'localhost'].includes(globalThis.location?.hostname || '');
+  return (
+    import.meta.env.DEV && ['127.0.0.1', 'localhost'].includes(globalThis.location?.hostname || '')
+  );
 }
 
 function getLocalDevelopmentApiKey(): string | null {
@@ -46,7 +48,11 @@ export function hasStoredApiKey(): boolean {
 }
 
 export function getConfiguredApiKey(): string | null {
-  return readStoredApiKey() ?? getLocalDevelopmentApiKey() ?? normalizeApiKey(import.meta.env.VITE_API_KEY);
+  return (
+    readStoredApiKey() ??
+    getLocalDevelopmentApiKey() ??
+    normalizeApiKey(import.meta.env.VITE_API_KEY)
+  );
 }
 
 export function getApiKeyCandidates(explicitApiKey?: string | null): string[] {
