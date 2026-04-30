@@ -43,6 +43,8 @@ const statusMap = reactive<Record<string, { level: 'success' | 'error' | 'info';
 const isSearching = ref(false);
 let activeDetailLoadId = 0;
 
+const isInitialLoading = computed(() => loading.value && !item.value);
+
 // 空状态计算
 const isEmptyState = computed(() => {
   return !loading.value && !item.value;
@@ -381,7 +383,7 @@ onMounted(() => {
 <template>
   <div class="page detail-page">
     <!-- 加载中状态 -->
-    <DetailHero v-if="loading" :item="item" :loading="true" />
+    <DetailHero v-if="isInitialLoading" :item="item" :loading="true" />
 
     <!-- 有数据时显示详情和其他区块 -->
     <template v-if="item">

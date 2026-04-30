@@ -69,31 +69,26 @@ const heroStyle = (item: DetailItem | null) => {
   <!-- 加载状态 -->
   <section
     v-if="loading || !item"
-    class="detail-hero"
+    class="detail-hero detail-hero-loading"
     aria-labelledby="loading-hero"
     :style="{
       background:
         'linear-gradient(135deg, var(--color-bg-secondary) 0%, var(--color-bg-primary) 100%)',
     }"
   >
-    <div class="detail-shell">
-      <div class="detail-poster">
-        <div class="poster-skeleton" aria-hidden="true" />
+    <div class="detail-loading-stack" aria-busy="true">
+      <h1 class="skeleton skeleton-text detail-loading-title" id="loading-hero" aria-hidden="true" />
+      <div class="detail-loading-line">
+        <span class="skeleton skeleton-text short" aria-hidden="true" />
+        <span class="skeleton skeleton-text short" aria-hidden="true" />
+        <span class="skeleton skeleton-text short" aria-hidden="true" />
       </div>
-      <div class="detail-meta">
-        <h1 class="detail-title skeleton-text large" id="loading-hero" aria-hidden="true" />
-        <div class="detail-subtitle">
-          <span class="skeleton-text short" aria-hidden="true" />
-          <span class="skeleton-text short" aria-hidden="true" />
-          <span class="skeleton-text short" aria-hidden="true" />
-        </div>
-        <div class="detail-tags" role="list" aria-label="类型标签">
-          <span class="tag skeleton-text short" role="listitem" aria-hidden="true" />
-          <span class="tag skeleton-text short" role="listitem" aria-hidden="true" />
-        </div>
-        <p class="detail-tagline skeleton-text medium" aria-hidden="true" />
-        <p class="detail-overview skeleton-text long" aria-hidden="true" />
+      <div class="detail-loading-tags" role="list" aria-label="类型标签">
+        <span class="tag skeleton skeleton-text short" role="listitem" aria-hidden="true" />
+        <span class="tag skeleton skeleton-text short" role="listitem" aria-hidden="true" />
       </div>
+      <p class="skeleton skeleton-text medium" aria-hidden="true" />
+      <p class="skeleton skeleton-text long" aria-hidden="true" />
     </div>
   </section>
 </template>
