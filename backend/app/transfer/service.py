@@ -200,11 +200,9 @@ class TransferService:
             self._path_resolver = resolver
 
         parts = [part for part in normalized_path.split("/") if part]
-        current_path = ""
         current_fid = "0"
 
         for part in parts:
-            current_path = f"{current_path}/{part}"
             children = await resolver.list_dir(current_fid, use_cache=False)
             if children is None:
                 return None
@@ -219,15 +217,12 @@ class TransferService:
                     break
 
             if next_fid:
-                resolver._path_cache[current_path] = next_fid
                 current_fid = next_fid
                 continue
 
             created_fid = await client.create_dir(part, current_fid)
             if not created_fid:
                 return None
-            resolver._path_cache[current_path] = str(created_fid)
-            resolver._ls_cache.pop(str(current_fid or "0"), None)
             current_fid = str(created_fid)
 
         return current_fid

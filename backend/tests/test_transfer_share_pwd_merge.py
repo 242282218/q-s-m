@@ -28,9 +28,6 @@ class FakeQuarkClient:
         self.tree.setdefault(fid, [])
         return fid
 
-    async def close(self):
-        return None
-
 
 class FakeDb:
     pass
@@ -80,7 +77,6 @@ def test_ensure_target_dir_fid_falls_back_to_stepwise_create():
             "/影视收藏/动漫/和班上第二可爱的女孩子成为了朋友 (2026)",
         )
     )
-    asyncio.run(service.close())
 
     assert fid == "created-1"
     assert client.requested_paths == ["/影视收藏/动漫/和班上第二可爱的女孩子成为了朋友 (2026)"]
@@ -95,7 +91,6 @@ def test_ensure_target_dir_fid_creates_missing_parent_dirs():
     service._path_resolver = QuarkPathResolver(client)
 
     fid = asyncio.run(service._ensure_target_dir_fid(client, "/影视收藏/动漫/新番"))
-    asyncio.run(service.close())
 
     assert fid == "created-3"
     assert client.created_dirs == [
