@@ -77,7 +77,11 @@ const heroStyle = (item: DetailItem | null) => {
     }"
   >
     <div class="detail-loading-stack" aria-busy="true">
-      <h1 class="skeleton skeleton-text detail-loading-title" id="loading-hero" aria-hidden="true" />
+      <h1
+        class="skeleton skeleton-text detail-loading-title"
+        id="loading-hero"
+        aria-hidden="true"
+      />
       <div class="detail-loading-line">
         <span class="skeleton skeleton-text short" aria-hidden="true" />
         <span class="skeleton skeleton-text short" aria-hidden="true" />
